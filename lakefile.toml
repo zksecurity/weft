@@ -1,0 +1,49 @@
+name = "glean"
+defaultTargets = ["Glean", "Gallery", "Features", "FieldCirc", "MultiField", "Timing", "Gadget", "Privacy", "Compose", "Functionality", "AesHybrid", "Cost", "Silent", "Beaver"]
+
+[[require]]
+name = "mathlib"
+git = "https://github.com/leanprover-community/mathlib4"
+rev = "v4.29.0"
+
+[[lean_lib]]
+name = "Glean"
+
+[[lean_lib]]
+name = "Gallery"
+
+[[lean_lib]]
+name = "Features"
+
+[[lean_lib]]
+name = "FieldCirc"
+
+[[lean_lib]]
+name = "MultiField"
+
+[[lean_lib]]
+name = "Timing"
+
+[[lean_lib]]
+name = "Gadget"
+
+[[lean_lib]]
+name = "Privacy"
+
+[[lean_lib]]
+name = "Compose"
+
+[[lean_lib]]
+name = "Functionality"
+
+[[lean_lib]]
+name = "AesHybrid"
+
+[[lean_lib]]
+name = "Cost"
+
+[[lean_lib]]
+name = "Silent"
+
+[[lean_lib]]
+name = "Beaver"
