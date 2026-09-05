@@ -113,6 +113,34 @@ program invertReal : Realization (Invert F) (InvHyb F) where
     conv_rhs => rw [← uniform_map_equiv e, PMF.bind_map]
     rfl
 
+/-! ## The total contract, with a declared disclosure -/
+
+/-- Inversion, total: returns `⟦x⁻¹⟧` (with `0⁻¹ = 0`) and discloses whether `x = 0`. -/
+abbrev InvertTotal : Functionality :=
+  .ofEval ⟨Unit, fun _ => [F], fun _ => .share F, fun _ => Bool, fun _ => false, fun _ => false⟩
+    ⟨fun r => pure (r.args.1⁻¹, decide (r.args.1 = 0))⟩
+
+/-- **The same program realises total inversion with no precondition.**  The
+simulator reads the zero test off the event: on `x = 0` the opened value is
+`0`, otherwise it is a fresh uniform nonzero element, as before. -/
+program invertTotalReal : Realization (InvertTotal F) (InvHyb F) where
+  impl D r := invert r.args.1
+  Sim e := if e.leak then pure (invView F 0) else (uniform {t : F // t ≠ 0}).map fun t => invView F t.1
+  real r _ := by
+    obtain ⟨⟨⟩, x, ⟨⟩⟩ := r
+    show dist (InvHyb F).model (invert x) = _
+    rw [invert_dist]
+    by_cases hx : x = 0
+    · subst hx
+      simp only [zero_mul, inv_zero, PMF.bind_const, weft, Functionality.ofEval_model, decide_true, if_true]
+    · have out : ∀ s : {s : F // s ≠ 0}, (x * s.1)⁻¹ * s.1 = x⁻¹ := fun s => by
+        have := s.2; field_simp
+      simp only [out, weft, Functionality.ofEval_model, hx, decide_false, Bool.false_eq_true, if_false]
+      let e : {s : F // s ≠ 0} ≃ {t : F // t ≠ 0} :=
+        (Equiv.mulLeft₀ x hx).subtypeEquiv fun s => by simp [hx]
+      conv_rhs => rw [← uniform_map_equiv e, PMF.bind_map]
+      rfl
+
 /-- A caller that inverts a fresh nonzero share: `randNZ`, then `invert`. -/
 def invertFresh {fs : Hybrid} {D : Domain} [Has (Invert F) fs] [Has (RandNZ F) fs] : Prog fs.ops D (D.sh F) := do
   let r ← randNZ F
