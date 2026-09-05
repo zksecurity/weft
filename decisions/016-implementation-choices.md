@@ -16,15 +16,13 @@ be noncomputable and the `program` command could certify nothing.  The
 standard functionalities are `abbrev`s, so that `Has` instances are found
 by unfolding, and each has a `model_eq` simp lemma.
 
-## An evaluation model and a timed model, per functionality
-`eval` gives every functionality a deterministic run (`output`, `view`,
-`cost` by `rfl` or `decide`), with a fixed dummy for randomised
-operations (values under it are meaningless by design; costs and delays
-are not).  `timed : (Op → Nat) → Model ops .timed Sched` gives the timed
-model at given latencies.  The generic `Model.timed` is the default and
-is exact, but evaluating it by `rfl` is slow; the standard
-functionalities and every example functionality supply a hand-written
-one, which is linear.  A hybrid dispatches both by position.
+## An evaluation model per functionality
+`eval` gives every functionality a deterministic run (`output`, `view` by
+`rfl` or `decide`), with a fixed dummy for randomised operations (values
+under it are meaningless by design).  A first version also gave each
+functionality a timed model; that was wrong, and is reversed by decision
+017: cost is an instantiation of the hybrid, and the hand-written timed
+models live beside the functionalities, in the MPC.
 
 ## Disclosure is typed per operation
 `Interface.disc : Op → Type` replaces the report's `List Pub`

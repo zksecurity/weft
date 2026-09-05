@@ -32,14 +32,15 @@ kept fast on purpose (see "Evaluating programs" below).
 | `Weft/Interface.lean` | `Interface ⟨Op, dom, cod, disc, pubArg, ctrl⟩`: public operations with clear arguments, share operands, a response shape and a typed disclosure; `Req`, `Resp`, `Event ⟨op, out, leak⟩`. |
 | `Weft/Prog.lean` | `Prog ι D`, the free monad of programs, polymorphic in the domain; `handle` inlines a program for each request. |
 | `Weft/Model.lean` | `Model ι D m`: one joint `step` per request in a monad; `run`, `dist`, `output`, `view`, `cost`; the laws `run_bind`, `dist_bind`, `dist_call`. |
-| `Weft/Timed.lean` | The timed domain: values carry a ready time, `Sched` threads the reveal and control clocks, `delayOn` reads the delay of a program off its data dependencies. |
-| `Weft/Functionality.lean` | `Functionality ⟨ops, eval, IsModel, isModel_unique, timed⟩` with its semantics `model : Model ops .ideal PMF`; `Hybrid := List Functionality`; the certificate `Has F fs`; `Prog.op`. |
+| `Weft/Timed.lean` | The cost monad: shares carry a ready time, `Sched` threads the two clocks and a communication counter, `Price ⟨delay, comm⟩`; `delayOn` and `commOn` read delay and communication off one scheduled run. |
+| `Weft/Functionality.lean` | `Functionality ⟨ops, eval, IsModel, isModel_unique⟩`, behaviour only, with its semantics `model : Model ops .ideal PMF`; `Hybrid := List Functionality`; the certificate `Has F fs`; `Prog.op`. |
+| `Weft/MPC.lean` | An `MPC` is a hybrid instantiated in the cost model: a list of functionalities each paired with a timed model of its interface; `MPC.timed` dispatches by position. |
 | `Weft/PMF.lean` | The facts about `PMF` the proofs need: the mask lemma `uniform_map_equiv` and friends. |
-| `Weft/Std/Arith.lean` | `Lin`, `Mult`, `Reveal`, `Cmp`, `Inversion`, `Barrier`, each with an evaluation model, a `PMF` model and a hand-written timed model; the smart constructors `const`, `add`, `sub`, `smul`, `mul`, `reveal`, `lt`, `nativeInv`, `barrier`. |
+| `Weft/Std/Arith.lean` | `Lin`, `Mult`, `Reveal`, `Cmp`, `Inversion`, `Barrier`, each with an evaluation model and a `PMF` model, and beside each a hand-written timed model of its interface at a price (`Lin.priced F p`); the smart constructors `const`, `add`, `sub`, `smul`, `mul`, `reveal`, `lt`, `nativeInv`, `barrier`. |
 | `Weft/Std/Random.lean` | `Rand`, `RandNZ`, `PubCoin`, and the preprocessing correlations `MulTriple`, `SquarePair`, `DoubleSharing` as functions of fresh coins. |
 | `Weft/Std/Hybrids.lean` | The black box `Std F := [Lin F, Mult F, Reveal F]`, the preprocessing box `Pre F := [Lin F, Reveal F, MulTriple F]`, and the `weft` simp set that unfolds a program's semantics to "draw the coins, then a point". |
 | `Weft/Realization.lean` | `Realization F fs ⟨impl, Pre, Sim, real⟩`; `Valid`, the discharge of preconditions on the support of the caller's run; `handle_realizes` (composition), `output_transport`, `Realization.comp`, `Realization.incl` (the trusted base). |
-| `Weft/Cost.lean` | `Price ⟨delay, comm⟩`; an `MPC` is the hybrid list with a price per operation; `cost_handle`, the communication composition theorem. |
+| `Weft/Cost.lean` | The exact instantiation of an abstract operation by running its realisation (`Realization.timed`, `MPC.derived`) and the theorem that the hybrid then costs what the inlined program costs (`Realizations.runOut_timed`); `cost_handle`, communication as a distribution. |
 | `Weft/Statistical.lean` | Statistical realisations: exact output marginal, total variation on the joint; `PMF.statDist_bind_le`, the kernel lemma; the expected-call `budget` of a caller. |
 | `Weft/Program.lean` | The `program` command: declares a `Realization` and checks that its fully applied implementation is a computable, domain-generic program. |
 
@@ -68,14 +69,16 @@ that returns that output.
 ### Evaluating programs
 
 A program is polymorphic in its domain and its hybrid, so the same
-definition is evaluated under the ideal model (`output`, `view`), under a
-price list (`cost`) and in the timed domain (`delayOn`).  Small generic
-programs close by `rfl`.  For larger ones the examples state a closed
-instance over `Fin 7` or `ZMod 17` and use `decide +kernel`, which is an
-order of magnitude faster than `rfl` at that size.  The generic timed
-model `Model.timed` is exact and is the default for a functionality, but
-evaluating it by `rfl` is slow; every standard functionality carries a
-hand-written `timed` model, which is what keeps the timed examples fast.
+definition is evaluated under the ideal model (`output`, `view`) and in
+the cost model of an MPC (`delayOn`, `commOn`).  A functionality has no
+cost; an MPC instantiates it in the scheduling monad, where shares carry
+their ready time and the state carries a communication counter.  Small
+generic programs close by `rfl`.  For larger ones the examples state a
+closed instance over `Fin 7` or `ZMod 17` and use `decide +kernel`, which
+is an order of magnitude faster than `rfl` at that size.  The generic
+timed model `Model.timed` is the specification of the hand-written ones
+and is far too slow to evaluate; every standard interface has a
+hand-written model beside it, which is what keeps the examples fast.
 
 ## The examples (`Examples/`)
 
@@ -102,8 +105,9 @@ privacy as a realisation.
   response: the public coin of a random linear combination.
 * `Silent.lean` — over `add` and `mul` alone, privacy needs a public-trace
   hypothesis.
-* `Timing.lean` — delay from dependencies; atomic and profiled models of
-  a compound operation.
+* `Timing.lean` — delay from dependencies; one compound operation and
+  three cost models for it: atomic, profiled, and derived from its
+  realisation, the last exact by theorem.
 * `AesHybrid.lean` — the UC shape: CBC realised over an AES-hybrid once,
   AES realised over the black box, composed by `Realization.comp`.
 * `MultiField.lean` — programs generic over the field, conversions
@@ -118,9 +122,12 @@ privacy as a realisation.
   total variation of a caller's run is bounded by its expected-call
   `budget`.  The kernel lemma `PMF.statDist_bind_le` and the budget are
   there; the theorem itself is not yet stated.
-* The **delay bound** for timing profiles: delay under an atomic latency
-  model bounds delay under the inlined program only under a clock-aware
-  hypothesis still to be stated (`Weft/Timed.lean`, `Examples/Timing.lean`).
+* **Bounds from hand-written cost models**: that an atomic or profiled
+  model of an abstract operation, when it dominates the derived one,
+  bounds every caller's cost from above.  Exact composition under the
+  derived instantiation is proved (`Realizations.runOut_timed`); the
+  bound needs a monotonicity argument that holds only for domain-generic
+  callers, which Lean cannot state about a program at the timed domain.
 
 No compositional theorem about correctness, communication or privacy is
 left with `sorry`.

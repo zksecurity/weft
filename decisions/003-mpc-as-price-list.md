@@ -32,3 +32,14 @@ default, per-feature semantics is total).
 Closed world: the library owns the feature enumeration. An open variant
 (features as name plus signature, `Has` by name) is possible at the cost
 of exhaustiveness checks.
+
+## Revisited (2026-09-05)
+Features are functionalities and the list is `List Functionality`
+instantiated in the cost model: an entry pairs a functionality with a
+timed model of its interface, not with a price (decision 017).  The
+reasons above stand: the list is the one thing to pass around, the type
+checker enforces availability through `Has`, and adding a functionality
+never touches existing programs.  The closed world is gone: a
+functionality is a value, and `Has` finds it in any list that mentions
+it.
+

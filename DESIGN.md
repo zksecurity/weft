@@ -9,8 +9,7 @@ design"; the two decision records it adds are `decisions/014` ("Public
 observations are explicit and never automatic") and `decisions/015` ("One
 certificate: realisation of an explicit functionality").
 Companion files, under `Weft/` (the library builds; no theorem is
-`sorry`, and §4.1 lists the two items that are described but not yet
-stated in Lean):
+`sorry`, and §4.1 lists what is described but not yet stated in Lean):
 `Shape.lean` (domains, response shapes, operands), `Interface.lean`
 (interfaces, requests, events), `Prog.lean` (the free monad of programs),
 `Model.lean` (models, the interpreter and its laws), `Timed.lean` (delay
@@ -27,8 +26,8 @@ different styles, with their theorems closed by evaluation),
 uniform, with a counterexample), `Privacy.lean` (the certificate and what
 it composes to), `Inversion.lean` (preconditions), `AesHybrid.lean` (from
 the AES-hybrid to a plain program, end to end), `MultiField.lean` (generic
-over field types, switching, edaBits, daBits), `Timing.lean` (delay and
-timing profiles), `RandomCombination.lean`, `Silent.lean`,
+over field types, switching, edaBits, daBits), `Timing.lean` (delay, and
+how a cost model instantiates an abstract operation), `RandomCombination.lean`, `Silent.lean`,
 `Statistical.lean` and `Checked.lean` (what `program` rejects). The
 library depends on Mathlib.
 
@@ -310,23 +309,27 @@ with subtyping to require one? Yes, and there should be exactly one thing
 that describes an MPC. The design that satisfies both (`Cost.lean`,
 decision 003):
 
-**An MPC is what it charges.** It is a list of functionalities, each with
-a price per operation. A functionality that is absent is not offered,
-which is the same as infinitely expensive. Everything else is derived
-from that one value:
+**An MPC is a hybrid instantiated in the cost model.** A functionality
+is behaviour only; it has no cost (decision 017). An MPC is a list of
+functionalities, each *instantiated*: paired with a model of its
+interface in the scheduling monad, which does the behaviour and pays
+the price. A functionality that is absent is not offered, which is the
+same as infinitely expensive. Everything else is derived from that one
+value:
 
 ```lean
-structure Price where (delay : Nat) (comm : Nat)               -- rounds and communication, per operation
+structure Price where (delay : Nat) (comm : Nat)                  -- rounds and communication, per operation
 
-abbrev MPC := List ((F : Functionality) × (F.ops.Op → Price))    -- constant pricing is `MPC.const F p`
+abbrev MPC.Entry := (F : Functionality) × Model F.ops .timed Sched  -- a functionality, instantiated
+abbrev MPC := List MPC.Entry
 
 def MPC.hybrid   (M : MPC) : Hybrid                              -- the functionalities, in order
-def MPC.price    (M : MPC) : M.hybrid.ops.Op → Price             -- looked up at the position `Has` finds
-def MPC.comm     (M : MPC) : CostModel M.hybrid.ops Nat          -- the additive cost model: derived, not chosen
-def MPC.timed    (M : MPC) : Model M.hybrid.ops .timed Sched     -- the timed model at the list's latencies
+def MPC.timed    (M : MPC) : Model M.hybrid.ops .timed Sched     -- the cost instantiation: dispatch by position
 abbrev MPC.model (M : MPC) := M.hybrid.model                     -- the semantics: never the MPC's to choose
 
-abbrev abb : MPC := [MPC.const (Lin F) ⟨0, 0⟩, MPC.const (Mult F) ⟨1, 2⟩, MPC.const (Reveal F) ⟨1, 1⟩]
+abbrev abb : MPC := [Lin.priced F, Mult.priced F ⟨1, 2⟩, Reveal.priced F ⟨1, 1⟩]
+-- `Mult.priced F p := ⟨Mult F, Mult.timed F p⟩`: the interface's hand-written timed model at price `p`;
+-- `MPC.entry F T` takes any timed model of `F.ops`; `MPC.derived M f` runs a realisation (§3.4)
 ```
 
 * **The type carries the feature set.** A program over `M.hybrid.ops` may
@@ -334,30 +337,32 @@ abbrev abb : MPC := [MPC.const (Lin F) ⟨0, 0⟩, MPC.const (Mult F) ⟨1, 2⟩
   needs `Has F M.hybrid` for the functionality it calls. Calling
   `nativeInv` against an MPC without `Inversion F` is a failed instance
   search at the call site, not a runtime `⊤`.
-* **Offered means priced, by construction.** `M.price` is total on the
-  hybrid's operations, since every operation of the hybrid names the entry
-  it belongs to. There is no `⊤` and no `Option`: the price of something
-  the type system has ruled out is never asked for.
+* **Offered means instantiated, by construction.** `M.timed` is total on
+  the hybrid's operations, since every operation of the hybrid names the
+  entry it belongs to. There is no `⊤` and no `Option`: the cost of
+  something the type system has ruled out is never asked for.
 * **Subtyping is `Incl fs gs`** (every component of `fs` is available in
   `gs`), and `Prog.weaken` coerces `Prog fs.ops D α` to
   `Prog gs.ops D α`. It is a handler, so it costs nothing and changes
   nothing semantically.
 * **Semantics is per functionality, once.** The hybrid's model dispatches
   by position to the component's own ideal model; `M.model` is assembled
-  from the entries with no per-MPC code. An MPC only prices, it never
-  redefines what an operation means. Two MPCs that both list `Mult F`
-  agree on what `mult` computes and discloses, and differ only in rounds
-  and bytes.
+  from the entries with no per-MPC code. An MPC only instantiates, it
+  never redefines what an operation means: its timed models compute the
+  same values as `eval`, and the ideal semantics does not mention them.
+  Two MPCs that both list `Mult F` agree on what `mult` computes and
+  discloses, and differ only in rounds and bytes.
 
 The capability-class pattern of §2.5 is unchanged: the instances are
 `[Has (Inversion F) fs]` (native) and `[Has (Lin F) fs] [Has (Mult F) fs]`
-(fallback), and since prices are plain data the choice can also be made by
-comparing `M.price` with the fallback's known price.
+(fallback).
 
-Prices are per *operation*, not per request, so nothing needs an argument
-to be priced; but an operation carries its clear arguments, so `const c`
-may be priced per coefficient if an MPC wants to. That is why an entry is
-a function `F.ops.Op → Price` and not a scalar (report, Issue 4).
+A price is per *operation*, never per value: a timed model sees the
+request, that is the operation with its clear arguments and the operands
+with their ready times, so `const c` may be priced per coefficient if an
+MPC wants to (report, Issue 4), and a hand-written model of a compound
+operation may charge per input (a timing profile, §3.4); but the price
+of a request never depends on what a share holds.
 
 **An open world.** A functionality is a value, not a constructor of a
 library-owned enumeration, so a downstream user adds one by defining it,
@@ -457,8 +462,8 @@ def mulThenCompare (F G : Type) [CommRing F] [Encodable F] [CommRing G] [Encodab
   let bit ← lt ab' c'                           -- comparison is offered on G
   switch F bit                                  -- back in F
 
-abbrev twoField : MPC := [MPC.const (Mult (ZMod 7)) ⟨1, 2⟩, MPC.const (Cmp (ZMod 16)) ⟨2, 6⟩,
-                          MPC.const (Switch (ZMod 7) (ZMod 16)) ⟨3, 8⟩, MPC.const (Switch (ZMod 16) (ZMod 7)) ⟨2, 4⟩, …]
+abbrev twoField : MPC := [Mult.priced (ZMod 7), Cmp.priced (ZMod 16) ⟨2, 6⟩,
+                          Switch.priced (ZMod 7) (ZMod 16) ⟨3, 8⟩, Switch.priced (ZMod 16) (ZMod 7) ⟨2, 4⟩, …]
 -- instantiates at F := ZMod 7, G := ZMod 16; output, cost and delay by evaluation
 ```
 
@@ -475,10 +480,10 @@ Three consequences of "the field is the type":
   protocol guarantees (the canonical representative re-read in the
   target, bit decomposition, embedding into an extension), stated once
   per pair of field types.
-* **The price sits where `Has` looks.** `Has` gives a position and
-  `MPC.price` reads the entry at that position, so the cost model needs
-  no decidable equality on types and no `⊤`: every well-typed program has
-  a finite, total cost on its MPC.
+* **The cost sits where `Has` looks.** `Has` gives a position and
+  `MPC.timed` dispatches to the entry at that position, so the cost model
+  needs no decidable equality on types and no `⊤`: every well-typed
+  program has a finite, total cost on its MPC.
 * **Universe.** `Shape`, `Interface` and `Functionality` mention `Type`
   and live in `Type 1`; programs `Prog ι D α` live in `Type`, and nothing
   so far has needed more.
@@ -502,10 +507,9 @@ one joint step per request. What differs is how they come to exist
 ```lean
 structure Functionality where
   ops   : Interface
-  eval  : Model ops .ideal Id                      -- coins fixed to a dummy: evaluation by `rfl`, costs, delay
+  eval  : Model ops .ideal Id                      -- coins fixed to a dummy: evaluation by `rfl`
   IsModel : Model ops .ideal PMF → Prop            -- the semantics, as the predicate it uniquely satisfies
-  isModel_unique : ∃! M, IsModel M
-  timed : (ops.Op → Nat) → Model ops .timed Sched := fun ℓ => eval.timed ℓ   -- hand-written for the standard ones
+  isModel_unique : ∃! M, IsModel M                 -- and nothing about cost (decision 017)
 
 noncomputable def Functionality.model (F : Functionality) : Model F.ops .ideal PMF   -- the unique such model
 
@@ -539,7 +543,7 @@ earlier is an instance:
 | Earlier notion                 | As a functionality / realisation                                   |
 |--------------------------------|--------------------------------------------------------------------|
 | primitive operation (`mult`, `rand`, `reveal`) | a functionality the MPC provides; realisation `incl`; price on the MPC's list |
-| MPC price list (§2.6)          | the list of functionalities realised by `incl`, with their prices  |
+| MPC price list (§2.6)          | the list of functionalities realised by `incl`, each instantiated in the cost model |
 | `Has F fs`                     | the trivial realisation `Realization.incl F fs`                    |
 | program with spec and declared disclosure | a one-operation functionality realised over `fs` (§7)  |
 | gadget (old §7)                | such a realisation plus a `Pre`; a price is a separate theorem per MPC |
@@ -677,8 +681,9 @@ needs the price list.
 
 What the core keeps open, by leaving the model a parameter of `run`, is
 the ability to interpret the same syntax in other ways: the
-functionality's `eval` at `Id` for `rfl`, its `timed` model for delay, a
-hybrid model in which a callee is abstract, or a deliberately wrong
+functionality's `eval` at `Id` for `rfl`, a cost model's timed model of
+its interface for delay and communication, a hybrid model in which a
+callee is abstract, or a deliberately wrong
 functionality to state a counterexample (`BadMulTriple`,
 `Examples/Beaver.lean`: same interface, `a = b`, still correct, provably
 not a realisation). Those are other *interpretations* of one program, not
@@ -746,27 +751,36 @@ sessions, batched MAC checks, amortised preprocessing) are out of scope
 for the foreseeable future; response-dependent callers are not what this
 excludes, and are supported (report, Scope decisions).
 
-### 3.2 Cost: an additive monoid, and a price per operation
+### 3.2 Cost: paid by the instantiation, in the scheduling monad
 
 ```lean
 structure Price where (delay : Nat) (comm : Nat)      -- what an MPC charges for an operation
+structure Clock where (clock revealed comm : Nat := 0) -- control clock, reveal clock, communication so far
+abbrev Sched := StateT Clock Id                        -- the cost monad
 
-structure CostModel (ι : Interface) (C : Type) where
-  op : ι.Op → C                                        -- price per operation, in an `AddMonoid C`; never sees an operand
+def delayOn (M : Model ι .timed Sched) (c : Prog ι .timed (Timed T)) : Nat := (Sched.output M c).time
+def commOn  (M : Model ι .timed Sched) (c : Prog ι .timed α)         : Nat := (Sched.run M c).2.comm
 ```
 
-Costs add along a run; the carrier is any Mathlib `AddMonoid`: `ℕ` for
-communication, `Unit` for none (`CostModel.unit`, which `output` and
-`view` run under). Delay is *not* a cost in this sense: it is computed
-from data dependencies in the timed domain (§3.5), and a `Price` feeds
-its `delay` to that domain (`MPC.timed`) and its `comm` to the additive
-model (`MPC.comm`).
+A cost model instantiates each operation as a step in `Sched`: it
+computes the response, stamps it with the round at which it is ready,
+and adds the operation's communication to the counter. Delay is the
+ready time of the output, computed from data dependencies (§3.5);
+communication is the counter at the end. Both are read off one scheduled
+run of the program in the timed domain, and neither is a property of a
+functionality: the same program has another delay and another
+communication under another MPC.
 
-An MPC prices every operation with a `Price`. Two dependent
-multiplications (`mul3`) have delay 2 and communication 4 on `abb`; two
-independent ones feeding a third (`mul4seq`) still have delay 2, for
-three multiplications' worth of communication. Delay does not stack, and
-nothing has to say so per program: it falls out of the dependency graph.
+Two dependent multiplications (`mul3`) have delay 2 and communication 4
+on `abb`; two independent ones feeding a third (`mul4seq`) still have
+delay 2, for three multiplications' worth of communication. Delay does
+not stack, and nothing has to say so per program: it falls out of the
+dependency graph.
+
+For a reactive program, whose shape depends on what it opens, cost is a
+distribution; that is stated in the ideal domain with an additive cost
+model (`CostModel ι C`, a price per operation in any Mathlib `AddMonoid`,
+accumulated by the interpreter's trace; `costDist`, §3.4).
 
 "Score different sub-functionalities differently" is a price list. Several
 lists coexist for one hybrid, and for concatenated lists price lists
@@ -783,8 +797,8 @@ concatenate:
 
 `Examples/Beaver.lean` has `preMPC` (triples precomputed, priced `⟨0, 0⟩`)
 and `preOnline` (triples generated online, `⟨2, 3⟩`); the same Beaver
-program has delay 1 under the first and 3 under the second, both by
-evaluation.
+program has delay 1 and communication 2 under the first, 3 and 5 under
+the second, all by evaluation.
 
 ### 3.3 The interpreter
 
@@ -844,18 +858,49 @@ Lean values holding handles. Responses of operations are described by a
 their public part is structural; a Clean-style class mapping a Lean record
 to a shape is worth adding for I/O ergonomics, but it is sugar.
 
-### 3.4 Delay and communication are separate theorems; communication composes, delay is bounded
+### 3.4 Delay and communication compose exactly under the derived instantiation
 
-A price list carries both numbers per operation, but theorems mention one
-resource at a time. `delayOn M.timed c` runs the program in the timed
-domain with the latencies of the list, and `cost M.eval M.comm c` runs it
-under the additive cost model with per-operation bandwidths (`Cost.lean`).
-`mul4seq` is 2 rounds and `chain3` is 3 rounds, both with three
-multiplications' worth of communication; each is its own `rfl`.
+A price carries both numbers per operation, but theorems mention one
+resource at a time: `delayOn M.timed c` and `commOn M.timed c` read the
+two off one scheduled run. `mul4seq` is 2 rounds and `chain3` is 3
+rounds, both with three multiplications' worth of communication; each is
+its own `rfl`.
 
-**Composition for communication** has the same shape as composition for
-privacy. Call a handler *priced* under `K` if each request's program has
-a cost independent of its operands and coins (structurally scheduled):
+**The exact instantiation of an abstract operation is to run its
+implementation.** A caller written in a hybrid with an abstract operation
+(`mulAdd`, `enc`) is costed by an MPC that instantiates that operation
+somehow. If a realisation of the operation over the target hybrid is
+known, the honest instantiation runs it:
+
+```lean
+/-- The timed model of `F` that runs `f`'s implementation in the target's cost model `T`. -/
+def Realization.timed (f : Realization F fs) (T : Model fs.ops .timed Sched) : Model F.ops .timed Sched
+abbrev MPC.derived (M : MPC) (f : Realization F M.hybrid) : MPC.Entry := ⟨F, f.timed M.timed⟩
+def Realizations.timed (g : Realizations fs gs) (T : Model gs.ops .timed Sched) : Model fs.ops .timed Sched
+
+/-- A scheduled run of the caller, every abstract operation instantiated that way, *is* the run of the
+inlined program: same output, same clocks, same communication. -/
+theorem Realizations.runOut_timed (g : Realizations fs gs) (T) (c : Prog fs.ops .timed α) :
+    runOut (g.timed T) c = runOut T (Prog.handle (g.impl .timed) c)
+theorem Realizations.delayOn_timed … : delayOn (g.timed T) c = delayOn T (Prog.handle (g.impl .timed) c)
+theorem Realizations.commOn_timed  … : commOn  (g.timed T) c = commOn  T (Prog.handle (g.impl .timed) c)
+```
+
+This is exact by construction (`Cost.lean`, an induction on the caller
+with `run_bind`), for every caller, reactive or not, and with the global
+clocks included: the callee's reveals and barriers act on the caller's
+clocks exactly as they would inlined. A hand-written model of the
+abstract operation, one latency or a per-input profile, is an
+*approximation* of this one; what it approximates is now a definition.
+`Examples/Timing.lean` has one functionality `MulAdd` and three MPCs for
+it (atomic, profiled, derived); `Examples/AesHybrid.lean` costs CBC in
+the AES-hybrid with `enc` derived from the AES program and gets the
+inlined numbers, 4 rounds and 8 units, by `rfl`.
+
+**Composition for communication as a distribution** has the same shape
+as composition for privacy. Call a handler *priced* under `K` if each
+request's program has a cost independent of its operands and coins
+(structurally scheduled):
 
 ```lean
 def Priced (M : Model ι .ideal PMF) (impl : (r : Req κ .ideal) → Prog ι .ideal (Resp κ .ideal r.op))
@@ -875,41 +920,40 @@ program's). So a protocol's communication complexity is stated once in
 the hybrid with abstract prices, and instantiating AES by a program
 substitutes that program's cost for the abstract price, with no new
 analysis of the protocol (`Examples/AesHybrid.lean`: 20 units in the
-hybrid, 8 once inlined, by `rfl`).
+hybrid with `enc` priced at 10, 8 once derived or inlined, by `rfl`).
 
-**Delay under eager scheduling is a conservative bound, not yet an exact
-composition.** Under dependency tracking (§3.5) an abstract operation
-should not be modelled by a single latency: that serialises its whole
+**Hand-written models of an abstract operation are bounds at best.**
+Under dependency tracking (§3.5) a single latency serialises the whole
 implementation behind all of its inputs, and an implementation with a
 "late" input (`mulAdd a b c = a·b + c` needs `c` only after the
-multiplication) would then be over-counted. Model it instead by its
-**timing profile**, the longest path from each input to the output inside
-the implementation (plus `d₀` for input-free sources such as
-preprocessing):
+multiplication) is over-counted; a **timing profile**, the longest path
+from each input to the output inside the implementation,
 
     ready(out) = max (d₀, max_i (ready(in_i) + d_i))
 
-For a straight-line callee in isolation the profile is exact:
-`Examples/Timing.lean` checks the three numbers on a caller whose `c`
-arrives at round 1: atomic model 2, profiled model 1, inlined program 1.
-It is **not** exact in general (report, Issue 10). The reveal and control
-clocks are global state: an inlined callee that reveals, computes in the
-clear and inserts back waits on every earlier reveal of the *caller*,
-which no per-input profile of the callee can know, and even `smul 1 x`
-after a reveal at time `T` returns at `T` while its isolated profile is
-zero. What holds is that a profile is an upper bound for a reactive
-callee; the clock-aware hypothesis under which it composes, and its
-proof, are still to be stated and proved (§8), and the exact alternative
-(specifying an abstract operation by its full clock-state transformer) is
-recorded for when an exact number is needed. What is kept: `Barrier` and
-the control clock (the reveal-then-branch program undercounts, 1 round
-instead of 3, without it), and the interface's `pubArg`/`ctrl` flags as
-trusted scheduling metadata. Known gap: a revealed branch that selects an
-existing share with `pure` escapes the control time.
+is exact for a straight-line callee in isolation (`Examples/Timing.lean`:
+atomic 2, profiled 1, derived 1, inlined 1). It is **not** exact in
+general (report, Issue 10): the reveal and control clocks are global
+state, so an inlined callee that reveals, computes in the clear and
+inserts back waits on every earlier reveal of the *caller*, which no
+per-input profile of the callee can know, and even `smul 1 x` after a
+reveal at time `T` returns at `T` while its isolated profile is zero.
+The clocks over-approximate dependency edges of weight zero whose source
+the interpreter cannot see, because clear values carry no time. Whether a
+hand-written model that *dominates* the derived one (later times, later
+clocks, more communication, for every request and state) gives an upper
+bound on every caller is a monotonicity statement about the interpreter
+that needs the caller to be domain-generic, which Lean cannot know of a
+program at the timed domain; it is not attempted (§8). What is kept:
+`Barrier` and the control clock (the reveal-then-branch program
+undercounts, 1 round instead of 3, without it), and the interface's
+`pubArg`/`ctrl` flags as trusted scheduling metadata. Known gap: a
+revealed branch that selects an existing share with `pure` escapes the
+control time.
 
-So the recommended round semantics is still eager scheduling with
-profiles: no `∥` to write, communication composing exactly, and delay as
-a bound whose exactness is a theorem still owed.
+So the round semantics is eager scheduling: no `∥` to write, delay and
+communication computed by one run, and both composing exactly when an
+abstract operation is instantiated by its realisation.
 
 ### 3.5 Delay is computed, not proved, and needs no `∥`
 
@@ -928,19 +972,21 @@ polymorphic in the domain, and a second monad, because the clock is state:
 ```lean
 structure Timed (T : Type) where (val : T) (time : Nat)
 abbrev Domain.timed : Domain := ⟨Timed⟩                       -- shares are timed, clear values plain
-structure Clock where (clock : Nat := 0) (revealed : Nat := 0)  -- control clock, reveal clock
+structure Clock where (clock revealed comm : Nat := 0)         -- control clock, reveal clock, communication
 abbrev Sched := StateT Clock Id                               -- the scheduling monad
 
-/-- One generic timed model for every interface, from the evaluation model and a latency per operation:
-ready at `max (operand times, clock) + ℓ`; a `pubArg` operation also waits for the reveal clock;
-a clear response raises the reveal clock; a `ctrl` operation raises the control clock. -/
-def Model.timed (E : Model ι .ideal Id) (ℓ : ι.Op → Nat) : Model ι .timed Sched
-def Mult.timed (F) (ℓ) : Model (Mult.ops F) .timed Sched       -- hand-written for the standard ones: linear-time `rfl`
-  -- ⟨.mult, (a, b, ())⟩ ↦ ⟨a.val * b.val, max a.time (max b.time s.clock) + ℓ .mult⟩, state unchanged
-def Reveal.timed (F) (ℓ) …                                     -- clear at `t`; `revealed := max s.revealed t`
+/-- One generic timed model for every interface, from the evaluation model and a price per operation:
+ready at `max (operand times, clock) + delay`; a `pubArg` operation also waits for the reveal clock;
+a clear response raises the reveal clock; a `ctrl` operation raises the control clock; `comm` is paid.
+The specification of the hand-written ones; far too slow to evaluate. -/
+def Model.timed (E : Model ι .ideal Id) (p : ι.Op → Price) : Model ι .timed Sched
+def Mult.timed (F) (p : Price) : Model (Mult.ops F) .timed Sched   -- hand-written, beside the functionality
+  -- ⟨.mult, (a, b, ())⟩ ↦ ⟨a.val * b.val, max a.time (max b.time s.clock) + p.delay⟩, `s.pay p.comm`
+def Reveal.timed (F) (p) …                                     -- clear at `t`; `revealed := max s.revealed t`
 
 def delayOn    (M : Model ι .timed Sched) (c : Prog ι .timed (Timed T)) : Nat := (Sched.output M c).time
 def delayClear (M : Model ι .timed Sched) (c : Prog ι .timed α) : Nat := (Sched.run M c).2.revealed
+def commOn     (M : Model ι .timed Sched) (c : Prog ι .timed α) : Nat := (Sched.run M c).2.comm
 ```
 
 With this, sequential `do`-code gets the parallel count and no `∥` is
@@ -1236,10 +1282,11 @@ not yet stated in Lean.
 
 **What is proved, and what is not.** The compositional theorems exist and
 none is `sorry`: `handle_realizes`, `output_transport`,
-`Realization.comp`, `cost_handle`, `PMF.statDist_bind_le`. Two items are
-described here but not yet stated in Lean, let alone proved: the
-statistical budget theorem just mentioned, and the clock-aware delay
-bound of §3.4.
+`Realization.comp`, `cost_handle`, `Realizations.runOut_timed`,
+`PMF.statDist_bind_le`. Described here but not yet stated in Lean, let
+alone proved: the statistical budget theorem just mentioned, and the
+bound that a dominating hand-written cost model gives (§3.4), which
+needs a parametricity hypothesis on the caller.
 
 **Related work that shaped this.**
 
@@ -1284,15 +1331,12 @@ functionalities a certain way. The shape (schematic; the examples state
 these for concrete sizes):
 
 ```lean
-theorem inner_comm {M : MPC} [Has (Lin F) M.hybrid] [Has (Mult F) M.hybrid]
-    (hlin : ∀ o : Lin.Op F, (M.price (Has.op o)).comm = 0) (hmul : (M.price (Has.op Mult.Op.mult)).comm = 1)
-    (xs ys : List F) :
-    cost M.eval M.comm (inner (fs := M.hybrid) (D := .ideal) xs ys) = (xs.zip ys).length
+theorem inner_comm (pMult pReveal : Price) (xs ys : List (Timed F)) :
+    commOn (Std.timed F pMult pReveal) (inner (fs := Std F) (D := .timed) xs ys) = pMult.comm * (xs.zip ys).length
 ```
 
-This reads "on any MPC where linear operations are free and
-multiplication costs one unit, inner product costs one unit per pair",
-and it holds for every `M`. Delay bounds have the same shape against
+This reads "on the black box at any prices, inner product costs one
+multiplication per pair", and it holds for every price. Delay bounds have the same shape against
 `M.timed`, with the caveat of §3.4 once a bound is composed through a
 realisation.
 
@@ -1579,8 +1623,8 @@ def a2b (F : Type) [CommRing F] [Encodable F] (m : Nat) (coin : Nat := 0)
   let zero ← const (0 : GF2)
   addPublic m (bitsOf m (Encodable.encode c)) rbits zero
 
-abbrev mixed : MPC := [MPC.const (Lin (ZMod 17)) ⟨0, 0⟩, MPC.const (Mult (ZMod 17)) ⟨1, 2⟩, MPC.const (Reveal (ZMod 17)) ⟨1, 1⟩,
-                       MPC.const (Lin GF2) ⟨0, 0⟩, MPC.const (Mult GF2) ⟨1, 1⟩, MPC.const (EdaBit (ZMod 17) 4 3) ⟨0, 0⟩]
+abbrev mixed : MPC := [Lin.priced (ZMod 17), Mult.priced (ZMod 17), Reveal.priced (ZMod 17),
+                       Lin.priced GF2, Mult.priced GF2 ⟨1, 1⟩, EdaBit.priced (ZMod 17) 4 3]
 ```
 
 Checked by evaluation (the evaluation model with the mask fixed to `3`):
@@ -1704,10 +1748,13 @@ pattern for free.
    is the theorem that `handle_realizes` holds up to
    `min 1 (budget fs.model ε c)` for a valid caller. Needed for edaBit
    masking of a bounded value by a longer one (§6.5).
-2. **Clock-aware delay composition** (§3.4): the hypothesis under which a
-   timing profile composes through a realisation, and its proof; or the
-   exact alternative, an abstract operation timed by its full clock-state
-   transformer.
+2. **Bounds from hand-written cost models** (§3.4): that an abstract
+   operation's atomic or profiled model, when it dominates the derived
+   one, bounds every caller's delay and communication from above. Exact
+   composition is done (`Realizations.runOut_timed`); the bound needs
+   monotonicity of the interpreter in the scheduling state, which holds
+   only for domain-generic callers, a hypothesis Lean cannot state about
+   a program at the timed domain.
 3. **Adaptive environment.** Party inputs that depend on earlier
    openings: make the model's step a function of the trace so far.
 4. **Corruption.** Tag disclosures with recipients (`revealto p`), the

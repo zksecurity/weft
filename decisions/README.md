@@ -23,3 +23,4 @@ is made or reversed; do not edit history, append a "Revisited" section.
 | 014 | [Public observations are explicit and never automatic](014-explicit-observations.md) |
 | 015 | [One certificate: realisation of an explicit functionality](015-one-certificate.md) |
 | 016 | [Implementation choices of the 2026-09 rewrite](016-implementation-choices.md) |
+| 017 | [Cost is an instantiation of the hybrid, never a property of a functionality](017-cost-is-an-instantiation.md) |
