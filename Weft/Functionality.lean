@@ -219,6 +219,7 @@ end Prog
 class Incl (fs gs : Hybrid) where
   has : (i : Fin fs.length) → Has (fs.get i) gs
 
+instance Incl.refl (fs : Hybrid) : Incl fs fs := ⟨fun i => ⟨i, rfl⟩⟩
 instance Incl.nil (gs : Hybrid) : Incl [] gs := ⟨fun i => i.elim0⟩
 instance Incl.cons (F : Functionality) (fs gs : Hybrid) [hF : Has F gs] [hs : Incl fs gs] : Incl (F :: fs) gs :=
   ⟨fun i => match i with
