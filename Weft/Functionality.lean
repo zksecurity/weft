@@ -1,4 +1,4 @@
-import Weft.Timed
+import Weft.Model
 
 /-!
 # Functionalities and hybrids
@@ -32,10 +32,6 @@ structure Functionality where
   eval : Model ops .ideal Id
   IsModel : Model ops .ideal PMF → Prop
   isModel_unique : ∃! M, IsModel M
-  /-- The timed model at given latencies: by default the generic one
-  (`Model.timed`), which is exact but slow to evaluate by `rfl`; the standard
-  functionalities supply their own. -/
-  timed : (ops.Op → Nat) → Model ops .timed Sched := fun ℓ => eval.timed ℓ
 
 namespace Functionality
 
@@ -55,13 +51,12 @@ theorem unique_eq {ι : Interface} (M : Model ι .ideal PMF) : ∃! N : Model ι
   ⟨M, rfl, fun _ h => h⟩
 
 /-- A deterministic functionality: its evaluation model is its semantics. -/
-abbrev ofEval (ι : Interface) (E : Model ι .ideal Id)
-    (T : (ι.Op → Nat) → Model ι .timed Sched := fun ℓ => E.timed ℓ) : Functionality :=
-  ⟨ι, E, (· = E.lift PMF), unique_eq _, T⟩
+abbrev ofEval (ι : Interface) (E : Model ι .ideal Id) : Functionality :=
+  ⟨ι, E, (· = E.lift PMF), unique_eq _⟩
 
-@[simp] theorem ofEval_ops (ι : Interface) (E : Model ι .ideal Id) (T) : (ofEval ι E T).ops = ι := rfl
-@[simp] theorem ofEval_eval (ι : Interface) (E : Model ι .ideal Id) (T) : (ofEval ι E T).eval = E := rfl
-@[simp] theorem ofEval_model (ι : Interface) (E : Model ι .ideal Id) (T) : (ofEval ι E T).model = E.lift PMF :=
+@[simp] theorem ofEval_ops (ι : Interface) (E : Model ι .ideal Id) : (ofEval ι E).ops = ι := rfl
+@[simp] theorem ofEval_eval (ι : Interface) (E : Model ι .ideal Id) : (ofEval ι E).eval = E := rfl
+@[simp] theorem ofEval_model (ι : Interface) (E : Model ι .ideal Id) : (ofEval ι E).model = E.lift PMF :=
   model_eq rfl
 
 /-- The response marginal of the semantics. -/
@@ -103,11 +98,6 @@ noncomputable def model (fs : Hybrid) : Model fs.ops .ideal PMF where
 /-- The evaluation model of a hybrid. -/
 def eval (fs : Hybrid) : Model fs.ops .ideal Id where
   step r := (fs.get r.op.1).eval.step ⟨r.op.2, r.args⟩
-
-/-- The timed model of a hybrid at the given latencies: dispatch by position
-to the component's timed model. -/
-def timed (fs : Hybrid) (ℓ : fs.ops.Op → Nat) : Model fs.ops .timed Sched where
-  step r := ((fs.get r.op.1).timed fun o => ℓ ⟨r.op.1, o⟩).step ⟨r.op.2, r.args⟩
 
 theorem model_step (fs : Hybrid) (i : Fin fs.length) (o : (fs.get i).ops.Op)
     (a : Operands .ideal ((fs.get i).ops.dom o)) :

@@ -61,9 +61,9 @@ end Programs
 section MPCs
 variable (F : Type) [Add F] [Mul F] [Sub F] [Fintype F] [Inhabited F]
 /-- A preprocessing MPC: triples are free (precomputed), openings cost one round and one unit. -/
-abbrev preMPC : MPC := [MPC.const (Lin F) ⟨0, 0⟩, MPC.const (Reveal F) ⟨1, 1⟩, MPC.const (MulTriple F) ⟨0, 0⟩]
+abbrev preMPC : MPC := [Lin.priced F, Reveal.priced F, MulTriple.priced F ⟨0, 0⟩]
 /-- The same MPC generating triples online, in two rounds. -/
-abbrev preOnline : MPC := [MPC.const (Lin F) ⟨0, 0⟩, MPC.const (Reveal F) ⟨1, 1⟩, MPC.const (MulTriple F) ⟨2, 3⟩]
+abbrev preOnline : MPC := [Lin.priced F, Reveal.priced F, MulTriple.priced F ⟨2, 3⟩]
 end MPCs
 
 section Evaluation
@@ -80,8 +80,8 @@ def beaverView (q : F × F) : List (Event (Pre F).ops) :=
 -- below computes exactly, as a distribution, under the real model.
 
 -- **Communication**: two openings.
-example : cost (preMPC (Fin 7)).eval (preMPC (Fin 7)).comm
-    (mulBeaver (F := Fin 7) (fs := (preMPC (Fin 7)).hybrid) (D := .ideal) 3 4) = 2 := by decide +kernel
+example : commOn (preMPC (Fin 7)).timed
+    (mulBeaver (F := Fin 7) (fs := (preMPC (Fin 7)).hybrid) (D := .timed) ⟪3⟫ ⟪4⟫) = 2 := by decide +kernel
 end Evaluation
 
 section Closed
@@ -89,8 +89,8 @@ section Closed
 runs the interpreter inside the elaborator, which is an order of magnitude slower at this size. -/
 
 -- ...and with online triples, the triple's three units as well.
-example : cost (preOnline (Fin 7)).eval (preOnline (Fin 7)).comm
-    (mulBeaver (F := Fin 7) (fs := (preOnline (Fin 7)).hybrid) (D := .ideal) 3 4) = 5 := by decide +kernel
+example : commOn (preOnline (Fin 7)).timed
+    (mulBeaver (F := Fin 7) (fs := (preOnline (Fin 7)).hybrid) (D := .timed) ⟪3⟫ ⟪4⟫) = 5 := by decide +kernel
 -- **Rounds**: one, since the two openings are independent; three when the triple takes two rounds.
 example : delayOn (preMPC (Fin 7)).timed
     (mulBeaver (F := Fin 7) (fs := (preMPC (Fin 7)).hybrid) (D := .timed) ⟪3⟫ ⟪4⟫) = 1 := by decide +kernel
@@ -100,8 +100,8 @@ example : delayOn (preOnline (Fin 7)).timed
 example : delayOn (preMPC (Fin 7)).timed
     (mul3Beaver (F := Fin 7) (fs := (preMPC (Fin 7)).hybrid) (D := .timed) ⟪3⟫ ⟪4⟫ ⟪5⟫) = 2 := by
   decide +kernel
-example : cost (preMPC (Fin 7)).eval (preMPC (Fin 7)).comm
-    (mul3Beaver (F := Fin 7) (fs := (preMPC (Fin 7)).hybrid) (D := .ideal) 3 4 5) = 4 := by
+example : commOn (preMPC (Fin 7)).timed
+    (mul3Beaver (F := Fin 7) (fs := (preMPC (Fin 7)).hybrid) (D := .timed) ⟪3⟫ ⟪4⟫ ⟪5⟫) = 4 := by
   decide +kernel
 end Closed
 
@@ -170,7 +170,7 @@ noncomputable def BadMulTriple.model : Model (MulTriple.ops F) .ideal PMF :=
 
 /-- The wrong functionality, under its own name. -/
 abbrev BadMulTriple : Functionality :=
-  ⟨MulTriple.ops F, MulTriple.eval F, (· = BadMulTriple.model F), Functionality.unique_eq _, MulTriple.timed F⟩
+  ⟨MulTriple.ops F, MulTriple.eval F, (· = BadMulTriple.model F), Functionality.unique_eq _⟩
 
 @[simp, weft] theorem BadMulTriple.model_eq : (BadMulTriple F).model = BadMulTriple.model F :=
   Functionality.model_eq rfl

@@ -35,7 +35,7 @@ end RC
 
 /-- The random-combination functionality of two shares. -/
 abbrev RandComb (F : Type) [Add F] [Mul F] [Fintype F] [Inhabited F] : Functionality :=
-  ⟨RC.ops F, RC.eval F, (· = RC.model F), Functionality.unique_eq _, fun ℓ => (RC.eval F).timed ℓ⟩
+  ⟨RC.ops F, RC.eval F, (· = RC.model F), Functionality.unique_eq _⟩
 
 @[simp, weft] theorem RandComb.model_eq (F : Type) [Add F] [Mul F] [Fintype F] [Inhabited F] :
     (RandComb F).model = RC.model F := Functionality.model_eq rfl

@@ -1,61 +1,86 @@
 import Weft.Realization
 
 /-!
-# Price lists, communication, and how cost composes
+# How cost composes
 
-An MPC is what it charges: a list of functionalities, each with a price
-per operation.  The same list gives membership (`Has`), semantics (the
-hybrid's model) and pricing, so "the MPC offers `X`" is said once.  A
-price sees the operation only, never an operand; constant pricing is the
-special case.
+Two composition theorems for cost, both along realisations.
 
-Delay and communication are separate observables.  Communication is the
-additive cost model of the price list, evaluated by the interpreter;
-delay is the timed domain at the list's latencies.  Communication
-composes exactly along realisations (`cost_handle`); delay under
-dependency tracking is a conservative bound (`Weft.Timed`).
+* **Exactly, in the cost model.**  The instantiation of an abstract
+  operation under a realisation is to run the implementation in the
+  target's timed model (`Realization.timed`).  With every abstract
+  operation instantiated that way, a scheduled run of the caller in the
+  hybrid *is* the scheduled run of the inlined program: same output,
+  same clocks, same communication (`Realizations.run_timed`).  Delay and
+  communication of a program written against abstract operations are
+  then computed once, in the hybrid, and are what the instantiated
+  program costs.  A hand-written model of the abstract operation (one
+  latency, a per-input profile) is an approximation of this one; what it
+  approximates is now a definition, not a claim.
+
+* **As a distribution, in the ideal domain.**  For a reactive program the
+  cost is a distribution; inlining priced realisations into a valid
+  caller costs what the caller costs with each abstract operation priced
+  at its implementation's cost (`cost_handle`).
 -/
 namespace Weft
 
-/-- The price of an operation on an MPC: its latency (rounds) and its
-communication.  Latency feeds the timed domain, communication the additive
-cost model. -/
-structure Price where
-  delay : Nat
-  comm : Nat
-  deriving DecidableEq, Repr
+/-! ## The exact instantiation of an abstract operation -/
 
-/-- A price list: functionalities, each priced per operation. -/
-abbrev MPC := List ((F : Functionality) × (F.ops.Op → Price))
+/-- The timed model of `F` that runs `f`'s implementation in the timed
+model `T` of the target: exact by construction. -/
+def Realization.timed {F : Functionality} {fs : Hybrid} (f : Realization F fs) (T : Model fs.ops .timed Sched) :
+    Model F.ops .timed Sched where
+  step r := do
+    let p ← run T CostModel.unit (f.impl .timed r)
+    pure (p.1, (F.eval.step ⟨r.op, r.args.untime⟩).run.2)
 
-namespace MPC
+/-- The MPC entry for `F` instantiated by `f` over the MPC `M`. -/
+abbrev MPC.derived (M : MPC) {F : Functionality} (f : Realization F M.hybrid) : MPC.Entry :=
+  ⟨F, f.timed M.timed⟩
 
-/-- The hybrid an MPC offers.  Reducible and structurally recursive so
-that `Has F M.hybrid` is found by instance search on a literal list. -/
-@[reducible] def hybrid : MPC → Hybrid
-  | [] => []
-  | ⟨F, _⟩ :: M => F :: hybrid M
+/-- The same for every component of a hybrid at once. -/
+def Realizations.timed {fs gs : Hybrid} (g : Realizations fs gs) (T : Model gs.ops .timed Sched) :
+    Model fs.ops .timed Sched where
+  step r := do
+    let p ← run T CostModel.unit (g.impl .timed r)
+    pure (p.1, (fs.eval.step ⟨r.op, r.args.untime⟩).run.2)
 
-/-- The price of an operation of the hybrid, looked up at the same position `Has` finds. -/
-def price : (M : MPC) → M.hybrid.ops.Op → Price
-  | ⟨_, p⟩ :: _, ⟨⟨0, _⟩, o⟩ => p o
-  | _ :: M, ⟨⟨n + 1, h⟩, o⟩ => price M ⟨⟨n, Nat.lt_of_succ_lt_succ h⟩, o⟩
+/-- The output of a run, in the monad, with the trace dropped. -/
+def runOut {ι : Interface} {D : Domain} {α : Type} {m : Type → Type} [Monad m] (M : Model ι D m)
+    (c : Prog ι D α) : m α :=
+  Prod.fst <$> run M CostModel.unit c
 
-/-- The semantics of the MPC's hybrid. -/
-noncomputable abbrev model (M : MPC) : Model M.hybrid.ops .ideal PMF := M.hybrid.model
-/-- The evaluation model of the MPC's hybrid. -/
-abbrev eval (M : MPC) : Model M.hybrid.ops .ideal Id := M.hybrid.eval
-/-- The communication cost model: derived, not chosen. -/
-def comm (M : MPC) : CostModel M.hybrid.ops Nat := ⟨fun o => (M.price o).comm⟩
-/-- The latency of each operation. -/
-def latency (M : MPC) (o : M.hybrid.ops.Op) : Nat := (M.price o).delay
-/-- The timed model of the MPC: each operation at the latency it charges. -/
-def timed (M : MPC) : Model M.hybrid.ops .timed Sched := M.hybrid.timed M.latency
+/-- **Composition, exactly.**  A scheduled run of the caller with every
+abstract operation instantiated by its implementation is the scheduled
+run of the inlined program. -/
+theorem Realizations.runOut_timed {fs gs : Hybrid} (g : Realizations fs gs) (T : Model gs.ops .timed Sched)
+    {α : Type} (c : Prog fs.ops .timed α) :
+    runOut (g.timed T) c = runOut T (Prog.handle (g.impl .timed) c) := by
+  induction c with
+  | pure a => simp [runOut, Prog.handle]
+  | call r k ih =>
+    simp only [runOut, Prog.handle_call, run_bind, run_call, Realizations.timed, map_bind, bind_assoc, pure_bind,
+      map_pure] at ih ⊢
+    refine bind_congr fun a => ?_
+    have := ih a.1
+    simpa only [map_eq_pure_bind, Function.comp_def] using this
 
-/-- A constant price for every operation of a functionality. -/
-abbrev const (F : Functionality) (p : Price) : (F : Functionality) × (F.ops.Op → Price) := ⟨F, fun _ => p⟩
+theorem Realizations.sched_timed {fs gs : Hybrid} (g : Realizations fs gs) (T : Model gs.ops .timed Sched)
+    {α : Type} (c : Prog fs.ops .timed α) :
+    Sched.run (g.timed T) c = Sched.run T (Prog.handle (g.impl .timed) c) := by
+  have h := congrArg (fun x : Sched α => StateT.run x {}) (g.runOut_timed T c)
+  simp only [runOut, StateT.run_map] at h
+  exact h
 
-end MPC
+theorem Realizations.delayOn_timed {fs gs : Hybrid} (g : Realizations fs gs) (T : Model gs.ops .timed Sched)
+    {X : Type} (c : Prog fs.ops .timed (Timed X)) :
+    delayOn (g.timed T) c = delayOn T (Prog.handle (g.impl .timed) c) := by
+  simp [delayOn, Sched.output, g.sched_timed T c]
+
+theorem Realizations.commOn_timed {fs gs : Hybrid} (g : Realizations fs gs) (T : Model gs.ops .timed Sched)
+    {α : Type} (c : Prog fs.ops .timed α) :
+    commOn (g.timed T) c = commOn T (Prog.handle (g.impl .timed) c) := by
+  simp [commOn, g.sched_timed T c]
 
 /-! ## Cost as a distribution, and composition -/
 

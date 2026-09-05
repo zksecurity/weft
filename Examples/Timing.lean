@@ -7,16 +7,18 @@ import Examples.Basic
 No `∥` anywhere: sequential `do`-code gets the parallel count, because
 delay is computed from data dependencies in the timed domain.
 
-The second part is about composition.  Under dependency tracking an
-abstract operation should not be modelled by a single latency, which
-serialises its whole implementation behind all of its inputs; a *timing
-profile* (the longest path from each input to the output) is exact for a
-straight-line implementation in isolation.  It is **not** exact in general
-(report, Issue 10): the reveal and control clocks are global state, so an
-inlined callee that reveals waits on every earlier reveal of the caller,
-which no per-input profile can know.  Profiles are a conservative bound
-whose clock-aware statement is future work; the example below shows the
-straight-line case where atomic over-counts and the profile is exact.
+The second part is about composition.  An abstract operation is a
+functionality, behaviour only; what it costs is decided by the cost model
+that instantiates it.  A single latency serialises its whole
+implementation behind all of its inputs; a *timing profile* (the longest
+path from each input to the output) is exact for a straight-line
+implementation in isolation but not in general (report, Issue 10): the
+reveal and control clocks are global state, so an inlined callee that
+reveals waits on every earlier reveal of the caller, which no per-input
+profile can know.  The exact instantiation is to *run the implementation*
+in the target's cost model (`Realization.timed`); the hybrid then costs
+what the inlined program costs, as a theorem (`Realizations.delayOn_timed`),
+and atomic and profiled models are approximations of it.
 -/
 namespace Weft.Examples.Timing
 open Weft.Examples.Basic
@@ -60,7 +62,7 @@ example (a b c d : F) :
     (Sched.output (Std.timed F) (mul4seq (fs := Std F) (D := .timed) ⟪a⟫ ⟪b⟫ ⟪c⟫ ⟪d⟫)).val = a * b * (c * d) := rfl
 end
 
-/-! ## Timing profiles: exact for a straight-line callee in isolation -/
+/-! ## An abstract operation, and how a cost model instantiates it -/
 
 namespace MulAdd
 inductive Op where | mulAdd
@@ -70,23 +72,25 @@ abbrev ops (F : Type) : Interface where
   cod _ := .share F
 def eval (F : Type) [Add F] [Mul F] : Model (ops F) .ideal Id :=
   .silent fun ⟨.mulAdd, (a, b, c, ())⟩ => a * b + c
-/-- The *atomic* timed model: one latency, wait for all inputs. -/
-def atomic (F : Type) [Add F] [Mul F] (_ : Op → Nat) : Model (ops F) .timed Sched :=
+/-- The *atomic* instantiation: one latency, wait for all inputs. -/
+def atomic (F : Type) [Add F] [Mul F] (p : Price) : Model (ops F) .timed Sched :=
   ⟨fun r s => match r with
-    | ⟨.mulAdd, (a, b, c, ())⟩ => ((⟨a.val * b.val + c.val, max a.time (max b.time (max c.time s.clock)) + 1⟩, ()), s)⟩
-/-- The *profiled* timed model: `d_a = d_b = 1`, `d_c = 0`. -/
-def profiled (F : Type) [Add F] [Mul F] (_ : Op → Nat) : Model (ops F) .timed Sched :=
+    | ⟨.mulAdd, (a, b, c, ())⟩ =>
+      ((⟨a.val * b.val + c.val, max a.time (max b.time (max c.time s.clock)) + p.delay⟩, ()), s.pay p.comm)⟩
+/-- The *profiled* instantiation: `d_a = d_b = delay`, `d_c = 0`. -/
+def profiled (F : Type) [Add F] [Mul F] (p : Price) : Model (ops F) .timed Sched :=
   ⟨fun r s => match r with
-    | ⟨.mulAdd, (a, b, c, ())⟩ => ((⟨a.val * b.val + c.val, max (a.time + 1) (max (b.time + 1) (max c.time s.clock))⟩, ()), s)⟩
+    | ⟨.mulAdd, (a, b, c, ())⟩ =>
+      ((⟨a.val * b.val + c.val, max (a.time + p.delay) (max (b.time + p.delay) (max c.time s.clock))⟩, ()),
+        s.pay p.comm)⟩
 end MulAdd
 
 section Profiles
 variable (F : Type) [Add F] [Mul F] [Sub F] [Inhabited F]
 
-/-- The abstract operation `mulAdd a b c = a·b + c`, timed atomically... -/
-abbrev MulAddAtomic : Functionality := .ofEval (MulAdd.ops F) (MulAdd.eval F) (MulAdd.atomic F)
-/-- ...and by its profile. -/
-abbrev MulAddProfiled : Functionality := .ofEval (MulAdd.ops F) (MulAdd.eval F) (MulAdd.profiled F)
+/-- The abstract operation `mulAdd a b c = a·b + c`: one functionality,
+behaviour only.  What it costs is the cost model's business. -/
+abbrev MulAdd : Functionality := .ofEval (MulAdd.ops F) (MulAdd.eval F)
 
 /-- Its implementation over the black box: `c` is only needed after the multiplication. -/
 def mulAddImpl {fs : Hybrid} {D : Domain} [Has (Lin F) fs] [Has (Mult F) fs] (a b c : D.sh F) :
@@ -94,35 +98,54 @@ def mulAddImpl {fs : Hybrid} {D : Domain} [Has (Lin F) fs] [Has (Mult F) fs] (a 
   let p ← mul a b
   add p c
 
-/-- A caller in which `c` arrives late: `c = x·y` is ready at round 1.  (One
-caller per abstract functionality, since the two are different
-functionalities under different names.) -/
-def callerA {fs : Hybrid} {D : Domain} [Has (MulAddAtomic F) fs] [Has (Mult F) fs] (a b x y : D.sh F) :
+/-- ...and the certificate that it realises `MulAdd`. -/
+program mulAddReal : Realization (MulAdd F) (Std F) where
+  impl D r := mulAddImpl F r.args.1 r.args.2.1 r.args.2.2.1
+  Sim _ := pure [⟨Std.mult F, (), ()⟩, ⟨Std.lin F .add, (), ()⟩]
+  real r _ := by
+    obtain ⟨⟨⟩, a, b, c, ⟨⟩⟩ := r
+    simp only [mulAddImpl, mul, add, weft, Functionality.ofEval_model, MulAdd.eval]
+    rfl
+
+/-- A caller in which `c` arrives late: `c = x·y` is ready at round 1. -/
+def caller {fs : Hybrid} {D : Domain} [Has (MulAdd F) fs] [Has (Mult F) fs] (a b x y : D.sh F) :
     Prog fs.ops D (D.sh F) := do
   let c ← mul x y
-  Prog.op (F := MulAddAtomic F) ⟨.mulAdd, (a, b, c, ())⟩
-def callerP {fs : Hybrid} {D : Domain} [Has (MulAddProfiled F) fs] [Has (Mult F) fs] (a b x y : D.sh F) :
-    Prog fs.ops D (D.sh F) := do
-  let c ← mul x y
-  Prog.op (F := MulAddProfiled F) ⟨.mulAdd, (a, b, c, ())⟩
+  Prog.op (F := MulAdd F) ⟨.mulAdd, (a, b, c, ())⟩
 /-- The same caller with the operation inlined. -/
 def callerInlined {fs : Hybrid} {D : Domain} [Has (Lin F) fs] [Has (Mult F) fs] (a b x y : D.sh F) :
     Prog fs.ops D (D.sh F) := do
   let c ← mul x y
   mulAddImpl F a b c
 
-abbrev HybA : Hybrid := [MulAddAtomic F, Lin F, Mult F]
-abbrev HybP : Hybrid := [MulAddProfiled F, Lin F, Mult F]
-def HybA.timed : Model (HybA F).ops .timed Sched := (HybA F).timed fun o => [1, 0, 1].getD o.1 0
-def HybP.timed : Model (HybP F).ops .timed Sched := (HybP F).timed fun o => [1, 0, 1].getD o.1 0
+/-- The hybrid the caller is written in. -/
+abbrev Hyb : Hybrid := [MulAdd F, Lin F, Mult F]
 
--- Atomic view: mulAdd waits for c (round 1), then 1 round: 2.  Inlined: p = a·b at round 1
--- in parallel with c, then a free add: 1.  The atomic view over-approximates...
-example (a b x y : F) : delayOn (HybA.timed F) (callerA F (fs := HybA F) (D := .timed) ⟪a⟫ ⟪b⟫ ⟪x⟫ ⟪y⟫) = 2 := rfl
--- ...the profiled view is exact here...
-example (a b x y : F) : delayOn (HybP.timed F) (callerP F (fs := HybP F) (D := .timed) ⟪a⟫ ⟪b⟫ ⟪x⟫ ⟪y⟫) = 1 := rfl
--- ...and agrees with the inlined program.
+/-- Three cost models for the one hybrid: `mulAdd` atomic, profiled, and
+instantiated by running its implementation over the black box. -/
+abbrev atomicMPC : MPC := [MPC.entry (MulAdd F) (MulAdd.atomic F ⟨1, 2⟩), Lin.priced F, Mult.priced F]
+abbrev profiledMPC : MPC := [MPC.entry (MulAdd F) (MulAdd.profiled F ⟨1, 2⟩), Lin.priced F, Mult.priced F]
+noncomputable abbrev derivedMPC : MPC := [MPC.derived (Std.mpc F) (mulAddReal F), Lin.priced F, Mult.priced F]
+
+-- Atomic: mulAdd waits for c (round 1), then 1 round: 2.  Inlined: p = a·b at round 1
+-- in parallel with c, then a free add: 1.  The atomic model over-approximates...
+example (a b x y : F) : delayOn (atomicMPC F).timed (caller F (fs := Hyb F) (D := .timed) ⟪a⟫ ⟪b⟫ ⟪x⟫ ⟪y⟫) = 2 := rfl
+-- ...the profile is exact here...
+example (a b x y : F) : delayOn (profiledMPC F).timed (caller F (fs := Hyb F) (D := .timed) ⟪a⟫ ⟪b⟫ ⟪x⟫ ⟪y⟫) = 1 := rfl
+-- ...the derived instantiation is exact by construction...
+example (a b x y : F) : delayOn (derivedMPC F).timed (caller F (fs := Hyb F) (D := .timed) ⟪a⟫ ⟪b⟫ ⟪x⟫ ⟪y⟫) = 1 := rfl
+-- ...and all agree with the inlined program on this caller.
 example (a b x y : F) : delayOn (Std.timed F) (callerInlined F (fs := Std F) (D := .timed) ⟪a⟫ ⟪b⟫ ⟪x⟫ ⟪y⟫) = 1 := rfl
+
+/-- **Delay composes exactly** under the derived instantiation: this is
+`Realizations.delayOn_timed`, for every caller, not a check on one. -/
+noncomputable def mulAddOverStd : Realizations (Hyb F) (Std F) :=
+  .cons (mulAddReal F) (Realizations.incl [Lin F, Mult F] (Std F))
+example (a b x y : F) :
+    delayOn ((mulAddOverStd F).timed (Std.timed F)) (caller F (fs := Hyb F) (D := .timed) ⟪a⟫ ⟪b⟫ ⟪x⟫ ⟪y⟫)
+      = delayOn (Std.timed F) (Prog.handle ((mulAddOverStd F).impl .timed)
+          (caller F (fs := Hyb F) (D := .timed) ⟪a⟫ ⟪b⟫ ⟪x⟫ ⟪y⟫)) :=
+  Realizations.delayOn_timed _ _ _
 
 end Profiles
 

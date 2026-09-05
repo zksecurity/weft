@@ -34,14 +34,15 @@ abbrev ops (F : Type) : Interface where
   cod _ := .share F
 def eval (F : Type) (aes : F → F → F) : Model (ops F) .ideal Id := .silent fun ⟨.enc, (k, m, ())⟩ => aes k m
 /-- The timed model: one operation, ready when both operands are, plus the latency of `enc`. -/
-def timed (F : Type) (aes : F → F → F) (ℓ : Op → Nat) : Model (ops F) .timed Sched :=
+def timed (F : Type) (aes : F → F → F) (p : Price) : Model (ops F) .timed Sched :=
   ⟨fun r s => match r with
-    | ⟨.enc, (k, m, ())⟩ => ((⟨aes k.val m.val, max k.time (max m.time s.clock) + ℓ .enc⟩, ()), s)⟩
+    | ⟨.enc, (k, m, ())⟩ => ((⟨aes k.val m.val, max k.time (max m.time s.clock) + p.delay⟩, ()), s.pay p.comm)⟩
 end AesF
 
 /-- The AES functionality for a block function `aes`: computes `aes k m`, leaks nothing. -/
-abbrev AES (F : Type) (aes : F → F → F) : Functionality :=
-  .ofEval (AesF.ops F) (AesF.eval F aes) (AesF.timed F aes)
+abbrev AES (F : Type) (aes : F → F → F) : Functionality := .ofEval (AesF.ops F) (AesF.eval F aes)
+/-- AES in an MPC that offers it natively, at a price. -/
+abbrev AES.priced (F : Type) (aes : F → F → F) (p : Price) : MPC.Entry := ⟨AES F aes, AesF.timed F aes p⟩
 
 section
 variable {F : Type} [Add F] [Mul F] [Sub F] {fs : Hybrid} {D : Domain}
@@ -123,9 +124,8 @@ example (k iv m₁ m₂ : F) :
 -- Delay, in the timed domain: in the hybrid `enc` is one operation of latency 1 (CBC of two
 -- blocks is 2); after instantiation `enc` costs what the program costs, two dependent
 -- multiplications (so 4).
-abbrev aesMPC : MPC := [MPC.const (AES F toyAes) ⟨1, 10⟩, MPC.const (Lin F) ⟨0, 0⟩, MPC.const (Mult F) ⟨1, 2⟩,
-  MPC.const (Reveal F) ⟨1, 1⟩]
-abbrev stdMPC : MPC := [MPC.const (Lin F) ⟨0, 0⟩, MPC.const (Mult F) ⟨1, 2⟩, MPC.const (Reveal F) ⟨1, 1⟩]
+abbrev aesMPC : MPC := [AES.priced F toyAes ⟨1, 10⟩, Lin.priced F, Mult.priced F, Reveal.priced F]
+abbrev stdMPC : MPC := Std.mpc F
 example (k iv m₁ m₂ : F) :
     (Sched.output (aesMPC F).timed (cbc2 (fs := (aesMPC F).hybrid) (D := .timed) toyAes ⟪k⟫ ⟪iv⟫ ⟪m₁⟫ ⟪m₂⟫)).2.time
       = 2 := rfl
@@ -134,9 +134,25 @@ example (k iv m₁ m₂ : F) :
       (cbc2 (fs := AesHybrid F) (D := .timed) toyAes ⟪k⟫ ⟪iv⟫ ⟪m₁⟫ ⟪m₂⟫))).2.time = 4 := rfl
 -- Communication: ten units per AES call in the hybrid; four per AES call once inlined.
 example (k iv m₁ m₂ : F) :
-    cost (aesMPC F).eval (aesMPC F).comm (cbc2 (fs := (aesMPC F).hybrid) (D := .ideal) toyAes k iv m₁ m₂) = 20 := rfl
+    commOn (aesMPC F).timed (cbc2 (fs := (aesMPC F).hybrid) (D := .timed) toyAes ⟪k⟫ ⟪iv⟫ ⟪m₁⟫ ⟪m₂⟫) = 20 := rfl
 example (k iv m₁ m₂ : F) :
-    cost (stdMPC F).eval (stdMPC F).comm (cbc2Plain F k iv m₁ m₂) = 8 := rfl
+    commOn (stdMPC F).timed (Prog.handle ((hybridOverStd F).impl .timed)
+      (cbc2 (fs := AesHybrid F) (D := .timed) toyAes ⟪k⟫ ⟪iv⟫ ⟪m₁⟫ ⟪m₂⟫)) = 8 := rfl
+
+-- The exact instantiation of `enc`: run the program.  The hybrid then costs what the
+-- inlined program costs, by definition; the numbers above are the inlined ones.
+noncomputable abbrev aesDerived : MPC := [MPC.derived (stdMPC F) (aesByProgram F), Lin.priced F, Mult.priced F, Reveal.priced F]
+example (k iv m₁ m₂ : F) :
+    (Sched.output (aesDerived F).timed (cbc2 (fs := (aesDerived F).hybrid) (D := .timed) toyAes ⟪k⟫ ⟪iv⟫ ⟪m₁⟫ ⟪m₂⟫)).2.time
+      = 4 := rfl
+example (k iv m₁ m₂ : F) :
+    commOn (aesDerived F).timed (cbc2 (fs := (aesDerived F).hybrid) (D := .timed) toyAes ⟪k⟫ ⟪iv⟫ ⟪m₁⟫ ⟪m₂⟫) = 8 := rfl
+-- ...and that is a theorem, for every caller, not an observation.
+example (k iv m₁ m₂ : F) :
+    commOn ((hybridOverStd F).timed (Std.timed F)) (cbc2 (fs := AesHybrid F) (D := .timed) toyAes ⟪k⟫ ⟪iv⟫ ⟪m₁⟫ ⟪m₂⟫)
+      = commOn (Std.timed F) (Prog.handle ((hybridOverStd F).impl .timed)
+          (cbc2 (fs := AesHybrid F) (D := .timed) toyAes ⟪k⟫ ⟪iv⟫ ⟪m₁⟫ ⟪m₂⟫)) :=
+  Realizations.commOn_timed _ _ _
 
 /-! ### The UC shape: prove the protocol against *its own* specification first -/
 
