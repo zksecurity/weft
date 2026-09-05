@@ -10,9 +10,10 @@ operation; the semantics instantiates the domain.
 * `erased` — a share is `()`.  This is what the adversary sees of a
   response: the clear components, and only the *shape* of the shared ones.
 
-The response of an operation is described by a `Shape`, a closed language
-over types, so that its public part (`blank`) is structural: a model
-cannot return a clear value and omit it from the view.
+The operands and the response of an operation are described by `Shape`s,
+a closed language over types, so that their public part (`blank`) is
+structural: a clear operand or a clear response is in the adversary's
+record by shape, and a model cannot omit it.
 -/
 namespace Weft
 
@@ -88,11 +89,12 @@ def Hidden : Shape → Prop
 
 end Shape
 
-/-- The operands of a request: one share per entry of the operand list.
-Operands are shares only; clear arguments belong to the operation. -/
-@[reducible] def Operands (D : Domain) : List Type → Type
+/-- The operands of a request: a value of each shape in the operand list.
+Clear operands are public by shape, like clear responses; a share is a
+share. -/
+@[reducible] def Operands (D : Domain) : List Shape → Type
   | [] => Unit
-  | T :: Ts => D.sh T × Operands D Ts
+  | s :: ss => s.interp D × Operands D ss
 
 namespace Operands
 
@@ -100,30 +102,25 @@ namespace Operands
 pattern here makes evaluation by `rfl` exponential in the number of
 requests. -/
 
-/-- Map a domain transformation over the operands. -/
-def map {D E : Domain} (f : ∀ {T}, D.sh T → E.sh T) : {Ts : List Type} → Operands D Ts → Operands E Ts
+/-- Map a shape-indexed transformation over the operands. -/
+def map {D E : Domain} (f : (s : Shape) → s.interp D → s.interp E) :
+    {ss : List Shape} → Operands D ss → Operands E ss
   | [], _ => ()
-  | _ :: _, p => (f p.1, map f p.2)
+  | s :: _, p => (f s p.1, map f p.2)
 
-/-- Collect something from every operand. -/
-def toList {D : Domain} {β : Type} (f : ∀ {T}, D.sh T → β) : {Ts : List Type} → Operands D Ts → List β
-  | [], _ => []
-  | _ :: _, p => f p.1 :: toList f p.2
+/-- The public part of the operands: clear operands are kept, shares become `()`. -/
+def blank {D : Domain} : {ss : List Shape} → Operands D ss → Operands .erased ss
+  | [], _ => ()
+  | s :: _, p => (s.blank p.1, blank p.2)
 
-/-- `n` operands of one type, from a vector. -/
-def ofFin {D : Domain} {T : Type} : (n : Nat) → (Fin n → D.sh T) → Operands D (List.replicate n T)
-  | 0, _ => ()
-  | n + 1, f => (f 0, ofFin n (fun i => f i.succ))
+/-- Whether some operand has a clear component. -/
+def hasClear : List Shape → Bool
+  | [] => false
+  | s :: ss => s.hasClear || hasClear ss
 
-/-- `n` operands of one type, as a vector. -/
-def toFin {D : Domain} {T : Type} : (n : Nat) → Operands D (List.replicate n T) → Fin n → D.sh T
-  | 0, _ => fun i => i.elim0
-  | n + 1, p => Fin.cases p.1 (toFin n p.2)
-
-/-- Operands of one type, from a list (the operand list is the list's length). -/
-def ofList {D : Domain} {T : Type} : (xs : List (D.sh T)) → Operands D (List.replicate xs.length T)
-  | [] => ()
-  | x :: xs => (x, ofList xs)
+@[simp] theorem blank_nil {D : Domain} (a : Operands D []) : blank a = () := rfl
+@[simp] theorem blank_cons {D : Domain} {s : Shape} {ss : List Shape} (a : Operands D (s :: ss)) :
+    blank a = (s.blank a.1, blank a.2) := rfl
 
 end Operands
 

@@ -89,12 +89,11 @@ constraint system; the program *is* its own semantics.
 
 ### 2.1 Interfaces: what a functionality offers
 
-An interface is a *vocabulary*: the public operations (a constructor with
-its clear arguments), the operand types of each, and the shape of its
-response. A request is an operation applied to share operands. Operands
-are shares only and clear arguments belong to the operation, so the
-public part of a request is the operation itself (`Interface.lean`,
-`Shape.lean`):
+An interface is a *vocabulary*: the public operations, the shapes of the
+operands of each, and the shape of its response. A request is an
+operation applied to operands; a clear operand (a constant, a scalar, an
+opened value) has a clear shape, a secret input is a share, so the
+public part of a request is structural (`Interface.lean`, `Shape.lean`):
 
 ```lean
 structure Domain where sh : Type → Type              -- what a share of a `T` is
@@ -106,22 +105,23 @@ def Shape.interp (D : Domain) : Shape → Type          -- `share T ↦ D.sh T`,
 def Shape.blank : (s : Shape) → s.interp D → s.interp .erased   -- clear parts kept, shares become `()`
 
 structure Interface where
-  Op     : Type                                       -- operations, with their clear arguments
-  dom    : Op → List Type                             -- operand types (shares)
-  cod    : Op → Shape                                 -- response shape
-  disc   : Op → Type := fun _ => Unit                 -- type of the declared disclosure
-  clearArg : Op → Bool := fun _ => false              -- scheduling metadata for the timed domain (§3.5)
-  barrier  : Op → Bool := fun _ => false
+  Op   : Type                                         -- operations
+  dom  : Op → List Shape                              -- operand shapes: `clear F` public, `share F` secret
+  cod  : Op → Shape                                   -- response shape
+  leak : Op → Type := fun _ => Unit                   -- type of the declared disclosure
 
+def Operands (D : Domain) : List Shape → Type        -- a value of each operand shape
 structure Req (ι : Interface) (D : Domain) where (op : ι.Op) (args : Operands D (ι.dom op))
 abbrev Resp (ι : Interface) (D : Domain) (o : ι.Op) : Type := (ι.cod o).interp D
-structure Event (ι : Interface) where (op : ι.Op) (out : Resp ι .erased op) (leak : ι.leak op)
+structure Event (ι : Interface) where
+  (op : ι.Op) (args : Operands .erased (ι.dom op)) (out : Resp ι .erased op) (leak : ι.leak op)
 ```
 
 An `Event` is the adversary's record of one request: the operation, the
-clear part of the response, the declared disclosure. The first two are
-structural, computed by the interpreter from the shape; only the third is
-written by the functionality's author (decision 014).
+clear part of the operands, the clear part of the response, the declared
+disclosure. The first three are structural, computed by the interpreter
+from the shapes; only the last is written by the functionality's author
+(decision 014).
 
 A *functionality* is an interface with its meaning (§2.10, §3.1). The
 standard ones live in `Std/`; each is an inductive of operations, an
@@ -129,22 +129,21 @@ interface, and a model:
 
 ```lean
 namespace Lin
-inductive Op (F : Type) | const (c : F) | add | sub | smul (c : F)    -- clear arguments in the constructor
+inductive Op | const | add | sub | smul
 abbrev ops (F : Type) : Interface where
-  Op := Op F
-  dom | .const _ => [] | .add => [F, F] | .sub => [F, F] | .smul _ => [F]
+  Op := Op
+  dom | .const => [.clear F] | .add => [.share F, .share F] | .sub => [.share F, .share F] | .smul => [.clear F, .share F]
   cod _ := .share F
-  clearArg | .const _ => true | .smul _ => true | _ => false
 end Lin
 abbrev Lin (F : Type) [Add F] [Mul F] [Sub F] : Functionality := .ofEval (Lin.ops F) (Lin.eval F)
 
-abbrev Mult      (F) : Functionality      -- mult   : [F, F] → share F ; always silent
-abbrev Reveal    (F) : Functionality      -- reveal : [F] → clear F    ; the response is public by shape
-abbrev Cmp       (F) : Functionality      -- lt     : [F, F] → share F
+abbrev Mult      (F) : Functionality      -- mult   : [share F, share F] → share F ; always silent
+abbrev Reveal    (F) : Functionality      -- reveal : [share F] → clear F ; the response is public by shape
+abbrev Cmp       (F) : Functionality      -- lt     : [share F, share F] → share F
 abbrev Rand      (F) : Functionality      -- rand   : [] → share F, uniform            (Std/Random.lean)
 abbrev PubCoin   (F) : Functionality      -- coin   : [] → clear F, uniform: public by shape
 abbrev MulTriple (F) : Functionality      -- get    : [] → share F × share F × share F, (a, b, a·b)
-abbrev Barrier       : Functionality      -- barrier : [] → unit, `barrier := true`  (§3.5)
+abbrev Barrier       : Functionality      -- barrier : [] → unit; its own timed model (§3.5)
 
 abbrev Hybrid := List Functionality
 abbrev Std (F) : Hybrid := [Lin F, Mult F, Reveal F]          -- the arithmetic black box
@@ -358,11 +357,11 @@ The capability-class pattern of §2.5 is unchanged: the instances are
 (fallback).
 
 A price is per *operation*, never per value: a timed model sees the
-request, that is the operation with its clear arguments and the operands
-with their ready times, so `const c` may be priced per coefficient if an
-MPC wants to (report, Issue 4), and a hand-written model of a compound
-operation may charge per input (a timing profile, §3.4); but the price
-of a request never depends on what a share holds.
+request, that is the operation and the operands with their ready times,
+so a hand-written model may price `const` per coefficient if an MPC
+wants to (report, Issue 4), or charge a compound operation per input (a
+timing profile, §3.4); but the price of a request never depends on what
+a share holds.
 
 **An open world.** A functionality is a value, not a constructor of a
 library-owned enumeration, so a downstream user adds one by defining it,
@@ -946,10 +945,9 @@ bound on every caller is a monotonicity statement about the interpreter
 that needs the caller to be domain-generic, which Lean cannot know of a
 program at the timed domain; it is not attempted (§8). What is kept:
 `Barrier` and the control clock (the reveal-then-branch program
-undercounts, 1 round instead of 3, without it), and the interface's
-`clearArg`/`barrier` flags as trusted scheduling metadata. Known gap: a
-revealed branch that selects an existing share with `pure` escapes the
-control time.
+undercounts, 1 round instead of 3, without it). Known gap: a revealed
+branch that selects an existing share with `pure` escapes the control
+time.
 
 So the round semantics is eager scheduling: no `∥` to write, delay and
 communication computed by one run, and both composing exactly when an
@@ -976,8 +974,8 @@ structure Clock where (clock revealed comm : Nat := 0)         -- control clock,
 abbrev Sched := StateT Clock Id                               -- the scheduling monad
 
 /-- One generic timed model for every interface, from the evaluation model and a price per operation:
-ready at `max (operand times, clock) + delay`; a `clearArg` operation also waits for the reveal clock;
-a clear response raises the reveal clock; a `barrier` operation raises the control clock; `comm` is paid.
+ready at `max (operand times, clock) + delay`; an operation with a clear operand also waits for the reveal
+clock; a clear response raises the reveal clock; `comm` is paid.  (`Barrier.timed` raises the control clock.)
 Written without `let`, so that kernel evaluation is linear in the number of requests. -/
 def Model.timed (E : Model ι .ideal Id) (p : ι.Op → Price) : Model ι .timed Sched
 abbrev Functionality.priced (F : Functionality) (p : Price) : MPC.Entry := ⟨F, Model.timed F.eval fun _ => p⟩
@@ -1001,13 +999,14 @@ def mul4seq [Has (Mult F) fs] (a b c d : D.sh F) : Prog fs.ops D (D.sh F) := do
 Clear values stay plain, so generic programs branch on them as usual; what
 the dependency graph cannot see about them, two clocks in the scheduling
 state cover. The *reveal clock* is the latest time at which anything
-became clear, and any operation with a clear argument (`const`, `smul`;
-`clearArg := true`) inherits it, since clear computation is opaque: a value
+became clear, and any operation with a clear operand (`const`, `smul`:
+`Operands.hasClear (dom o)`) inherits it, since clear computation is opaque: a value
 revealed at round 2, multiplied in the clear and inserted back with
 `const`, carries round 2 into whatever uses it (`revealThenUse`, 3 rounds
 by `rfl`). The *control clock* handles a branch on a revealed value whose
 arms do not data-depend on it: the program says `barrier` (the `Barrier`
-functionality, `barrier := true`, semantically a no-op), which raises the
+functionality, semantically a no-op, whose timed model is the one that is
+not the generic one), which raises the
 control clock to the reveal clock, so everything issued afterwards is
 scheduled after the values it branched on (`binarySearch`: 3 levels × 4
 rounds, 12 by kernel `decide`; 4 without the barrier). Reveal itself does
@@ -1156,9 +1155,9 @@ bijection.
 **The adversary's view is the tagged trace, structurally.** The adversary
 also sees *which* operations are invoked (the parties execute them, and
 the program is public). So the trace of a run is one `Event` per request:
-the operation, with its clear arguments; the clear part of the response,
-by shape (`Shape.blank`); and what the functionality declares. The first
-two are recorded by `run` and no model can omit them: a model that
+the operation; the clear part of the operands and of the response, by
+shape (`Shape.blank`); and what the functionality declares. The first
+three are recorded by `run` and no model can omit them: a model that
 returned an opened value and declared nothing would still show it
 (decision 014). The operation carries no share (operands are not part of
 an `Event`), and it is what lets a simulator know that a `mult` happened
@@ -1838,5 +1837,5 @@ explicitly protocol-agnostic.
   policy for list hybrids and price lists; the response shapes still to
   be added (`Option`, sums, clear-indexed dependent pairs); how the
   `program` check binds to a certificate obtained through `comp`; the
-  timing contract (trusted `clearArg`/`barrier`, random public control flow,
+  timing contract (the `barrier` discipline, random public control flow,
   the `pure`-selection gap).

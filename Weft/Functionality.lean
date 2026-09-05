@@ -88,8 +88,6 @@ theorem get_eq (fs : Hybrid) (i : Fin fs.length) : fs.get i = List.get fs i := b
   dom o := (fs.get o.1).ops.dom o.2
   cod o := (fs.get o.1).ops.cod o.2
   leak o := (fs.get o.1).ops.leak o.2
-  clearArg o := (fs.get o.1).ops.clearArg o.2
-  barrier o := (fs.get o.1).ops.barrier o.2
 
 /-- The semantics of a hybrid: dispatch to the component's ideal model. -/
 noncomputable def model (fs : Hybrid) : Model fs.ops .ideal PMF where
@@ -141,7 +139,7 @@ instance Has.there (F G : Functionality) (fs : Hybrid) [h : Has F fs] : Has F (G
 
 /-- An event of a hybrid, seen in the hybrid with one more component in front. -/
 def Event.shift {fs : Hybrid} (G : Functionality) (e : Event fs.ops) : Event (Hybrid.ops (G :: fs)) :=
-  ⟨⟨Hybrid.next G fs e.op.1, e.op.2⟩, e.out, e.leak⟩
+  ⟨⟨Hybrid.next G fs e.op.1, e.op.2⟩, e.args, e.out, e.leak⟩
 
 namespace Has
 variable {F : Functionality} {fs : Hybrid} [h : Has F fs]
@@ -153,11 +151,11 @@ def op (o : F.ops.Op) : fs.ops.Op :=
 /-- An event of `F`, as an event of the hybrid: this is what the trivial
 realisation's simulator replays. -/
 def event (e : Event F.ops) : Event fs.ops :=
-  h.eq.rec (motive := fun G _ => Event G.ops → Event fs.ops) (fun e => ⟨⟨h.i, e.op⟩, e.out, e.leak⟩) e
+  h.eq.rec (motive := fun G _ => Event G.ops → Event fs.ops) (fun e => ⟨⟨h.i, e.op⟩, e.args, e.out, e.leak⟩) e
 
 omit h in
 @[simp] theorem event_here (e : Event F.ops) :
-    event (fs := F :: fs) (h := Has.here F fs) e = ⟨⟨Hybrid.head F fs, e.op⟩, e.out, e.leak⟩ := rfl
+    event (fs := F :: fs) (h := Has.here F fs) e = ⟨⟨Hybrid.head F fs, e.op⟩, e.args, e.out, e.leak⟩ := rfl
 
 @[simp] theorem event_there (G : Functionality) (e : Event F.ops) :
     event (fs := G :: fs) (h := Has.there F G fs) e = (event (h := h) e).shift G := by
@@ -251,7 +249,7 @@ theorem output_op (r : Req F.ops .ideal) :
 theorem dist_op (r : Req F.ops .ideal) :
     dist fs.model (Prog.op r) = (do
       let (y, d) ← F.model.step r
-      pure (y, [Has.event ⟨r.op, (F.ops.cod r.op).blank y, d⟩])) := by
+      pure (y, [Has.event ⟨r.op, r.args.blank, (F.ops.cod r.op).blank y, d⟩])) := by
   obtain ⟨i, e⟩ := h
   subst e
   simp [dist, Prog.op, Prog.opAt, Has.event, run, Trace.seq]

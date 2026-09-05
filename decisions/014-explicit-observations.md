@@ -14,14 +14,14 @@ the view (Issue 3).  Public inputs had no slot at all (Issue 8).
 The record of one request is fixed by the interface, structurally, and
 nothing about a run is public unless it is in that record.
 
-* A request is an **operation applied to share operands**.  The operation
-  (`Interface.Op`) is a constructor with its clear arguments; the
-  operands (`Interface.dom`) are shares only.  Public inputs are clear
-  arguments of the operation; secret inputs are operands.
-* The response has a **shape** (`Interface.cod : Op → Shape`), and
-  `Shape.blank` keeps its clear components and erases its shares.  A
-  functionality that returns a value in the clear has published it, by
-  shape, whatever its model says.
+* A request is an **operation applied to operands**, and every operand
+  has a **shape** (`Interface.dom : Op → List Shape`): a public input (a
+  constant, a scalar, an opened value) is a `clear` operand, a secret
+  input is a `share`.
+* The response has a shape too (`Interface.cod : Op → Shape`), and
+  `Shape.blank` keeps clear components and erases shares, on operands and
+  response alike.  A functionality that takes or returns a value in the
+  clear has published it, by shape, whatever its model says.
 * A functionality's model is one **joint step**,
   `step : Req → m (Resp × disc op)`, whose second component is the
   declared disclosure, typed per operation (`Interface.leak`).  It may
@@ -60,7 +60,16 @@ whole disclosure.  `openMul` realises the one-operation functionality
 that returns `a·b` in the clear, whose simulator reads `a·b` off the
 event; `do reveal x; pure x` does not realise the identity functionality,
 because the event blanks the share while the view shows the value
-(`Examples/Privacy.lean`).  Constants and scalars are clear arguments and
-so part of the operation header, which is why `Lin.Op` has `const c` and
-`smul c` per coefficient and prices are per operation, not per family
-(decision 003 revisited in `Weft/Cost.lean`).
+(`Examples/Privacy.lean`).  Constants and scalars are clear operands,
+`const : [clear F] → share F` and `smul : [clear F, share F] → share F`,
+in the event by shape.
+
+## Revisited (2026-09-05, later the same day)
+The first form of this record put clear inputs in the operation's
+constructor (`const (c : F)`, `smul (c : F)`) and kept operands shares
+only, with a trusted `pubArg` flag telling the timed domain which
+constructors carried a clear value.  Clear inputs are now operands with a
+clear shape, the event records the blanked operands, and the flag is
+gone: whether an operation consumes a clear value is
+`Operands.hasClear (dom o)`.  Nothing else changed; the record of a
+request is still structural and still the only public thing about it.

@@ -16,7 +16,7 @@ abbrev Std (F : Type) [Add F] [Mul F] [Sub F] : Hybrid := [Lin F, Mult F, Reveal
 namespace Std
 variable (F : Type) [Add F] [Mul F] [Sub F]
 /-- The operations of the black box, by position, for stating views. -/
-abbrev lin (o : Lin.Op F) : (Std F).ops.Op := ⟨0, o⟩
+abbrev lin (o : Lin.Op) : (Std F).ops.Op := ⟨0, o⟩
 abbrev mult : (Std F).ops.Op := ⟨1, .mult⟩
 abbrev reveal : (Std F).ops.Op := ⟨2, .reveal⟩
 /-- The black box as an MPC: linear operations free, multiplication one
@@ -34,7 +34,7 @@ abbrev Pre (F : Type) [Add F] [Mul F] [Sub F] [Fintype F] [Inhabited F] : Hybrid
 
 namespace Pre
 variable (F : Type) [Add F] [Mul F] [Sub F] [Fintype F] [Inhabited F]
-abbrev lin (o : Lin.Op F) : (Pre F).ops.Op := ⟨0, o⟩
+abbrev lin (o : Lin.Op) : (Pre F).ops.Op := ⟨0, o⟩
 abbrev reveal : (Pre F).ops.Op := ⟨1, .reveal⟩
 abbrev triple : (Pre F).ops.Op := ⟨2, .get⟩
 /-- The preprocessing model as an MPC: triples free when precomputed. -/
@@ -60,6 +60,7 @@ attribute [weft] Prog.bind_eq Prog.pure_eq Prog.bind_pure' Prog.bind_call Prog.h
   PMF.map_bind PMF.pure_map PMF.bind_map PMF.bind_bind PMF.pure_bind PMF.bind_pure
   PMF.bind_const Function.comp_def
   Shape.blank_share Shape.blank_clear Shape.blank_unit Shape.blank_prod Shape.blank_vec Shape.blank_list
+  Operands.blank_nil Operands.blank_cons
   Correlation.sample
   Lin.eval Mult.eval Reveal.eval Cmp.eval Inversion.eval Barrier.eval
   Rand.model RandNZ.model PubCoin.model MulTriple.model SquarePair.model DoubleSharing.model

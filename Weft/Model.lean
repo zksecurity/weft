@@ -20,7 +20,7 @@ Three monads matter:
 * `Sched` (a clock state, `Weft.Timed`) is **scheduling**: delay.
 
 The interpreter is written once, for any monad, and records one event per
-request: the operation, the blanked response, and the sampled disclosure.
+request: the operation, the blanked operands and response, and the sampled disclosure.
 -/
 namespace Weft
 
@@ -96,7 +96,7 @@ def run {ι : Interface} {D : Domain} {C α : Type} [AddMonoid C] {m : Type → 
   | .call r k => do
     let p ← M.step r
     let res ← run M K (k p.1)
-    pure (res.1, Trace.seq ⟨K.op r.op, [⟨r.op, (ι.cod r.op).blank p.1, p.2⟩]⟩ res.2)
+    pure (res.1, Trace.seq ⟨K.op r.op, [⟨r.op, r.args.blank, (ι.cod r.op).blank p.1, p.2⟩]⟩ res.2)
 
 section Observables
 variable {ι : Interface} {D : Domain} {C α : Type} [AddMonoid C]
@@ -130,7 +130,7 @@ theorem run_call (M : Model ι D m) (K : CostModel ι C) (r : Req ι D) (k : Res
     run M K (.call r k) = (do
       let p ← M.step r
       let res ← run M K (k p.1)
-      pure (res.1, Trace.seq ⟨K.op r.op, [⟨r.op, (ι.cod r.op).blank p.1, p.2⟩]⟩ res.2)) := rfl
+      pure (res.1, Trace.seq ⟨K.op r.op, [⟨r.op, r.args.blank, (ι.cod r.op).blank p.1, p.2⟩]⟩ res.2)) := rfl
 
 /-- `>>=`, `pure` and `<$>` on `PMF` are Mathlib's `PMF.bind`, `PMF.pure`, `PMF.map`. -/
 theorem PMF.monad_bind_eq_bind {α β : Type} (p : PMF α) (f : α → PMF β) : p >>= f = p.bind f := rfl
@@ -169,7 +169,7 @@ theorem dist_call (M : Model ι D PMF) (r : Req ι D) (k : Resp ι D r.op → Pr
     dist M (.call r k) = (do
       let p ← M.step r
       let res ← dist M (k p.1)
-      pure (res.1, ⟨r.op, (ι.cod r.op).blank p.1, p.2⟩ :: res.2)) := by
+      pure (res.1, ⟨r.op, r.args.blank, (ι.cod r.op).blank p.1, p.2⟩ :: res.2)) := by
   simp [dist, run_call, Trace.seq]
 
 theorem dist_bind (M : Model ι D PMF) (c : Prog ι D α) (k : α → Prog ι D β) :

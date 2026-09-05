@@ -18,25 +18,23 @@ namespace Weft
 /-! ## Linear operations: free and silent everywhere -/
 
 namespace Lin
-/-- Constants and scalars are clear arguments, so they are part of the operation. -/
-inductive Op (F : Type) where
-  | const (c : F)
+/-- Constants and scalars are clear operands: in the record of the request, by shape. -/
+inductive Op where
+  | const
   | add
   | sub
-  | smul (c : F)
+  | smul
 
 abbrev ops (F : Type) : Interface where
-  Op := Op F
-  dom | .const _ => [] | .add => [F, F] | .sub => [F, F] | .smul _ => [F]
+  Op := Op
+  dom | .const => [.clear F] | .add => [.share F, .share F] | .sub => [.share F, .share F] | .smul => [.clear F, .share F]
   cod _ := .share F
-  clearArg | .const _ => true | .smul _ => true | _ => false
-
 def eval (F : Type) [Add F] [Mul F] [Sub F] : Model (ops F) .ideal Id :=
   .silent fun
-    | ⟨.const c, ()⟩ => c
+    | ⟨.const, (c, ())⟩ => c
     | ⟨.add, (a, b, ())⟩ => a + b
     | ⟨.sub, (a, b, ())⟩ => a - b
-    | ⟨.smul c, (a, ())⟩ => c * a
+    | ⟨.smul, (c, a, ())⟩ => c * a
 end Lin
 
 /-- Linear operations. -/
@@ -51,7 +49,7 @@ namespace Mult
 inductive Op where | mult
 abbrev ops (F : Type) : Interface where
   Op := Op
-  dom _ := [F, F]
+  dom _ := [.share F, .share F]
   cod _ := .share F
 def eval (F : Type) [Mul F] : Model (ops F) .ideal Id := .silent fun ⟨.mult, (a, b, ())⟩ => a * b
 end Mult
@@ -68,7 +66,7 @@ namespace Reveal
 inductive Op where | reveal
 abbrev ops (F : Type) : Interface where
   Op := Op
-  dom _ := [F]
+  dom _ := [.share F]
   cod _ := .clear F
 def eval (F : Type) : Model (ops F) .ideal Id := .silent fun ⟨.reveal, (x, ())⟩ => x
 end Reveal
@@ -86,7 +84,7 @@ namespace Cmp
 inductive Op where | lt
 abbrev ops (F : Type) : Interface where
   Op := Op
-  dom _ := [F, F]
+  dom _ := [.share F, .share F]
   cod _ := .share F
 def eval (F : Type) [LT F] [DecidableRel (α := F) (· < ·)] [Zero F] [One F] : Model (ops F) .ideal Id :=
   .silent fun ⟨.lt, (a, b, ())⟩ => (if a < b then 1 else 0 : F)
@@ -105,7 +103,7 @@ namespace Inversion
 inductive Op where | inv
 abbrev ops (F : Type) : Interface where
   Op := Op
-  dom _ := [F]
+  dom _ := [.share F]
   cod _ := .share F
 def eval (F : Type) [Inv F] : Model (ops F) .ideal Id := .silent fun ⟨.inv, (x, ())⟩ => (x⁻¹ : F)
 end Inversion
@@ -124,8 +122,11 @@ abbrev ops : Interface where
   Op := Op
   dom _ := []
   cod _ := .unit
-  barrier _ := true
 def eval : Model ops .ideal Id := .silent fun _ => ()
+/-- The one timed model that is not the generic one: raise the control
+clock to the reveal clock, so that everything issued afterwards is
+scheduled after the values opened so far. -/
+def timed : Model ops .timed Sched := ⟨fun _ s => (((), ()), { s with clock := max s.clock s.revealed })⟩
 end Barrier
 
 /-- A control dependency: the program is about to branch on revealed
@@ -133,6 +134,8 @@ values.  Semantically a no-op; in the timed domain it raises the control
 clock to the reveal clock, so everything issued afterwards is scheduled
 after those values are known.  Straight-line code never needs it. -/
 abbrev Barrier : Functionality := .ofEval Barrier.ops Barrier.eval
+/-- The barrier in an MPC: free, and it only moves the control clock. -/
+abbrev Barrier.priced : MPC.Entry := ⟨Barrier, Barrier.timed⟩
 
 @[simp, weft] theorem Barrier.model_eq : Barrier.model = Barrier.eval.lift PMF := Functionality.ofEval_model _ _
 
@@ -142,13 +145,13 @@ section Ops
 variable {F : Type} {fs : Hybrid} {D : Domain}
 
 def const [Add F] [Mul F] [Sub F] [Has (Lin F) fs] (c : F) : Prog fs.ops D (D.sh F) :=
-  Prog.op (F := Lin F) ⟨.const c, ()⟩
+  Prog.op (F := Lin F) ⟨.const, (c, ())⟩
 def add [Add F] [Mul F] [Sub F] [Has (Lin F) fs] (a b : D.sh F) : Prog fs.ops D (D.sh F) :=
   Prog.op (F := Lin F) ⟨.add, (a, b, ())⟩
 def sub [Add F] [Mul F] [Sub F] [Has (Lin F) fs] (a b : D.sh F) : Prog fs.ops D (D.sh F) :=
   Prog.op (F := Lin F) ⟨.sub, (a, b, ())⟩
 def smul [Add F] [Mul F] [Sub F] [Has (Lin F) fs] (c : F) (a : D.sh F) : Prog fs.ops D (D.sh F) :=
-  Prog.op (F := Lin F) ⟨.smul c, (a, ())⟩
+  Prog.op (F := Lin F) ⟨.smul, (c, a, ())⟩
 def mul [Mul F] [Has (Mult F) fs] (a b : D.sh F) : Prog fs.ops D (D.sh F) :=
   Prog.op (F := Mult F) ⟨.mult, (a, b, ())⟩
 def reveal [Has (Reveal F) fs] (x : D.sh F) : Prog fs.ops D F :=

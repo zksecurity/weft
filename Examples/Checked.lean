@@ -16,7 +16,7 @@ variable (F : Type) [Field F] [DecidableEq F]
 
 /-- The identity functionality on a share. -/
 abbrev Keep : Functionality :=
-  .ofEval ⟨Unit, fun _ => [F], fun _ => .share F, fun _ => Unit, fun _ => false, fun _ => false⟩
+  .ofEval ⟨Unit, fun _ => [.share F], fun _ => .share F, fun _ => Unit⟩
     ⟨fun r => pure (r.args.1, ())⟩
 
 /-- A program that branches on a share, at the ideal domain, where a share
