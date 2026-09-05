@@ -1,4 +1,9 @@
 import Examples.Basic
 import Examples.Beaver
 import Examples.Gallery
+import Examples.Privacy
+import Examples.Inversion
+import Examples.RandomCombination
+import Examples.Silent
 import Examples.Timing
+import Examples.Statistical
