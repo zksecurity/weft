@@ -6,3 +6,6 @@ import Weft.Model
 import Weft.Functionality
 import Weft.Timed
 import Weft.PMF
+import Weft.Std.Arith
+import Weft.Std.Random
+import Weft.Std.Hybrids
