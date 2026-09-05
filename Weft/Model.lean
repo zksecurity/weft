@@ -87,14 +87,16 @@ def zero : Trace ι C := ⟨0, []⟩
 end Trace
 
 /-- The interpreter: sample the step once, record the event, continue with
-the sampled response. -/
+the sampled response.  (The sampled pair is taken apart by projections, not
+by a pattern: a `match` here makes evaluation by `rfl` exponential in the
+number of requests.) -/
 def run {ι : Interface} {D : Domain} {C α : Type} [AddMonoid C] {m : Type → Type} [Monad m]
     (M : Model ι D m) (K : CostModel ι C) : Prog ι D α → m (α × Trace ι C)
   | .pure a => pure (a, Trace.zero)
   | .call r k => do
-    let (y, d) ← M.step r
-    let res ← run M K (k y)
-    pure (res.1, Trace.seq ⟨K.op r.op, [⟨r.op, (ι.cod r.op).blank y, d⟩]⟩ res.2)
+    let p ← M.step r
+    let res ← run M K (k p.1)
+    pure (res.1, Trace.seq ⟨K.op r.op, [⟨r.op, (ι.cod r.op).blank p.1, p.2⟩]⟩ res.2)
 
 section Observables
 variable {ι : Interface} {D : Domain} {C α : Type} [AddMonoid C]
@@ -126,9 +128,9 @@ variable {ι : Interface} {D : Domain} {C α β : Type} [AddMonoid C] {m : Type 
 
 theorem run_call (M : Model ι D m) (K : CostModel ι C) (r : Req ι D) (k : Resp ι D r.op → Prog ι D α) :
     run M K (.call r k) = (do
-      let (y, d) ← M.step r
-      let res ← run M K (k y)
-      pure (res.1, Trace.seq ⟨K.op r.op, [⟨r.op, (ι.cod r.op).blank y, d⟩]⟩ res.2)) := rfl
+      let p ← M.step r
+      let res ← run M K (k p.1)
+      pure (res.1, Trace.seq ⟨K.op r.op, [⟨r.op, (ι.cod r.op).blank p.1, p.2⟩]⟩ res.2)) := rfl
 
 /-- `>>=`, `pure` and `<$>` on `PMF` are Mathlib's `PMF.bind`, `PMF.pure`, `PMF.map`. -/
 theorem PMF.monad_bind_eq_bind {α β : Type} (p : PMF α) (f : α → PMF β) : p >>= f = p.bind f := rfl
@@ -163,9 +165,9 @@ theorem dist_pure (M : Model ι D PMF) (a : α) : dist M (.pure a) = pure (a, []
 
 theorem dist_call (M : Model ι D PMF) (r : Req ι D) (k : Resp ι D r.op → Prog ι D α) :
     dist M (.call r k) = (do
-      let (y, d) ← M.step r
-      let res ← dist M (k y)
-      pure (res.1, ⟨r.op, (ι.cod r.op).blank y, d⟩ :: res.2)) := by
+      let p ← M.step r
+      let res ← dist M (k p.1)
+      pure (res.1, ⟨r.op, (ι.cod r.op).blank p.1, p.2⟩ :: res.2)) := by
   simp [dist, run_call, Trace.seq]
 
 theorem dist_bind (M : Model ι D PMF) (c : Prog ι D α) (k : α → Prog ι D β) :
