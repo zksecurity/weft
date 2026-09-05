@@ -46,6 +46,28 @@ def revealThenUse [Has (Lin F) fs] [Has (Mult F) fs] [Has (Reveal F) fs] (a b c 
   let v ← reveal p
   let t ← const (v * k)
   mul t c
+
+/-- Two openings in sequence: one round.  A reveal waits for the control
+clock, never for another reveal. -/
+def revealBoth [Has (Reveal F) fs] (v₁ v₂ : D.sh F) : Prog fs.ops D (F × F) := do
+  let a ← reveal v₁
+  let b ← reveal v₂
+  pure (a, b)
+/-- The same with a barrier between them: the second opening is issued
+after the first is known, so two rounds. -/
+def revealBothBarrier [Has (Reveal F) fs] [Has Barrier fs] (v₁ v₂ : D.sh F) : Prog fs.ops D (F × F) := do
+  let a ← reveal v₁
+  barrier
+  let b ← reveal v₂
+  pure (a, b)
+/-- Using the first opened value in the clear while the second is still
+opening: still one round, since the scalar waits for the reveal clock, not
+the control clock. -/
+def revealUseReveal [Has (Lin F) fs] [Has (Reveal F) fs] (v₁ v₂ x : D.sh F) : Prog fs.ops D (D.sh F × F) := do
+  let a ← reveal v₁
+  let b ← reveal v₂
+  let y ← smul a x
+  pure (y, b)
 end Programs
 
 section
@@ -57,6 +79,17 @@ example (a b c d : F) : delayOn (Std.timed F) (mul4seq (fs := Std F) (D := .time
 example (a b c d : F) : delayOn (Std.timed F) (chain3 (fs := Std F) (D := .timed) ⟪a⟫ ⟪b⟫ ⟪c⟫ ⟪d⟫) = 3 := rfl
 -- Reveal at 2, clear computation, `const` at 2, multiplication at 3.
 example (a b c k : F) : delayOn (Std.timed F) (revealThenUse (fs := Std F) (D := .timed) ⟪a⟫ ⟪b⟫ ⟪c⟫ k) = 3 := rfl
+-- Two openings in sequence are one round; with a barrier between them, two; using the first
+-- in the clear while the second opens is still one.
+abbrev StdB : Hybrid := [Lin F, Mult F, Reveal F, Barrier]
+abbrev stdB : MPC := [(Lin F).priced ⟨0, 0⟩, (Mult F).priced ⟨1, 2⟩, (Reveal F).priced ⟨1, 1⟩, Barrier.priced]
+example (v₁ v₂ : F) : delayClear (Std.timed F) (revealBoth (fs := Std F) (D := .timed) ⟪v₁⟫ ⟪v₂⟫) = 1 := rfl
+example (v₁ v₂ : F) :
+    delayClear (stdB F).timed (revealBothBarrier (fs := (stdB F).hybrid) (D := .timed) ⟪v₁⟫ ⟪v₂⟫) = 2 := rfl
+example (v₁ v₂ x : F) :
+    (Sched.run (Std.timed F) (revealUseReveal (fs := Std F) (D := .timed) ⟪v₁⟫ ⟪v₂⟫ ⟪x⟫)).2.revealed = 1 := rfl
+example (v₁ v₂ x : F) :
+    (Sched.output (Std.timed F) (revealUseReveal (fs := Std F) (D := .timed) ⟪v₁⟫ ⟪v₂⟫ ⟪x⟫)).1.time = 1 := rfl
 -- Values are unchanged: the timed model computes the same thing.
 example (a b c d : F) :
     (Sched.output (Std.timed F) (mul4seq (fs := Std F) (D := .timed) ⟪a⟫ ⟪b⟫ ⟪c⟫ ⟪d⟫)).val = a * b * (c * d) := rfl
