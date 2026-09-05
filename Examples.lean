@@ -3,7 +3,10 @@ import Examples.Beaver
 import Examples.Gallery
 import Examples.Privacy
 import Examples.Inversion
+import Examples.AesHybrid
 import Examples.RandomCombination
 import Examples.Silent
 import Examples.Timing
+import Examples.MultiField
+import Examples.Checked
 import Examples.Statistical
