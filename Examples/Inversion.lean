@@ -51,15 +51,13 @@ variable (F : Type) [Field F] [Fintype F] [DecidableEq F]
 /-- The hybrid with a nonzero random share. -/
 abbrev InvHyb : Hybrid := [Lin F, Mult F, Reveal F, RandNZ F]
 /-- ...priced: multiplication and reveal one round each, random shares free (PRSS). -/
-abbrev invMPC : MPC := [MPC.const (Lin F) ⟨0, 0⟩, MPC.const (Mult F) ⟨1, 2⟩, MPC.const (Reveal F) ⟨1, 1⟩,
-  MPC.const (RandNZ F) ⟨0, 0⟩]
+abbrev invMPC : MPC := [Lin.priced F, Mult.priced F, Reveal.priced F, RandNZ.priced F ⟨0, 0⟩]
 /-- ...and an MPC where a random share costs a round. -/
-abbrev invMPC' : MPC := [MPC.const (Lin F) ⟨0, 0⟩, MPC.const (Mult F) ⟨1, 2⟩, MPC.const (Reveal F) ⟨1, 1⟩,
-  MPC.const (RandNZ F) ⟨1, 0⟩]
+abbrev invMPC' : MPC := [Lin.priced F, Mult.priced F, Reveal.priced F, RandNZ.priced F ⟨1, 0⟩]
 
 -- **Communication**: one multiplication and one reveal.
-example (x : F) : cost (invMPC F).eval (invMPC F).comm (invert (fs := (invMPC F).hybrid) (D := .ideal) x) = 3 := rfl
-example (a b : F) : cost (invMPC F).eval (invMPC F).comm (divide (fs := (invMPC F).hybrid) (D := .ideal) a b) = 5 := rfl
+example (x : F) : commOn (invMPC F).timed (invert (fs := (invMPC F).hybrid) (D := .timed) ⟪x⟫) = 3 := rfl
+example (a b : F) : commOn (invMPC F).timed (divide (fs := (invMPC F).hybrid) (D := .timed) ⟪a⟫ ⟪b⟫) = 5 := rfl
 -- **Rounds**: two where random shares are free, three where they cost a round; division adds one.
 example (x : F) : delayOn (invMPC F).timed (invert (fs := (invMPC F).hybrid) (D := .timed) ⟪x⟫) = 2 := rfl
 example (x : F) : delayOn (invMPC' F).timed (invert (fs := (invMPC' F).hybrid) (D := .timed) ⟪x⟫) = 3 := rfl

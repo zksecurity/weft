@@ -112,7 +112,7 @@ section Theorems
 variable (F : Type) [Add F] [Mul F] [Sub F] [Inhabited F]
 
 /-- The black box, priced: multiplication one round and two units, reveal one round and one unit. -/
-abbrev abb : MPC := [MPC.const (Lin F) ⟨0, 0⟩, MPC.const (Mult F) ⟨1, 2⟩, MPC.const (Reveal F) ⟨1, 1⟩]
+abbrev abb : MPC := [Lin.priced F, Mult.priced F, Reveal.priced F]
 
 -- Functional correctness (against the ideal model), by evaluation.
 example (a b c : F) : output (Std F).eval (mul3 (fs := Std F) (D := .ideal) a b c) = a * b * c := rfl
@@ -127,7 +127,7 @@ example (a b c d : F) :
       = 2 := rfl
 
 -- Communication, on the price list.
-example (a b c : F) : cost (abb F).eval (abb F).comm (mul3 (fs := (abb F).hybrid) (D := .ideal) a b c) = 4 := rfl
+example (a b c : F) : commOn (abb F).timed (mul3 (fs := (abb F).hybrid) (D := .timed) ⟪a⟫ ⟪b⟫ ⟪c⟫) = 4 := rfl
 
 -- The view is computed, not asserted: what the adversary sees of a run.
 example (a b : F) : view (Std F).eval (openMul (fs := Std F) (D := .ideal) a b)
@@ -149,15 +149,15 @@ example (x a₀ a₁ a₂ : F) :
       = [⟨Std.lin F (.const 0), (), ()⟩, ⟨Std.mult F, (), ()⟩, ⟨Std.lin F .add, (), ()⟩, ⟨Std.mult F, (), ()⟩,
          ⟨Std.lin F .add, (), ()⟩, ⟨Std.mult F, (), ()⟩, ⟨Std.lin F .add, (), ()⟩] := rfl
 example (x a₀ a₁ a₂ : F) :
-    cost (abb F).eval (abb F).comm (horner (fs := (abb F).hybrid) (D := .ideal) x [a₀, a₁, a₂]) = 6 := rfl
+    commOn (abb F).timed (horner (fs := (abb F).hybrid) (D := .timed) ⟪x⟫ [⟪a₀⟫, ⟪a₁⟫, ⟪a₂⟫]) = 6 := rfl
 end
 
 /-! ### The offline phase, timed: a triple costs one multiplication round when assembled from random shares -/
 section
 variable [Fintype F]
-abbrev offline : MPC := [MPC.const (Lin F) ⟨0, 0⟩, MPC.const (Mult F) ⟨1, 2⟩, MPC.const (Rand F) ⟨0, 0⟩]
+abbrev offline : MPC := [Lin.priced F, Mult.priced F, Rand.priced F ⟨0, 0⟩]
 example : (Sched.output (offline F).timed (tripleFromRand (F := F) (fs := (offline F).hybrid) (D := .timed))).2.2.time = 1 := rfl
-example : cost (offline F).eval (offline F).comm (tripleFromRand (F := F) (fs := (offline F).hybrid) (D := .ideal)) = 2 := rfl
+example : commOn (offline F).timed (tripleFromRand (F := F) (fs := (offline F).hybrid) (D := .timed)) = 2 := rfl
 end
 end Theorems
 

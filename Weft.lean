@@ -5,6 +5,7 @@ import Weft.Prog
 import Weft.Model
 import Weft.Timed
 import Weft.Functionality
+import Weft.MPC
 import Weft.PMF
 import Weft.Std.Arith
 import Weft.Std.Random

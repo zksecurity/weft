@@ -27,13 +27,15 @@ abbrev ops (F : Type) : Interface where
 noncomputable def model (F : Type) [Fintype F] [Nonempty F] : Model (ops F) .ideal PMF :=
   ⟨fun _ => (uniform F).map fun x => (x, ())⟩
 def eval (F : Type) [Inhabited F] : Model (ops F) .ideal Id := ⟨fun _ => pure ((default : F), ())⟩
-def timed (F : Type) [Inhabited F] (ℓ : Op → Nat) : Model (ops F) .timed Sched :=
-  ⟨fun _ s => ((⟨(default : F), s.clock + ℓ .rand⟩, ()), s)⟩
+def timed (F : Type) [Inhabited F] (p : Price) : Model (ops F) .timed Sched :=
+  ⟨fun _ s => ((⟨(default : F), s.clock + p.delay⟩, ()), s.pay p.comm)⟩
 end Rand
 
 /-- A fresh, uniformly random shared value, unknown to everyone. -/
 abbrev Rand (F : Type) [Fintype F] [Inhabited F] : Functionality :=
-  ⟨Rand.ops F, Rand.eval F, (· = Rand.model F), Functionality.unique_eq _, Rand.timed F⟩
+  ⟨Rand.ops F, Rand.eval F, (· = Rand.model F), Functionality.unique_eq _⟩
+/-- `Rand` in an MPC. -/
+abbrev Rand.priced (F : Type) [Fintype F] [Inhabited F] (p : Price) : MPC.Entry := ⟨Rand F, Rand.timed F p⟩
 
 @[simp, weft] theorem Rand.model_eq (F : Type) [Fintype F] [Inhabited F] :
     (Rand F).model = Rand.model F := Functionality.model_eq rfl
@@ -52,15 +54,17 @@ abbrev ops (F : Type) : Interface where
 noncomputable def model (F : Type) [Zero F] [Nontrivial F] [Fintype F] [DecidableEq F] : Model (ops F) .ideal PMF :=
   ⟨fun _ => (uniform {x : F // x ≠ 0}).map fun x => (x.1, ())⟩
 def eval (F : Type) [One F] : Model (ops F) .ideal Id := ⟨fun _ => pure ((1 : F), ())⟩
-def timed (F : Type) [One F] (ℓ : Op → Nat) : Model (ops F) .timed Sched :=
-  ⟨fun _ s => ((⟨(1 : F), s.clock + ℓ .randNZ⟩, ()), s)⟩
+def timed (F : Type) [One F] (p : Price) : Model (ops F) .timed Sched :=
+  ⟨fun _ s => ((⟨(1 : F), s.clock + p.delay⟩, ()), s.pay p.comm)⟩
 end RandNZ
 
 /-- A fresh random share that is nonzero, uniform on `F \ {0}`.  Programs
 that mask by multiplication ask for it, so that correctness is perfect:
 the functionality, not luck, guarantees the mask is invertible. -/
 abbrev RandNZ (F : Type) [Zero F] [One F] [Nontrivial F] [Fintype F] [DecidableEq F] : Functionality :=
-  ⟨RandNZ.ops F, RandNZ.eval F, (· = RandNZ.model F), Functionality.unique_eq _, RandNZ.timed F⟩
+  ⟨RandNZ.ops F, RandNZ.eval F, (· = RandNZ.model F), Functionality.unique_eq _⟩
+/-- `RandNZ` in an MPC. -/
+abbrev RandNZ.priced (F : Type) [Zero F] [One F] [Nontrivial F] [Fintype F] [DecidableEq F] (p : Price) : MPC.Entry := ⟨RandNZ F, RandNZ.timed F p⟩
 
 @[simp, weft] theorem RandNZ.model_eq (F : Type) [Zero F] [One F] [Nontrivial F] [Fintype F] [DecidableEq F] :
     (RandNZ F).model = RandNZ.model F := Functionality.model_eq rfl
@@ -77,13 +81,15 @@ noncomputable def model (F : Type) [Fintype F] [Nonempty F] : Model (ops F) .ide
   ⟨fun _ => (uniform F).map fun x => (x, ())⟩
 def eval (F : Type) [Inhabited F] : Model (ops F) .ideal Id := ⟨fun _ => pure ((default : F), ())⟩
 /-- A public coin is clear `ℓ` after the clock, and raises the reveal clock. -/
-def timed (F : Type) [Inhabited F] (ℓ : Op → Nat) : Model (ops F) .timed Sched :=
-  ⟨fun _ s => let t := s.clock + ℓ .coin; (((default : F), ()), { s with revealed := max s.revealed t })⟩
+def timed (F : Type) [Inhabited F] (p : Price) : Model (ops F) .timed Sched :=
+  ⟨fun _ s => let t := s.clock + p.delay; (((default : F), ()), ({ s with revealed := max s.revealed t }).pay p.comm)⟩
 end PubCoin
 
 /-- A public random value.  Its response is clear, so it is in the view by shape. -/
 abbrev PubCoin (F : Type) [Fintype F] [Inhabited F] : Functionality :=
-  ⟨PubCoin.ops F, PubCoin.eval F, (· = PubCoin.model F), Functionality.unique_eq _, PubCoin.timed F⟩
+  ⟨PubCoin.ops F, PubCoin.eval F, (· = PubCoin.model F), Functionality.unique_eq _⟩
+/-- `PubCoin` in an MPC. -/
+abbrev PubCoin.priced (F : Type) [Fintype F] [Inhabited F] (p : Price) : MPC.Entry := ⟨PubCoin F, PubCoin.timed F p⟩
 
 @[simp, weft] theorem PubCoin.model_eq (F : Type) [Fintype F] [Inhabited F] :
     (PubCoin F).model = PubCoin.model F := Functionality.model_eq rfl
@@ -111,15 +117,17 @@ noncomputable def model (F : Type) [Mul F] [Fintype F] [Nonempty F] : Model (ops
   ⟨fun _ => (corr F).sample.map fun t => (t, ())⟩
 def eval (F : Type) [Mul F] [Inhabited F] : Model (ops F) .ideal Id :=
   ⟨fun _ => pure (((default : F), (default : F), (default : F) * default), ())⟩
-/-- Available at the clock, plus `ℓ` if generated online. -/
-def timed (F : Type) [Mul F] [Inhabited F] (ℓ : Op → Nat) : Model (ops F) .timed Sched :=
-  ⟨fun _ s => let t := s.clock + ℓ .get
-    (((⟨(default : F), t⟩, ⟨(default : F), t⟩, ⟨(default : F) * default, t⟩), ()), s)⟩
+/-- Available at the clock, plus the latency if generated online. -/
+def timed (F : Type) [Mul F] [Inhabited F] (p : Price) : Model (ops F) .timed Sched :=
+  ⟨fun _ s => let t := s.clock + p.delay
+    (((⟨(default : F), t⟩, ⟨(default : F), t⟩, ⟨(default : F) * default, t⟩), ()), s.pay p.comm)⟩
 end MulTriple
 
 /-- The preprocessing box handing out Beaver triples: the promise its name makes. -/
 abbrev MulTriple (F : Type) [Mul F] [Fintype F] [Inhabited F] : Functionality :=
-  ⟨MulTriple.ops F, MulTriple.eval F, (· = MulTriple.model F), Functionality.unique_eq _, MulTriple.timed F⟩
+  ⟨MulTriple.ops F, MulTriple.eval F, (· = MulTriple.model F), Functionality.unique_eq _⟩
+/-- `MulTriple` in an MPC. -/
+abbrev MulTriple.priced (F : Type) [Mul F] [Fintype F] [Inhabited F] (p : Price) : MPC.Entry := ⟨MulTriple F, MulTriple.timed F p⟩
 
 @[simp, weft] theorem MulTriple.model_eq (F : Type) [Mul F] [Fintype F] [Inhabited F] :
     (MulTriple F).model = MulTriple.model F := Functionality.model_eq rfl
@@ -136,13 +144,15 @@ noncomputable def model (F : Type) [Mul F] [Fintype F] [Nonempty F] : Model (ops
   ⟨fun _ => (corr F).sample.map fun t => (t, ())⟩
 def eval (F : Type) [Mul F] [Inhabited F] : Model (ops F) .ideal Id :=
   ⟨fun _ => pure (((default : F), (default : F) * default), ())⟩
-def timed (F : Type) [Mul F] [Inhabited F] (ℓ : Op → Nat) : Model (ops F) .timed Sched :=
-  ⟨fun _ s => let t := s.clock + ℓ .get; (((⟨(default : F), t⟩, ⟨(default : F) * default, t⟩), ()), s)⟩
+def timed (F : Type) [Mul F] [Inhabited F] (p : Price) : Model (ops F) .timed Sched :=
+  ⟨fun _ s => let t := s.clock + p.delay; (((⟨(default : F), t⟩, ⟨(default : F) * default, t⟩), ()), s.pay p.comm)⟩
 end SquarePair
 
 /-- The preprocessing box handing out square pairs. -/
 abbrev SquarePair (F : Type) [Mul F] [Fintype F] [Inhabited F] : Functionality :=
-  ⟨SquarePair.ops F, SquarePair.eval F, (· = SquarePair.model F), Functionality.unique_eq _, SquarePair.timed F⟩
+  ⟨SquarePair.ops F, SquarePair.eval F, (· = SquarePair.model F), Functionality.unique_eq _⟩
+/-- `SquarePair` in an MPC. -/
+abbrev SquarePair.priced (F : Type) [Mul F] [Fintype F] [Inhabited F] (p : Price) : MPC.Entry := ⟨SquarePair F, SquarePair.timed F p⟩
 
 @[simp, weft] theorem SquarePair.model_eq (F : Type) [Mul F] [Fintype F] [Inhabited F] :
     (SquarePair F).model = SquarePair.model F := Functionality.model_eq rfl
@@ -161,13 +171,15 @@ def corr (F : Type) : Correlation F (F × F) := ⟨1, fun x => (x 0, x 0)⟩
 noncomputable def model (F : Type) [Fintype F] [Nonempty F] : Model (ops F) .ideal PMF :=
   ⟨fun _ => (corr F).sample.map fun t => (t, ())⟩
 def eval (F : Type) [Inhabited F] : Model (ops F) .ideal Id := ⟨fun _ => pure (((default : F), (default : F)), ())⟩
-def timed (F : Type) [Inhabited F] (ℓ : Op → Nat) : Model (ops F) .timed Sched :=
-  ⟨fun _ s => let t := s.clock + ℓ .get; (((⟨(default : F), t⟩, ⟨(default : F), t⟩), ()), s)⟩
+def timed (F : Type) [Inhabited F] (p : Price) : Model (ops F) .timed Sched :=
+  ⟨fun _ s => let t := s.clock + p.delay; (((⟨(default : F), t⟩, ⟨(default : F), t⟩), ()), s.pay p.comm)⟩
 end DoubleSharing
 
 /-- The preprocessing box handing out double sharings. -/
 abbrev DoubleSharing (F : Type) [Fintype F] [Inhabited F] : Functionality :=
-  ⟨DoubleSharing.ops F, DoubleSharing.eval F, (· = DoubleSharing.model F), Functionality.unique_eq _, DoubleSharing.timed F⟩
+  ⟨DoubleSharing.ops F, DoubleSharing.eval F, (· = DoubleSharing.model F), Functionality.unique_eq _⟩
+/-- `DoubleSharing` in an MPC. -/
+abbrev DoubleSharing.priced (F : Type) [Fintype F] [Inhabited F] (p : Price) : MPC.Entry := ⟨DoubleSharing F, DoubleSharing.timed F p⟩
 
 @[simp, weft] theorem DoubleSharing.model_eq (F : Type) [Fintype F] [Inhabited F] :
     (DoubleSharing F).model = DoubleSharing.model F := Functionality.model_eq rfl

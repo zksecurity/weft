@@ -19,9 +19,13 @@ variable (F : Type) [Add F] [Mul F] [Sub F]
 abbrev lin (o : Lin.Op F) : (Std F).ops.Op := ⟨0, o⟩
 abbrev mult : (Std F).ops.Op := ⟨1, .mult⟩
 abbrev reveal : (Std F).ops.Op := ⟨2, .reveal⟩
-/-- The timed black box: multiplication and reveal one round each by default. -/
-def timed (ℓmult ℓreveal : Nat := 1) : Model (Std F).ops .timed Sched :=
-  (Std F).timed fun o => [0, ℓmult, ℓreveal].getD o.1 0
+/-- The black box as an MPC: linear operations free, multiplication one
+round and two units, reveal one round and one unit, by default. -/
+abbrev mpc (pMult : Price := ⟨1, 2⟩) (pReveal : Price := ⟨1, 1⟩) : MPC :=
+  [Lin.priced F, Mult.priced F pMult, Reveal.priced F pReveal]
+/-- The cost instantiation of the black box, at those prices. -/
+def timed (pMult : Price := ⟨1, 2⟩) (pReveal : Price := ⟨1, 1⟩) : Model (Std F).ops .timed Sched :=
+  (mpc F pMult pReveal).timed
 end Std
 
 /-- A preprocessing-model functionality: no native multiplication, Beaver triples instead. -/
@@ -33,9 +37,12 @@ variable (F : Type) [Add F] [Mul F] [Sub F] [Fintype F] [Inhabited F]
 abbrev lin (o : Lin.Op F) : (Pre F).ops.Op := ⟨0, o⟩
 abbrev reveal : (Pre F).ops.Op := ⟨1, .reveal⟩
 abbrev triple : (Pre F).ops.Op := ⟨2, .get⟩
-/-- The timed preprocessing functionality: `ℓtriple = 0` when precomputed. -/
-def timed (ℓreveal ℓtriple : Nat) : Model (Pre F).ops .timed Sched :=
-  (Pre F).timed fun o => [0, ℓreveal, ℓtriple].getD o.1 0
+/-- The preprocessing model as an MPC: triples free when precomputed. -/
+abbrev mpc (pReveal : Price := ⟨1, 1⟩) (pTriple : Price := ⟨0, 0⟩) : MPC :=
+  [Lin.priced F, Reveal.priced F pReveal, MulTriple.priced F pTriple]
+/-- The cost instantiation of the preprocessing model, at those prices. -/
+def timed (pReveal : Price := ⟨1, 1⟩) (pTriple : Price := ⟨0, 0⟩) : Model (Pre F).ops .timed Sched :=
+  (mpc F pReveal pTriple).timed
 end Pre
 
 /-- A share available at round 0, for delay examples. -/
