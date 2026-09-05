@@ -53,7 +53,7 @@ def blank {D : Domain} : (s : Shape) → s.interp D → s.interp .erased
   | unit, _ => ()
   | clear _, x => x
   | share _, _ => ()
-  | prod a b, (x, y) => (a.blank x, b.blank y)
+  | prod a b, p => (a.blank p.1, b.blank p.2)
   | vec _ a, f => fun i => a.blank (f i)
   | list a, xs => xs.map a.blank
 
@@ -79,8 +79,8 @@ def Hidden : Shape → Prop
 @[simp] theorem blank_share {D : Domain} {T : Type} (x : D.sh T) : (share T).blank x = () := rfl
 @[simp] theorem blank_clear {D : Domain} {T : Type} (x : T) : (clear T).blank (D := D) x = x := rfl
 @[simp] theorem blank_unit {D : Domain} (x : unit.interp D) : unit.blank x = () := rfl
-@[simp] theorem blank_prod {D : Domain} {a b : Shape} (x : a.interp D) (y : b.interp D) :
-    (prod a b).blank (x, y) = (a.blank x, b.blank y) := rfl
+@[simp] theorem blank_prod {D : Domain} {a b : Shape} (p : a.interp D × b.interp D) :
+    (prod a b).blank p = (a.blank p.1, b.blank p.2) := rfl
 @[simp] theorem blank_vec {D : Domain} {n : Nat} {a : Shape} (f : Fin n → a.interp D) :
     (vec n a).blank f = fun i => a.blank (f i) := rfl
 @[simp] theorem blank_list {D : Domain} {a : Shape} (xs : List (a.interp D)) :
@@ -96,15 +96,19 @@ Operands are shares only; clear arguments belong to the operation. -/
 
 namespace Operands
 
+/-! Pairs are taken apart by projections throughout, not by patterns: a
+pattern here makes evaluation by `rfl` exponential in the number of
+requests. -/
+
 /-- Map a domain transformation over the operands. -/
 def map {D E : Domain} (f : ∀ {T}, D.sh T → E.sh T) : {Ts : List Type} → Operands D Ts → Operands E Ts
-  | [], () => ()
-  | _ :: _, (x, xs) => (f x, map f xs)
+  | [], _ => ()
+  | _ :: _, p => (f p.1, map f p.2)
 
 /-- Collect something from every operand. -/
 def toList {D : Domain} {β : Type} (f : ∀ {T}, D.sh T → β) : {Ts : List Type} → Operands D Ts → List β
-  | [], () => []
-  | _ :: _, (x, xs) => f x :: toList f xs
+  | [], _ => []
+  | _ :: _, p => f p.1 :: toList f p.2
 
 /-- `n` operands of one type, from a vector. -/
 def ofFin {D : Domain} {T : Type} : (n : Nat) → (Fin n → D.sh T) → Operands D (List.replicate n T)
@@ -114,7 +118,7 @@ def ofFin {D : Domain} {T : Type} : (n : Nat) → (Fin n → D.sh T) → Operand
 /-- `n` operands of one type, as a vector. -/
 def toFin {D : Domain} {T : Type} : (n : Nat) → Operands D (List.replicate n T) → Fin n → D.sh T
   | 0, _ => fun i => i.elim0
-  | n + 1, (x, xs) => Fin.cases x (toFin n xs)
+  | n + 1, p => Fin.cases p.1 (toFin n p.2)
 
 /-- Operands of one type, from a list (the operand list is the list's length). -/
 def ofList {D : Domain} {T : Type} : (xs : List (D.sh T)) → Operands D (List.replicate xs.length T)

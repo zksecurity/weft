@@ -1,4 +1,4 @@
-import Weft.Functionality
+import Weft.Model
 
 /-!
 # Delay: the timed domain
@@ -20,7 +20,10 @@ functionality's evaluation model (so reactive programs take the branch the
 values dictate) and a latency per operation, and reads the operand times
 and the response shape structurally.  Which operations carry a clear
 argument, and which are barriers, is the interface's scheduling metadata
-(`Interface.pubArg`, `Interface.ctrl`), trusted like the rest of it.
+(`Interface.pubArg`, `Interface.ctrl`), trusted like the rest of it.  It
+is the default timed model of a functionality; the standard ones carry a
+hand-written model instead, which evaluates by `rfl` in linear time where
+the generic one does not (`Functionality.timed`).
 
 What this gives is the delay of the program as written, under eager
 scheduling.  Modelling an abstract operation by a single latency, or by a
@@ -39,7 +42,10 @@ structure Clock where
   /-- Reveal clock: the latest time at which a value became clear. -/
   revealed : Nat := 0
 
-/-- The scheduling monad: evaluation with a clock. -/
+/-- The scheduling monad: evaluation with a clock.  `StateT`'s `bind` takes
+the state pair apart by a pattern, which forces a request's step once and
+binds its components; a projection-based bind re-runs the step at every
+later use of a response, which is exponential in the number of requests. -/
 abbrev Sched : Type → Type := StateT Clock Id
 
 /-- A value together with the round at which it is available. -/
@@ -60,7 +66,7 @@ def untime : (s : Shape) → s.interp .timed → s.interp .ideal
   | unit, _ => ()
   | clear _, x => x
   | share _, x => x.val
-  | prod a b, (x, y) => (a.untime x, b.untime y)
+  | prod a b, p => (a.untime p.1, b.untime p.2)
   | vec _ a, f => fun i => a.untime (f i)
   | list a, xs => xs.map a.untime
 
@@ -69,9 +75,21 @@ def retime (t : Nat) : (s : Shape) → s.interp .ideal → s.interp .timed
   | unit, _ => ()
   | clear _, x => x
   | share _, x => ⟨x, t⟩
-  | prod a b, (x, y) => (a.retime t x, b.retime t y)
+  | prod a b, p => (a.retime t p.1, b.retime t p.2)
   | vec _ a, f => fun i => a.retime t (f i)
   | list a, xs => xs.map (a.retime t)
+
+/-- `retime`, in continuation-passing form: the shape is matched once, at
+the head, so that the continuation receives a constructor.  This is what
+keeps evaluation by `rfl` linear: a share's ready time is then one
+projection away, instead of a shape dispatch at every use. -/
+def withTimed {β : Type} (t : Nat) : (s : Shape) → s.interp .ideal → (s.interp .timed → β) → β
+  | unit, _, k => k ()
+  | clear _, x, k => k x
+  | share _, x, k => k ⟨x, t⟩
+  | prod a b, p, k => k (a.retime t p.1, b.retime t p.2)
+  | vec _ a, f, k => k fun i => a.retime t (f i)
+  | list a, xs, k => k (xs.map (a.retime t))
 
 end Shape
 
@@ -79,6 +97,20 @@ end Shape
 def Operands.times {Ts : List Type} (a : Operands .timed Ts) : List Nat := a.toList Timed.time
 /-- The operands, with their times forgotten. -/
 def Operands.untime {Ts : List Type} (a : Operands .timed Ts) : Operands .ideal Ts := a.map Timed.val
+
+/-- Advance the clocks after a request: the control clock if the operation
+is a barrier, the reveal clock if its response has a clear component.  The
+flags are matched at the head, so that a run whose request changes nothing
+returns the state object itself rather than a wrapper around it: the
+scheduling state is threaded through every request, and under
+call-by-name evaluation a wrapper per request is re-forced from every later
+reference. -/
+def Clock.after (ctrl clear : Bool) (t : Nat) (s : Clock) : Clock :=
+  match ctrl, clear with
+  | false, false => s
+  | true, false => { s with clock := max s.clock s.revealed }
+  | false, true => { s with revealed := max s.revealed t }
+  | true, true => { clock := max s.clock s.revealed, revealed := max s.revealed t }
 
 /-- **The generic timed model.**  From an evaluation model and a latency per
 operation: the response is ready `ℓ` after the operands and the control
@@ -89,18 +121,9 @@ def Model.timed {ι : Interface} (E : Model ι .ideal Id) (ℓ : ι.Op → Nat) 
     let base := r.args.times.foldr max s.clock
     let base := if ι.pubArg r.op then max base s.revealed else base
     let t := base + ℓ r.op
-    let (y, d) := (E.step ⟨r.op, r.args.untime⟩).run
-    (((ι.cod r.op).retime t y, d),
-     { clock := if ι.ctrl r.op then max s.clock s.revealed else s.clock,
-       revealed := if (ι.cod r.op).hasClear then max s.revealed t else s.revealed })
-
-/-- The timed model of a functionality at the given latencies. -/
-def Functionality.timed (F : Functionality) (ℓ : F.ops.Op → Nat) : Model F.ops .timed Sched :=
-  F.eval.timed ℓ
-
-/-- The timed model of a hybrid at the given latencies. -/
-def Hybrid.timed (fs : Hybrid) (ℓ : fs.ops.Op → Nat) : Model fs.ops .timed Sched :=
-  fs.eval.timed ℓ
+    let p := (E.step ⟨r.op, r.args.untime⟩).run
+    Shape.withTimed t (ι.cod r.op) p.1 fun y =>
+      ((y, p.2), Clock.after (ι.ctrl r.op) (ι.cod r.op).hasClear t s)
 
 section Delay
 variable {ι : Interface} {α : Type}

@@ -3,8 +3,8 @@ import Weft.Shape
 import Weft.Interface
 import Weft.Prog
 import Weft.Model
-import Weft.Functionality
 import Weft.Timed
+import Weft.Functionality
 import Weft.PMF
 import Weft.Std.Arith
 import Weft.Std.Random
