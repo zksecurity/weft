@@ -35,11 +35,13 @@ structure Req (ι : Interface) (D : Domain) where
   args : Operands D (ι.dom op)
 
 /-- The adversary's record of one request: the operation, the clear part of
-the operands, the clear part of the response, the declared disclosure. -/
-structure Event (ι : Interface) where
+the operands, the clear part of the response, the declared disclosure.  At
+the ideal domain, the default, clear parts are plain values; a run in
+another domain records them as that domain has them. -/
+structure Event (ι : Interface) (D : Domain := .ideal) where
   op : ι.Op
-  args : Operands .erased (ι.dom op)
-  out : Resp ι .erased op
+  args : Operands D.erase (ι.dom op)
+  out : Resp ι D.erase op
   leak : ι.leak op
 
 end Weft

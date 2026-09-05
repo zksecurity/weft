@@ -59,3 +59,16 @@ Evaluation also corrected two of my expected numbers: a sorting network's
 outer outputs finish a layer earlier than its middle ones, and the A2B
 adder's last bit needs three carries, not four (the fourth AND only feeds
 the unused carry-out). Both are what a real scheduler would report.
+
+## Revisited (2026-09-05, decision 018)
+Both rules above are superseded.  Clear values are timed after all
+(`Domain.timed.cl := Timed`, an applicative that takes the latest input),
+so a scalar computed from an opened value is a data edge and the reveal
+clock is gone; and a program branches on an opened value only through
+`Prog.look`, which is the one thing that advances the program's clock, so
+the barrier is gone and nothing can be forgotten.  The objection that
+timing clear values would make `if bit = 0` compare times was right for
+plain clear values; it does not arise once a clear value is opaque and
+`look` is the only way to inspect it.  The interpreter keeps one piece of
+state, the round it has reached.
+

@@ -60,6 +60,17 @@ theorem ext {M N : Model ι D m} (h : ∀ r, M.step r = N.step r) : M = N := by
 
 end Model
 
+/-- How a domain's clear values are looked at in a monad: at the ideal
+domain a clear value is plain and a look is `pure`; in the timed domain a
+look advances the program's clock to the value's time (`Weft.Timed`). -/
+class Look (D : Domain) (m : Type → Type) where
+  look : {T : Type} → D.cl T → m T
+
+instance {m : Type → Type} [Monad m] : Look .ideal m := ⟨fun c => pure c⟩
+
+@[simp] theorem Look.ideal_look {m : Type → Type} [Monad m] {T : Type} (c : Domain.ideal.cl T) :
+    (Look.look c : m T) = pure c := rfl
+
 /-- A cost model: a price for each operation, in an additive monoid.
 Prices see operations only, never an operand. -/
 structure CostModel (ι : Interface) (C : Type) where
@@ -68,21 +79,21 @@ structure CostModel (ι : Interface) (C : Type) where
 def CostModel.unit {ι : Interface} : CostModel ι Unit := ⟨fun _ => ()⟩
 
 /-- What one run accumulates besides its result: cost and the view. -/
-structure Trace (ι : Interface) (C : Type) where
+structure Trace (ι : Interface) (D : Domain) (C : Type) where
   cost : C
-  view : List (Event ι)
+  view : List (Event ι D)
 
 namespace Trace
-variable {ι : Interface} {C : Type} [AddMonoid C]
-def seq (t u : Trace ι C) : Trace ι C := ⟨t.cost + u.cost, t.view ++ u.view⟩
-def zero : Trace ι C := ⟨0, []⟩
-@[simp] theorem zero_view : (zero : Trace ι C).view = [] := rfl
-@[simp] theorem zero_cost : (zero : Trace ι C).cost = 0 := rfl
-@[simp] theorem seq_view (t u : Trace ι C) : (seq t u).view = t.view ++ u.view := rfl
-@[simp] theorem seq_cost (t u : Trace ι C) : (seq t u).cost = t.cost + u.cost := rfl
-@[simp] theorem zero_seq (t : Trace ι C) : seq zero t = t := by simp [seq, zero]
-@[simp] theorem seq_zero (t : Trace ι C) : seq t zero = t := by simp [seq, zero]
-@[simp] theorem seq_assoc (t u v : Trace ι C) : seq (seq t u) v = seq t (seq u v) := by
+variable {ι : Interface} {D : Domain} {C : Type} [AddMonoid C]
+def seq (t u : Trace ι D C) : Trace ι D C := ⟨t.cost + u.cost, t.view ++ u.view⟩
+def zero : Trace ι D C := ⟨0, []⟩
+@[simp] theorem zero_view : (zero : Trace ι D C).view = [] := rfl
+@[simp] theorem zero_cost : (zero : Trace ι D C).cost = 0 := rfl
+@[simp] theorem seq_view (t u : Trace ι D C) : (seq t u).view = t.view ++ u.view := rfl
+@[simp] theorem seq_cost (t u : Trace ι D C) : (seq t u).cost = t.cost + u.cost := rfl
+@[simp] theorem zero_seq (t : Trace ι D C) : seq zero t = t := by simp [seq, zero]
+@[simp] theorem seq_zero (t : Trace ι D C) : seq t zero = t := by simp [seq, zero]
+@[simp] theorem seq_assoc (t u v : Trace ι D C) : seq (seq t u) v = seq t (seq u v) := by
   simp [seq, add_assoc]
 end Trace
 
@@ -90,26 +101,29 @@ end Trace
 the sampled response.  (The sampled pair is taken apart by projections, not
 by a pattern: a `match` here makes evaluation by `rfl` exponential in the
 number of requests.) -/
-def run {ι : Interface} {D : Domain} {C α : Type} [AddMonoid C] {m : Type → Type} [Monad m]
-    (M : Model ι D m) (K : CostModel ι C) : Prog ι D α → m (α × Trace ι C)
+def run {ι : Interface} {D : Domain} {C α : Type} [AddMonoid C] {m : Type → Type} [Monad m] [Look D m]
+    (M : Model ι D m) (K : CostModel ι C) : Prog ι D α → m (α × Trace ι D C)
   | .pure a => pure (a, Trace.zero)
   | .call r k => do
     let p ← M.step r
     let res ← run M K (k p.1)
     pure (res.1, Trace.seq ⟨K.op r.op, [⟨r.op, r.args.blank, (ι.cod r.op).blank p.1, p.2⟩]⟩ res.2)
+  | .look c k => do
+    let v ← Look.look c
+    run M K (k v)
 
 section Observables
-variable {ι : Interface} {D : Domain} {C α : Type} [AddMonoid C]
+variable {ι : Interface} {D : Domain} {C α : Type} [AddMonoid C] [Look D Id] [Look D PMF]
 
 /-- Evaluation (`m := Id`): the output of one run. -/
 def output (M : Model ι D Id) (c : Prog ι D α) : α := (Id.run (run M CostModel.unit c)).1
 /-- Evaluation: the view of one run. -/
-def view (M : Model ι D Id) (c : Prog ι D α) : List (Event ι) := (Id.run (run M CostModel.unit c)).2.view
+def view (M : Model ι D Id) (c : Prog ι D α) : List (Event ι D) := (Id.run (run M CostModel.unit c)).2.view
 /-- Evaluation: the cost of one run. -/
 def cost (M : Model ι D Id) (K : CostModel ι C) (c : Prog ι D α) : C := (Id.run (run M K c)).2.cost
 
 /-- **The semantics** (`m := PMF`): the distribution of (output, view). -/
-noncomputable def dist (M : Model ι D PMF) (c : Prog ι D α) : PMF (α × List (Event ι)) :=
+noncomputable def dist (M : Model ι D PMF) (c : Prog ι D α) : PMF (α × List (Event ι D)) :=
   (fun p => (p.1, p.2.view)) <$> run M CostModel.unit c
 end Observables
 
@@ -121,16 +135,22 @@ composition theorems need.  `run_lift`: a coin-free program under a lifted
 model is a point, so `rfl` at `Id` is a theorem at `PMF`. -/
 
 section Laws
-variable {ι : Interface} {D : Domain} {C α β : Type} [AddMonoid C] {m : Type → Type} [Monad m]
+variable {ι : Interface} {D : Domain} {C α β : Type} [AddMonoid C] {m : Type → Type} [Monad m] [Look D m] [Look D PMF]
 
+omit [Look D PMF] in
 @[simp] theorem run_pure (M : Model ι D m) (K : CostModel ι C) (a : α) :
     run M K (.pure a) = pure (a, Trace.zero) := rfl
 
+omit [Look D PMF] in
 theorem run_call (M : Model ι D m) (K : CostModel ι C) (r : Req ι D) (k : Resp ι D r.op → Prog ι D α) :
     run M K (.call r k) = (do
       let p ← M.step r
       let res ← run M K (k p.1)
       pure (res.1, Trace.seq ⟨K.op r.op, [⟨r.op, r.args.blank, (ι.cod r.op).blank p.1, p.2⟩]⟩ res.2)) := rfl
+
+omit [Look D PMF] in
+theorem run_look (M : Model ι D m) (K : CostModel ι C) {T : Type} (c : D.cl T) (k : T → Prog ι D α) :
+    run M K (.look c k) = (do let v ← Look.look c; run M K (k v)) := rfl
 
 /-- `>>=`, `pure` and `<$>` on `PMF` are Mathlib's `PMF.bind`, `PMF.pure`, `PMF.map`. -/
 theorem PMF.monad_bind_eq_bind {α β : Type} (p : PMF α) (f : α → PMF β) : p >>= f = p.bind f := rfl
@@ -139,6 +159,7 @@ theorem PMF.monad_map_eq_map {α β : Type} (f : α → β) (p : PMF α) : f <$>
 
 variable [LawfulMonad m]
 
+omit [Look D PMF] in
 theorem run_bind (M : Model ι D m) (K : CostModel ι C) (c : Prog ι D α) (k : α → Prog ι D β) :
     run M K (Prog.bind c k) = (do
       let r ← run M K c
@@ -147,18 +168,29 @@ theorem run_bind (M : Model ι D m) (K : CostModel ι C) (c : Prog ι D α) (k :
   induction c with
   | pure a => simp [run]
   | call r k' ih => simp only [Prog.bind_call, run_call, ih, bind_assoc, pure_bind, Trace.seq_assoc]
+  | look c k' ih => simp only [Prog.bind_look, run_look, ih, bind_assoc]
 
-theorem run_lift (M : Model ι D Id) (K : CostModel ι C) (c : Prog ι D α) :
+/-- At the ideal domain a look is invisible to the interpreter. -/
+theorem run_look_ideal (M : Model ι .ideal m) (K : CostModel ι C) {T : Type} (c : Domain.ideal.cl T)
+    (k : T → Prog ι .ideal α) : run M K (.look c k) = run M K (k c) := by
+  simp [run_look]
+
+theorem run_lift (M : Model ι .ideal Id) (K : CostModel ι C) (c : Prog ι .ideal α) :
     run (M.lift m) K c = pure (Id.run (run M K c)) := by
   induction c with
   | pure a => rfl
   | call r k ih =>
     simp only [run_call, ih, Model.lift_step]
     exact (pure_bind _ _).trans (by simp only [pure_bind]; rfl)
+  | look c k ih => simp only [run_look_ideal, ih]
 
-theorem dist_lift (M : Model ι D Id) (c : Prog ι D α) :
+theorem dist_lift (M : Model ι .ideal Id) (c : Prog ι .ideal α) :
     dist (M.lift PMF) c = pure (output M c, view M c) := by
   simp [dist, run_lift, output, view]
+
+theorem dist_look (M : Model ι .ideal PMF) {T : Type} (c : Domain.ideal.cl T) (k : T → Prog ι .ideal α) :
+    dist M (.look c k) = dist M (k c) := by
+  simp [dist, run_look_ideal]
 
 theorem dist_pure (M : Model ι D PMF) (a : α) : dist M (.pure a) = pure (a, []) := by
   simp [dist]
@@ -179,12 +211,14 @@ theorem dist_bind (M : Model ι D PMF) (c : Prog ι D α) (k : α → Prog ι D 
       pure (s.1, r.2 ++ s.2)) := by
   simp [dist, run_bind, Trace.seq]
 
+omit [Look D PMF] in
 /-- The result of a run does not depend on the cost model. -/
 theorem run_fst (M : Model ι D m) {C' : Type} [AddMonoid C'] (K : CostModel ι C) (K' : CostModel ι C')
     (c : Prog ι D α) : Prod.fst <$> run M K c = Prod.fst <$> run M K' c := by
   induction c with
   | pure a => simp [run]
   | call r k ih => simp [run_call, ih]
+  | look c k ih => simp [run_look, ih]
 end Laws
 
 end Weft

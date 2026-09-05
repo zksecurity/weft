@@ -1,9 +1,10 @@
-# 018 — Public values and control flow in the timed domain (open)
+# 018 — Public values and control flow in the timed domain
 
-**Status: open.**  This record lays out the design space; no choice has
-been made.  It exists because the current mechanism (two global clocks
-and a `Barrier` functionality, decisions 002 and 017) is a patch, and
-the author asked whether a better design exists.
+**Decided (2026-09-05): O2.**  The sections below are the exploration
+that led to it, kept as written; the decision and its consequences are at
+the end.  The record exists because the mechanism that preceded it (two
+global clocks and a `Barrier` functionality, decisions 002 and 017) was a
+patch, and the author asked whether a better design exists.
 
 ## The question
 
@@ -179,9 +180,9 @@ Either replaces the free monad, loses `do`-notation over Lean's own
 | O5 | types | none | exact, static | value-dependent types | rewrite |
 | O6 | none | none | exact, static | yes | rewrite |
 
-## Leaning
+## Decision
 
-O2, with O3 as its `look`-free fragment.  It is the design three
+**O2**, with O3 as its `look`-free fragment.  It is the design three
 production systems arrived at independently, it is the only one that
 is both exact and complete without annotations, and it makes the
 scheduling state one number with an obvious meaning.  If public control
@@ -202,3 +203,21 @@ constructor and one field, and can be chosen later by deleting them.
   (clocked type theory); Guatto, *A Generalized Modality for Recursion*.
 * Rastogi et al., *Wysteria*; Darais et al., *Symphony*; Acay et al.,
   *Viaduct*.
+
+## Consequences
+`Domain` is `⟨sh, cl, app⟩`; `Domain.timed.cl := Timed`, whose applicative
+takes the latest input; `Prog` has a third constructor, `look`, with a
+case in every induction (`run_bind`, `handle_realizes`, `cost_handle`,
+`Valid`, `runOut_timed`, `budget`) and a `Look D m` instance saying what
+a look does in a monad (`pure` at the ideal domain; advance `now` in the
+timed one).  The reveal clock, the control clock and `Barrier` are gone;
+the scheduling state is `now` and the communication counter.  `delayOn`
+is the max of the output's time and `now`, which closes the report's
+`pure`-selection gap.  `Event` is indexed by the domain of the run, with
+the ideal domain as default, so a timed run records timed clear operands
+and nothing extracts a value from a `D.cl T` except `look`.  The
+examples that used the barrier use `look`; the adder in the conversions
+lost a round it never needed (its carry chain starts from a program-time
+zero, which the reveal clock used to hold back).  `Prog` lives in
+`Type 1`, as the report's design already had it.
+

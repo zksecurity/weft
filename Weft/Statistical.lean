@@ -85,5 +85,6 @@ noncomputable def budget {ι : Interface} (M : Model ι .ideal PMF) (ε : ι.Op 
     Prog ι .ideal α → ENNReal
   | .pure _ => 0
   | .call r k => ε r.op + ∑' z, M.step r z * budget M ε (k z.1)
+  | .look c k => budget M ε (k c)
 
 end Weft

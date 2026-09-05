@@ -168,7 +168,7 @@ def rand (F : Type) [Fintype F] [Inhabited F] [Has (Rand F) fs] : Prog fs.ops D 
 def randNZ (F : Type) [Zero F] [One F] [Nontrivial F] [Fintype F] [DecidableEq F] [Has (RandNZ F) fs] :
     Prog fs.ops D (D.sh F) :=
   Prog.op (F := RandNZ F) ⟨.randNZ, ()⟩
-def coin (F : Type) [Fintype F] [Inhabited F] [Has (PubCoin F) fs] : Prog fs.ops D F :=
+def coin (F : Type) [Fintype F] [Inhabited F] [Has (PubCoin F) fs] : Prog fs.ops D (D.cl F) :=
   Prog.op (F := PubCoin F) ⟨.coin, ()⟩
 def mulTriple (F : Type) [Mul F] [Fintype F] [Inhabited F] [Has (MulTriple F) fs] :
     Prog fs.ops D (D.sh F × D.sh F × D.sh F) :=

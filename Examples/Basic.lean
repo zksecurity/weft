@@ -44,12 +44,12 @@ def prodTree [Has (Mult F) fs] : Tree (D.sh F) → Prog fs.ops D (D.sh F)
     mul a b
 
 /-- Reveal the product: the view is the product, and nothing else. -/
-def openMul [Has (Mult F) fs] [Has (Reveal F) fs] (a b : D.sh F) : Prog fs.ops D F := do
+def openMul [Has (Mult F) fs] [Has (Reveal F) fs] (a b : D.sh F) : Prog fs.ops D (D.cl F) := do
   let p ← mul a b
   reveal p
 
 /-- Reveal both inputs and multiply in the clear: correct, but not private. -/
-def leakyMul [Has (Reveal F) fs] (a b : D.sh F) : Prog fs.ops D F := do
+def leakyMul [Has (Reveal F) fs] (a b : D.sh F) : Prog fs.ops D (D.cl F) := do
   let x ← reveal a
   let y ← reveal b
   pure (x * y)
@@ -97,7 +97,7 @@ def tripleFromRand [Fintype F] [Inhabited F] [Has (Rand F) fs] [Has (Mult F) fs]
 def randomCombination [Fintype F] [Inhabited F] [OfNat F 0] [Has (Lin F) fs] [Has (PubCoin F) fs]
     (xs : List (D.sh F)) : Prog fs.ops D (D.sh F) := do
   let r ← coin F
-  let rec go (p : F) : List (D.sh F) → Prog fs.ops D (D.sh F)
+  let rec go (p : D.cl F) : List (D.sh F) → Prog fs.ops D (D.sh F)
     | [] => const 0
     | x :: xs => do
       let t ← smul p x

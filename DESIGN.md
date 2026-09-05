@@ -96,12 +96,13 @@ opened value) has a clear shape, a secret input is a share, so the
 public part of a request is structural (`Interface.lean`, `Shape.lean`):
 
 ```lean
-structure Domain where sh : Type → Type              -- what a share of a `T` is
-abbrev Domain.ideal  : Domain := ⟨fun T => T⟩         -- a share is its value: semantics and privacy live here
-abbrev Domain.erased : Domain := ⟨fun _ => Unit⟩      -- what the adversary sees of a response
+structure Domain where (sh cl : Type → Type) (app : Applicative cl)   -- a share of a `T`; a clear `T`
+abbrev Domain.ideal   : Domain := ⟨fun T => T, fun T => T, _⟩   -- a share is its value, a clear value is plain
+abbrev Domain.erase D : Domain := ⟨fun _ => Unit, D.cl, D.app⟩ -- what the adversary sees of a request in `D`
+abbrev Domain.timed   : Domain := ⟨Timed, Timed, _⟩            -- everything carries its ready time (§3.5)
 
 inductive Shape | unit | clear (T : Type) | share (T : Type) | prod (a b : Shape) | vec (n : Nat) (a : Shape) | list (a : Shape)
-def Shape.interp (D : Domain) : Shape → Type          -- `share T ↦ D.sh T`, `clear T ↦ T`, …
+def Shape.interp (D : Domain) : Shape → Type          -- `share T ↦ D.sh T`, `clear T ↦ D.cl T`, …
 def Shape.blank : (s : Shape) → s.interp D → s.interp .erased   -- clear parts kept, shares become `()`
 
 structure Interface where
@@ -143,7 +144,6 @@ abbrev Cmp       (F) : Functionality      -- lt     : [share F, share F] → sha
 abbrev Rand      (F) : Functionality      -- rand   : [] → share F, uniform            (Std/Random.lean)
 abbrev PubCoin   (F) : Functionality      -- coin   : [] → clear F, uniform: public by shape
 abbrev MulTriple (F) : Functionality      -- get    : [] → share F × share F × share F, (a, b, a·b)
-abbrev Barrier       : Functionality      -- barrier : [] → unit; its own timed model (§3.5)
 
 abbrev Hybrid := List Functionality
 abbrev Std (F) : Hybrid := [Lin F, Mult F, Reveal F]          -- the arithmetic black box
@@ -172,15 +172,19 @@ Which of them an MPC offers, and what they cost, is again a list (§2.6).
 ### 2.2 Programs: the free monad
 
 ```lean
-inductive Prog (ι : Interface) (D : Domain) : Type → Type where
+inductive Prog (ι : Interface) (D : Domain) : Type → Type 1 where
   | pure : α → Prog ι D α
   | call (r : Req ι D) : (Resp ι D r.op → Prog ι D α) → Prog ι D α      -- ask, then continue
+  | look (c : D.cl T) : (T → Prog ι D α) → Prog ι D α                   -- look at a clear value, then continue
 ```
 
 `call r k` sends request `r` and continues with `k` on the response.
 The continuation is arbitrary Lean code: that is where the "compute in the
-clear and insert back" happens, with no special support, and where a
-program branches on a public value.
+clear and insert back" happens, with no special support.  A clear value is
+a `D.cl T`, an applicative the program computes on without seeing inside
+(`e * d`, `f <$> c`); to branch on one, the program says `look c fun v =>
+…`, the only way to obtain a `T`.  The ideal semantics ignores `look`; the
+timed domain is where it matters (§3.5, decision 018).
 
 ```lean
 def divByOpened [Has (Lin F) fs] [Has (Reveal F) fs] [Div F] [OfNat F 1] (x d : D.sh F) : Prog fs.ops D (D.sh F) := do
@@ -191,13 +195,12 @@ def divByOpened [Has (Lin F) fs] [Has (Reveal F) fs] [Div F] [OfNat F 1] (x d : 
 There is no parallel node. Monadic `bind` is sequential *as a program*, but
 delay is not read off the program order: it is computed from data
 dependencies in the timed domain (§3.5), so `mapM mul` over a list is one
-round and a product tree written with plain binds costs its depth. The
-only annotation a program ever needs is a `barrier` where it branches on a
-revealed value (decision 002).
+round and a product tree written with plain binds costs its depth. A
+program needs no annotation of any kind (decisions 002, 018).
 
 `Prog ι D` is a lawful monad (`bind_pure`, `bind_assoc` by induction), so
 `do`-notation, `List.mapM`, etc. all work, and the interpreter and every
-compositional theorem have exactly two cases. `Prog.handle` implements
+compositional theorem have exactly three cases. `Prog.handle` implements
 every request of one interface by a program over another; it is inlining,
 and it is what composition means (§5).
 
@@ -725,7 +728,7 @@ removed the coin tape:
   semantics is the point at that evaluation, so `rfl` proofs transfer to
   the semantics.
 * `m := Sched := StateT Clock Id` is **scheduling**: the timed domain of
-  §3.5, where a clock records what has been revealed.
+  §3.5, where the state is the round the program has reached.
 
 The *ideal* domain identifies shares with values, `Domain.ideal := ⟨fun T
 => T⟩`; models are stated there. The models of `Std` are the obvious
@@ -754,10 +757,10 @@ excludes, and are supported (report, Scope decisions).
 
 ```lean
 structure Price where (delay : Nat) (comm : Nat)      -- what an MPC charges for an operation
-structure Clock where (clock revealed comm : Nat := 0) -- control clock, reveal clock, communication so far
+structure Clock where (clock comm : Nat := 0)         -- `now`, and the communication so far
 abbrev Sched := StateT Clock Id                        -- the cost monad
 
-def delayOn (M : Model ι .timed Sched) (c : Prog ι .timed (Timed T)) : Nat := (Sched.output M c).time
+def delayOn (M : Model ι .timed Sched) (c : Prog ι .timed (Timed T)) : Nat  -- max of output time and `now`
 def commOn  (M : Model ι .timed Sched) (c : Prog ι .timed α)         : Nat := (Sched.run M c).2.comm
 ```
 
@@ -886,9 +889,9 @@ theorem Realizations.commOn_timed  … : commOn  (g.timed T) c = commOn  T (Prog
 ```
 
 This is exact by construction (`Cost.lean`, an induction on the caller
-with `run_bind`), for every caller, reactive or not, and with the global
-clocks included: the callee's reveals and barriers act on the caller's
-clocks exactly as they would inlined. A hand-written model of the
+with `run_bind`), for every caller, reactive or not, and with the state
+included: a look inside the callee advances the caller's `now` exactly as
+it would inlined. A hand-written model of the
 abstract operation, one latency or a per-input profile, is an
 *approximation* of this one; what it approximates is now a definition.
 `Examples/Timing.lean` has one functionality `MulAdd` and three MPCs for
@@ -932,22 +935,14 @@ from each input to the output inside the implementation,
 
 is exact for a straight-line callee in isolation (`Examples/Timing.lean`:
 atomic 2, profiled 1, derived 1, inlined 1). It is **not** exact in
-general (report, Issue 10): the reveal and control clocks are global
-state, so an inlined callee that reveals, computes in the clear and
-inserts back waits on every earlier reveal of the *caller*, which no
-per-input profile of the callee can know, and even `smul 1 x` after a
-reveal at time `T` returns at `T` while its isolated profile is zero.
-The clocks over-approximate dependency edges of weight zero whose source
-the interpreter cannot see, because clear values carry no time. Whether a
-hand-written model that *dominates* the derived one (later times, later
-clocks, more communication, for every request and state) gives an upper
-bound on every caller is a monotonicity statement about the interpreter
-that needs the caller to be domain-generic, which Lean cannot know of a
-program at the timed domain; it is not attempted (§8). What is kept:
-`Barrier` and the control clock (the reveal-then-branch program
-undercounts, 1 round instead of 3, without it). Known gap: a revealed
-branch that selects an existing share with `pure` escapes the control
-time.
+general: a callee that looks at an opened value advances `now`, which no
+per-input profile can express, since a profile has no effect on the
+state. Whether a hand-written model that *dominates* the derived one
+(later times, later `now`, more communication, for every request and
+state) gives an upper bound on every caller is a monotonicity statement
+about the interpreter that needs the caller to be domain-generic, which
+Lean cannot know of a program at the timed domain; it is not attempted
+(§8).
 
 So the round semantics is eager scheduling: no `∥` to write, delay and
 communication computed by one run, and both composing exactly when an
@@ -969,20 +964,20 @@ polymorphic in the domain, and a second monad, because the clock is state:
 
 ```lean
 structure Timed (T : Type) where (val : T) (time : Nat)
-abbrev Domain.timed : Domain := ⟨Timed⟩                       -- shares are timed, clear values plain
-structure Clock where (clock revealed comm : Nat := 0)         -- control clock, reveal clock, communication
+abbrev Domain.timed : Domain := ⟨Timed, Timed, Timed.applicative⟩   -- shares and clear values are timed
+structure Clock where (clock comm : Nat := 0)                 -- `now`, and the communication so far
 abbrev Sched := StateT Clock Id                               -- the scheduling monad
+instance : Look .timed Sched := ⟨fun c s => (c.val, { s with clock := max s.clock c.time })⟩  -- `look`
 
 /-- One generic timed model for every interface, from the evaluation model and a price per operation:
-ready at `max (operand times, clock) + delay`; an operation with a clear operand also waits for the reveal
-clock; a clear response raises the reveal clock; `comm` is paid.  (`Barrier.timed` raises the control clock.)
-Written without `let`, so that kernel evaluation is linear in the number of requests. -/
+ready at `max (operand times, now) + delay`; `comm` is paid.  Written without `let`, so that kernel
+evaluation is linear in the number of requests. -/
 def Model.timed (E : Model ι .ideal Id) (p : ι.Op → Price) : Model ι .timed Sched
 abbrev Functionality.priced (F : Functionality) (p : Price) : MPC.Entry := ⟨F, Model.timed F.eval fun _ => p⟩
 
-def delayOn    (M : Model ι .timed Sched) (c : Prog ι .timed (Timed T)) : Nat := (Sched.output M c).time
-def delayClear (M : Model ι .timed Sched) (c : Prog ι .timed α) : Nat := (Sched.run M c).2.revealed
-def commOn     (M : Model ι .timed Sched) (c : Prog ι .timed α) : Nat := (Sched.run M c).2.comm
+def delayOn   (M : Model ι .timed Sched) (c : Prog ι .timed (Timed T)) : Nat  -- max (output time, now)
+def Sched.now (M : Model ι .timed Sched) (c : Prog ι .timed α) : Nat          -- `now` when the program is done
+def commOn    (M : Model ι .timed Sched) (c : Prog ι .timed α) : Nat          -- the counter when it is done
 ```
 
 With this, sequential `do`-code gets the parallel count and no `∥` is
@@ -996,24 +991,22 @@ def mul4seq [Has (Mult F) fs] (a b c d : D.sh F) : Prog fs.ops D (D.sh F) := do
 -- delay 2 (rfl); the chain a·b·c·d is 3; the product tree with plain binds is its depth
 ```
 
-Clear values stay plain, so generic programs branch on them as usual; what
-the dependency graph cannot see about them, two clocks in the scheduling
-state cover. The *reveal clock* is the latest time at which anything
-became clear, and any operation with a clear operand (`const`, `smul`:
-`Operands.hasClear (dom o)`) inherits it, since clear computation is opaque: a value
-revealed at round 2, multiplied in the clear and inserted back with
-`const`, carries round 2 into whatever uses it (`revealThenUse`, 3 rounds
-by `rfl`). The *control clock* handles a branch on a revealed value whose
-arms do not data-depend on it: the program says `barrier` (the `Barrier`
-functionality, semantically a no-op, whose timed model is the one that is
-not the generic one), which raises the
-control clock to the reveal clock, so everything issued afterwards is
-scheduled after the values it branched on (`binarySearch`: 3 levels × 4
-rounds, 12 by kernel `decide`; 4 without the barrier). Reveal itself does
-not raise the control clock, so independent reveals share a round
-(Beaver's two openings). Semantics is untouched: the timed model computes
-the same values, only tagged, and coins get a dummy value, which delay
-never depends on.
+Clear values are timed like shares (`Domain.timed.cl := Timed`), and
+`Timed` is an applicative that takes the latest input, so a value revealed
+at round 2, multiplied in the clear and inserted back with `const`,
+carries round 2 into whatever uses it as an ordinary data edge
+(`revealThenUse`, 3 rounds by `rfl`), and nothing waits for an opened
+value it does not use: two openings in sequence are one round (Beaver).
+The one piece of state, `now`, is the round at which the program is
+issuing requests, and only `look` advances it: a branch on an opened
+value is written `look bit fun bit => …`, everything issued in the
+continuation is scheduled after the value is known, and there is no other
+way to branch (`binarySearch`: 3 levels × 4 rounds, 12 by kernel
+`decide`; the output is a plain index, so its delay is `Sched.now`).
+`delayOn` is the max of the output's time and `now`, so a branch that
+merely selects an old share is counted from the look. Semantics is
+untouched: the timed model computes the same values, only tagged, and
+coins get a dummy value, which delay never depends on.
 
 For families ("`prodAll` on `n` elements is `⌈log₂ n⌉` rounds") the generic
 technique is an induction using `run_bind` and `omega`, with the gallery
@@ -1811,10 +1804,8 @@ explicitly protocol-agnostic.
   interop), index shapes by a code for the response type instead.
 * **Parallelism is computed.** `bind` never parallelises, and there is no
   parallel node; the timed domain reads the dependency graph (decision
-  002). A program whose branch on a revealed value is not a data
-  dependency must say `barrier`; forgetting it under-counts, which a
-  syntactic check ("every `if` on a revealed value is preceded by a
-  barrier") could enforce.
+  002), and a branch on an opened value goes through `look`, which
+  cannot be omitted (decision 018).
 * **Mathlib is the base.** The library depends on Mathlib and uses its
   definitions wherever one exists: `Field`, `CommRing`, `Inv` and `ZMod`
   for fields (`ring`/`field_simp` close the algebra), `Equiv` for the mask
@@ -1837,5 +1828,4 @@ explicitly protocol-agnostic.
   policy for list hybrids and price lists; the response shapes still to
   be added (`Option`, sums, clear-indexed dependent pairs); how the
   `program` check binds to a certificate obtained through `comp`; the
-  timing contract (the `barrier` discipline, random public control flow,
-  the `pure`-selection gap).
+  timing contract for random public control flow.

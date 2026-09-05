@@ -104,7 +104,7 @@ def sort4 [Has (Lin F) fs] [Has (Mult F) fs] [Has (Cmp F) fs] (a b c d : D.sh F)
 step opens one comparison bit and branches on it in the clear.  The opened
 bits are exactly the path to the answer, so the program's view is a function
 of its (public) output. -/
-def binarySearch [Has (Lin F) fs] [Has (Cmp F) fs] [Has (Reveal F) fs] [Has Barrier fs] [DecidableEq F]
+def binarySearch [Has (Lin F) fs] [Has (Cmp F) fs] [Has (Reveal F) fs] [DecidableEq F]
     (s : D.sh F) (xs : List F) : Prog fs.ops D Nat :=
   go xs.length xs
 where
@@ -116,12 +116,12 @@ where
         let m ← const (xs[n]?.getD 0)
         let c ← lt s m
         let bit ← reveal c
-        barrier                         -- the program is about to branch on `bit`
-        if bit = 0 then do
-          let i ← go fuel (xs.drop n)
-          pure (n + i)
-        else
-          go fuel (xs.take n)
+        Prog.look bit fun bit =>        -- the program branches on `bit`: nothing before it is known
+          if bit = 0 then do
+            let i ← go fuel (xs.drop n)
+            pure (n + i)
+          else
+            go fuel (xs.take n)
 
 /-! ## 6. Masked opening: a zero test that reveals only the answer -/
 
@@ -132,7 +132,7 @@ def isZero [Fintype F] [Inhabited F] [DecidableEq F]
   let r ← rand F
   let y ← mul x r
   let v ← reveal y
-  const (if v = 0 then 1 else 0)
+  const ((fun v => if v = 0 then 1 else 0) <$> v)
 
 /-! ## 7. Structured data: records of shares -/
 
@@ -154,7 +154,7 @@ def dist2 [Has (Lin F) fs] [Has (Mult F) fs] (p q : Point D F) : Prog fs.ops D (
 opening `x − a` and `y − b`, then `x·y` is public and no extra opening is
 needed.  Written against `Pre`, not `Std`. -/
 def mulOpen [Fintype F] [Inhabited F] [Has (Lin F) fs] [Has (Reveal F) fs] [Has (MulTriple F) fs]
-    (x y : D.sh F) : Prog fs.ops D F := do
+    (x y : D.sh F) : Prog fs.ops D (D.cl F) := do
   let (a, b, c) ← mulTriple F
   let u₁ ← sub x a
   let e ← reveal u₁
@@ -218,18 +218,18 @@ example (p q : Point .ideal F) : view M (dist2 (fs := Std F) p q)
        ⟨Std.lin F .add, ((), (), ()), (), ()⟩] := rfl
 end Theorems
 
-/-! ### Programs that use comparison: a hybrid with `Cmp` and `Barrier` -/
+/-! ### Programs that use comparison: a hybrid with `Cmp` -/
 
-/-- The black box with comparison and a barrier. -/
+/-- The black box with comparison. -/
 abbrev StdCmp (F : Type) [Add F] [Mul F] [Sub F] [LT F] [DecidableRel (α := F) (· < ·)] [Zero F] [One F] : Hybrid :=
-  [Lin F, Mult F, Reveal F, Cmp F, Barrier]
+  [Lin F, Mult F, Reveal F, Cmp F]
 
 section Cmp
 variable (F : Type) [Add F] [Mul F] [Sub F] [LT F] [DecidableRel (α := F) (· < ·)] [Zero F] [One F]
 
 /-- Its cost instantiation, with the comparison priced at `cmp` rounds. -/
 def StdCmp.timed (cmp : Nat := 3) : Model (StdCmp F).ops .timed Sched :=
-  MPC.timed [(Lin F).priced ⟨0, 0⟩, (Mult F).priced ⟨1, 2⟩, (Reveal F).priced ⟨1, 1⟩, (Cmp F).priced ⟨cmp, 4⟩, Barrier.priced]
+  MPC.timed [(Lin F).priced ⟨0, 0⟩, (Mult F).priced ⟨1, 2⟩, (Reveal F).priced ⟨1, 1⟩, (Cmp F).priced ⟨cmp, 4⟩]
 end Cmp
 
 -- 4. sorting network: the middle outputs go through all 3 layers, 3 × (3 + 1) rounds;
@@ -257,10 +257,10 @@ example : openedBits (view (StdCmp Int).eval (binarySearch (F := Int) (fs := Std
     = [0, 1, 0] := by decide +kernel
 example : openedBits (view (StdCmp Int).eval (binarySearch (F := Int) (fs := StdCmp Int) (D := .ideal) 12 sorted))
     = [0, 1, 0] := by decide +kernel
--- Delay 3 × (3 + 1): each level's comparison waits, through the barrier, for the
--- previous level's revealed bit.  Without the barrier the levels would look
--- independent and the count would be 4.
-example : delayClear (StdCmp.timed Int) (binarySearch (F := Int) (fs := StdCmp Int) (D := .timed) ⟪11⟫ sorted) = 12 := by
+-- Delay 3 × (3 + 1): each level's comparison is issued after the program has looked at the
+-- previous level's opened bit.  The output is a plain index assembled from looks, so the
+-- delay is `now` at the end.
+example : Sched.now (StdCmp.timed Int) (binarySearch (F := Int) (fs := StdCmp Int) (D := .timed) ⟪11⟫ sorted) = 12 := by
   decide +kernel
 end
 
@@ -281,7 +281,7 @@ end
 -- 8. multiply-and-reveal on the preprocessing functionality: two rounds, three reveals.
 section
 variable (F : Type) [Field F] [Fintype F] [Inhabited F]
-example : delayClear (Pre.timed (Fin 7)) (mulOpen (F := Fin 7) (fs := Pre (Fin 7)) (D := .timed) ⟪3⟫ ⟪4⟫) = 2 := by
+example : delayOn (Pre.timed (Fin 7)) (mulOpen (F := Fin 7) (fs := Pre (Fin 7)) (D := .timed) ⟪3⟫ ⟪4⟫) = 2 := by
   decide +kernel
 -- The semantics: the triple is a jointly uniform pair, and the three opened
 -- values are the two masked inputs and the masked product.
