@@ -163,6 +163,8 @@ theorem dist_lift (M : Model ι D Id) (c : Prog ι D α) :
 theorem dist_pure (M : Model ι D PMF) (a : α) : dist M (.pure a) = pure (a, []) := by
   simp [dist]
 
+theorem dist_pure' (M : Model ι D PMF) (a : α) : dist M (pure a) = pure (a, []) := dist_pure M a
+
 theorem dist_call (M : Model ι D PMF) (r : Req ι D) (k : Resp ι D r.op → Prog ι D α) :
     dist M (.call r k) = (do
       let p ← M.step r

@@ -47,7 +47,7 @@ end Weft
 namespace Weft
 attribute [weft] Prog.bind_eq Prog.pure_eq Prog.bind_pure' Prog.bind_call Prog.handle_pure Prog.handle_call
   Prog.op_here Prog.op_there Prog.lift Prog.opHead
-  dist_bind dist_call dist_pure Hybrid.model_cons_zero Hybrid.model_cons_succ
+  dist_bind dist_call dist_pure dist_pure' Hybrid.model_cons_zero Hybrid.model_cons_succ
   Model.det_step Model.lift_step Model.silent Model.det Model.program Id.run_pure
   PMF.monad_bind_eq_bind PMF.monad_pure_eq_pure PMF.monad_map_eq_map
   PMF.map_bind PMF.pure_map PMF.bind_map PMF.bind_bind PMF.pure_bind PMF.bind_pure

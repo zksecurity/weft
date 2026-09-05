@@ -40,10 +40,11 @@ private def offence (env : Environment) (strict : Bool) (n : Name) : Option Stri
   else match env.find? n with
     | some ci =>
       if ci.isUnsafe then some "unsafe"
+      else if strict && n == ``Classical.choice then some "Classical.choice"
+      else if !isLocalConst n then none   -- the standard library's externs are its own business
       else if (Compiler.getImplementedBy? env n).isSome then some "implemented_by"
       else if isExtern env n then some "extern"
       else if ci.isPartial then some "partial"
-      else if strict && n == ``Classical.choice then some "Classical.choice"
       else none
     | none => some "unknown"
 

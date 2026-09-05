@@ -197,10 +197,10 @@ end Realization
 namespace Realizations
 
 /-- Every component available in the target: the trivial realisations. -/
-noncomputable def incl : (fs : Hybrid) → (gs : Hybrid) → [s : Incl fs gs] → Realizations fs gs
+noncomputable def incl : (fs : Hybrid) → (gs : Hybrid) → [Incl fs gs] → Realizations fs gs
   | [], _, _ => .nil
   | F :: fs, gs, s => .cons (Realization.incl F gs (h := s.has ⟨0, Nat.zero_lt_succ _⟩))
-      (incl fs gs (s := ⟨fun i => s.has ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩⟩))
+      (@incl fs gs ⟨fun i => s.has ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩⟩)
 
 /-- The identity: every component of `fs` realised by itself. -/
 noncomputable abbrev id (fs : Hybrid) : Realizations fs fs := incl fs fs
