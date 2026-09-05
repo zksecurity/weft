@@ -26,14 +26,16 @@ models live beside the functionalities, in the MPC.
 
 ## Disclosure is typed per operation
 `Interface.leak : Op → Type` replaces the report's `List Pub`
-(decision 014).  `Event ⟨op, out, leak⟩` is then a dependent record;
+(decision 014).  `Event ⟨op, args, out, leak⟩` is then a dependent record;
 `Event.shift` reindexes it along a hybrid.
 
-## Scheduling metadata lives on the interface
-`Interface.clearArg` (the operation carries a clear argument, so it waits
-for the reveal clock) and `Interface.barrier` (the operation is a barrier)
-are fields of the interface with defaults `false`, trusted like the rest
-of it.  The timed model of a functionality is what actually reads them.
+## No scheduling metadata on the interface
+A first version had two trusted flags, `pubArg` (the operation carries a
+clear argument, so it waits for the reveal clock) and `ctrl` (the
+operation is a barrier).  Both are gone: a clear operand is a clear shape
+in `dom`, so the timed model reads `Operands.hasClear`; and `Barrier` is
+the one functionality with a timed model of its own, which raises the
+control clock.
 
 ## Evaluation performance
 Evaluation by `rfl` was exponential in the number of requests, for three

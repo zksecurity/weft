@@ -44,7 +44,7 @@ namespace SwitchF
 inductive Op where | switch
 abbrev ops (F G : Type) : Interface where
   Op := Op
-  dom _ := [F]
+  dom _ := [.share F]
   cod _ := .share G
 /-- The canonical representative, re-read in the target (the integer value if in range). -/
 def eval (F G : Type) [Encodable F] [NatCast G] : Model (ops F G) .ideal Id :=
@@ -192,7 +192,7 @@ abbrev mixed : MPC := [
 /-- The values opened by a run over `mixed`. -/
 def openedMixed : List (Event mixed.hybrid.ops) → List (ZMod 17) :=
   List.filterMap fun e => match e with
-    | ⟨⟨⟨2, _⟩, .reveal⟩, out, _⟩ => some out
+    | ⟨⟨⟨2, _⟩, .reveal⟩, _, out, _⟩ => some out
     | _ => none
 
 -- What is revealed: `x − r`, as its representative (evaluation with the mask `r = 3`).
@@ -267,8 +267,8 @@ abbrev DaHyb : Hybrid := [Lin (ZMod 17), Lin GF2, Reveal GF2, DaBit (ZMod 17) 1]
 
 /-- The view of one conversion, as a function of the opened bit. -/
 def b2aView (c : GF2) : List (Event DaHyb.ops) :=
-  [⟨⟨3, .get⟩, ((), ()), ()⟩, ⟨⟨1, .add⟩, (), ()⟩, ⟨⟨2, .reveal⟩, c, ()⟩, ⟨⟨0, .const (c.toNat : ZMod 17)⟩, (), ()⟩,
-   ⟨⟨0, .add⟩, (), ()⟩, ⟨⟨0, .smul (2 * (c.toNat : ZMod 17))⟩, (), ()⟩, ⟨⟨0, .sub⟩, (), ()⟩]
+  [⟨⟨3, .get⟩, (), ((), ()), ()⟩, ⟨⟨1, .add⟩, ((), (), ()), (), ()⟩, ⟨⟨2, .reveal⟩, ((), ()), c, ()⟩, ⟨⟨0, .const⟩, ((c.toNat : ZMod 17), ()), (), ()⟩,
+   ⟨⟨0, .add⟩, ((), (), ()), (), ()⟩, ⟨⟨0, .smul⟩, (2 * (c.toNat : ZMod 17), (), ()), (), ()⟩, ⟨⟨0, .sub⟩, ((), (), ()), (), ()⟩]
 
 /-- **The semantics of `b2a`**: draw a uniform bit `b`, reveal `x + b`, output `x` in `F`. -/
 theorem b2a_dist (x : GF2) :
@@ -286,7 +286,7 @@ theorem b2a_dist (x : GF2) :
 
 /-- The Boolean-to-arithmetic functionality: one `𝔽₂` operand, a share of `F`, nothing declared. -/
 abbrev B2A : Functionality :=
-  .ofEval ⟨Unit, fun _ => [GF2], fun _ => .share (ZMod 17), fun _ => Unit, fun _ => false, fun _ => false⟩
+  .ofEval ⟨Unit, fun _ => [.share GF2], fun _ => .share (ZMod 17), fun _ => Unit⟩
     ⟨fun r => pure ((GF2.toNat r.args.1 : ZMod 17), ())⟩
 
 /-- **Privacy.**  The revealed bit `x + b` is uniform for either `x`: `b ↦ x + b`

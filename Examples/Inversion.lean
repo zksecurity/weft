@@ -74,7 +74,7 @@ example : delayOn (invMPC (ZMod 7)).timed (divide (F := ZMod 7) (fs := (invMPC (
 
 /-- The view of one inversion, as a function of the opened value. -/
 def invView (m : F) : List (Event (InvHyb F).ops) :=
-  [⟨⟨3, .randNZ⟩, (), ()⟩, ⟨⟨1, .mult⟩, (), ()⟩, ⟨⟨2, .reveal⟩, m, ()⟩, ⟨⟨0, .smul m⁻¹⟩, (), ()⟩]
+  [⟨⟨3, .randNZ⟩, (), (), ()⟩, ⟨⟨1, .mult⟩, ((), (), ()), (), ()⟩, ⟨⟨2, .reveal⟩, ((), ()), m, ()⟩, ⟨⟨0, .smul⟩, (m⁻¹, (), ()), (), ()⟩]
 
 /-- **The semantics of `invert`**: a uniform nonzero mask `s`, the opened
 value `x·s`, and the output `s / (x·s)`. -/
@@ -96,7 +96,7 @@ theorem invert_correct (x : F) (hx : x ≠ 0) :
 
 /-- Inversion, silent: returns `⟦x⁻¹⟧`, declares nothing. -/
 abbrev Invert : Functionality :=
-  .ofEval ⟨Unit, fun _ => [F], fun _ => .share F, fun _ => Unit, fun _ => false, fun _ => false⟩
+  .ofEval ⟨Unit, fun _ => [.share F], fun _ => .share F, fun _ => Unit⟩
     ⟨fun r => pure (r.args.1⁻¹, ())⟩
 
 /-- **Inversion by masking realises silent inversion for `x ≠ 0`.**  The
@@ -124,7 +124,7 @@ program invertReal : Realization (Invert F) (InvHyb F) where
 
 /-- Inversion, total: returns `⟦x⁻¹⟧` (with `0⁻¹ = 0`) and discloses whether `x = 0`. -/
 abbrev InvertTotal : Functionality :=
-  .ofEval ⟨Unit, fun _ => [F], fun _ => .share F, fun _ => Bool, fun _ => false, fun _ => false⟩
+  .ofEval ⟨Unit, fun _ => [.share F], fun _ => .share F, fun _ => Bool⟩
     ⟨fun r => pure (r.args.1⁻¹, decide (r.args.1 = 0))⟩
 
 /-- **The same program realises total inversion with no precondition.**  The

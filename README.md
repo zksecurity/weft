@@ -29,7 +29,7 @@ kept fast on purpose (see "Evaluating programs" below).
 | Module | What it defines |
 |---|---|
 | `Weft/Shape.lean` | `Domain ⟨sh⟩` (a share of a `T`, per domain: `ideal`, `erased`, `timed`); the closed `Shape` language of responses with `interp` and `blank`; `Operands`. |
-| `Weft/Interface.lean` | `Interface ⟨Op, dom, cod, leak, clearArg, barrier⟩`: public operations with clear arguments, share operands, a response shape and a typed disclosure; `Req`, `Resp`, `Event ⟨op, out, leak⟩`. |
+| `Weft/Interface.lean` | `Interface ⟨Op, dom, cod, leak⟩`: public operations, operand shapes (clear or share), a response shape and a typed disclosure; `Req`, `Resp`, `Event ⟨op, args, out, leak⟩`. |
 | `Weft/Prog.lean` | `Prog ι D`, the free monad of programs, polymorphic in the domain; `handle` inlines a program for each request. |
 | `Weft/Model.lean` | `Model ι D m`: one joint `step` per request in a monad; `run`, `dist`, `output`, `view`, `cost`; the laws `run_bind`, `dist_bind`, `dist_call`. |
 | `Weft/Timed.lean` | The cost monad: shares carry a ready time, `Sched` threads the two clocks and a communication counter, `Price ⟨delay, comm⟩`; `delayOn` and `commOn` read delay and communication off one scheduled run. |
@@ -57,8 +57,8 @@ structure Realization (F : Functionality) (fs : Hybrid) where
     pure (p.1, s)
 ```
 
-The adversary's record of a request is the operation (constructor and
-clear arguments), the clear part of the response, and the disclosure the
+The adversary's record of a request is the operation, the clear part of
+the operands, the clear part of the response, and the disclosure the
 functionality declares; the simulator gets nothing else.  Composition is
 `handle_realizes`: a caller valid for the realisation's precondition on the
 support of its ideal run transports, with the simulators composed.  There

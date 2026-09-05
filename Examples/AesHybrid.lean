@@ -32,7 +32,7 @@ namespace AesF
 inductive Op where | enc
 abbrev ops (F : Type) : Interface where
   Op := Op
-  dom _ := [F, F]
+  dom _ := [.share F, .share F]
   cod _ := .share F
 def eval (F : Type) (aes : F → F → F) : Model (ops F) .ideal Id := .silent fun ⟨.enc, (k, m, ())⟩ => aes k m
 end AesF
@@ -83,7 +83,7 @@ is one linear record and two multiplication records, which the simulator
 produces from the AES functionality's event. -/
 program aesByProgram : Realization (AES F toyAes) (Std F) where
   impl D r := toyAesProg r.args.1 r.args.2.1
-  Sim _ := pure [⟨Std.lin F .add, (), ()⟩, ⟨Std.mult F, (), ()⟩, ⟨Std.mult F, (), ()⟩]
+  Sim _ := pure [⟨Std.lin F .add, ((), (), ()), (), ()⟩, ⟨Std.mult F, ((), (), ()), (), ()⟩, ⟨Std.mult F, ((), (), ()), (), ()⟩]
   real r _ := by
     obtain ⟨⟨⟩, k, m, ⟨⟩⟩ := r
     simp only [toyAesProg, toyAes, add, mul, weft, Functionality.ofEval_model, AesF.eval]
@@ -115,7 +115,7 @@ theorem cbc2Plain_output (k iv m₁ m₂ : F) :
 -- The view in the hybrid: nothing but the operations.
 example (k iv m₁ m₂ : F) :
     view (AesHybrid F).eval (cbc2 (fs := AesHybrid F) (D := .ideal) toyAes k iv m₁ m₂)
-      = [⟨⟨1, .add⟩, (), ()⟩, ⟨⟨0, .enc⟩, (), ()⟩, ⟨⟨1, .add⟩, (), ()⟩, ⟨⟨0, .enc⟩, (), ()⟩] := rfl
+      = [⟨⟨1, .add⟩, ((), (), ()), (), ()⟩, ⟨⟨0, .enc⟩, ((), (), ()), (), ()⟩, ⟨⟨1, .add⟩, ((), (), ()), (), ()⟩, ⟨⟨0, .enc⟩, ((), (), ()), (), ()⟩] := rfl
 
 -- Delay, in the timed domain: in the hybrid `enc` is one operation of latency 1 (CBC of two
 -- blocks is 2); after instantiation `enc` costs what the program costs, two dependent
@@ -158,7 +158,7 @@ example (k iv m₁ m₂ : F) :
 
 /-- The specification of the protocol, stated through the AES specification. -/
 abbrev CBC : Functionality :=
-  .ofEval ⟨Unit, fun _ => [F, F, F, F], fun _ => .prod (.share F) (.share F), fun _ => Unit, fun _ => false, fun _ => false⟩
+  .ofEval ⟨Unit, fun _ => [.share F, .share F, .share F, .share F], fun _ => .prod (.share F) (.share F), fun _ => Unit⟩
     ⟨fun r => pure ((toyAes r.args.1 (r.args.2.1 + r.args.2.2.1),
       toyAes r.args.1 (toyAes r.args.1 (r.args.2.1 + r.args.2.2.1) + r.args.2.2.2.1)), ())⟩
 
@@ -166,7 +166,7 @@ abbrev CBC : Functionality :=
 replays the four silent records. -/
 program cbcOverHybrid : Realization (CBC F) (AesHybrid F) where
   impl D r := cbc2 toyAes r.args.1 r.args.2.1 r.args.2.2.1 r.args.2.2.2.1
-  Sim _ := pure [⟨⟨1, .add⟩, (), ()⟩, ⟨⟨0, .enc⟩, (), ()⟩, ⟨⟨1, .add⟩, (), ()⟩, ⟨⟨0, .enc⟩, (), ()⟩]
+  Sim _ := pure [⟨⟨1, .add⟩, ((), (), ()), (), ()⟩, ⟨⟨0, .enc⟩, ((), (), ()), (), ()⟩, ⟨⟨1, .add⟩, ((), (), ()), (), ()⟩, ⟨⟨0, .enc⟩, ((), (), ()), (), ()⟩]
   real r _ := by
     obtain ⟨⟨⟩, k, iv, m₁, m₂, ⟨⟩⟩ := r
     simp only [cbc2, enc, add, weft, Functionality.ofEval_model, AesF.eval]

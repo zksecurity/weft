@@ -22,7 +22,7 @@ namespace RC
 inductive Op where | rc
 abbrev ops (F : Type) : Interface where
   Op := Op
-  dom _ := [F, F]
+  dom _ := [.share F, .share F]
   cod _ := .share F
   leak _ := F
 /-- The joint step: draw `r`, return `x₀ + r·x₁`, disclose `r`. -/
@@ -58,7 +58,7 @@ disclosed coin, and the simulator replays it: the coin record, the scalar
 multiplication by it, the addition. -/
 program randComb2Real : Realization (RandComb F) (CoinHyb F) where
   impl D r := randComb2 F r.args.1 r.args.2.1
-  Sim e := pure [⟨⟨1, .coin⟩, e.leak, ()⟩, ⟨⟨0, .smul e.leak⟩, (), ()⟩, ⟨⟨0, .add⟩, (), ()⟩]
+  Sim e := pure [⟨⟨1, .coin⟩, (), e.leak, ()⟩, ⟨⟨0, .smul⟩, (e.leak, (), ()), (), ()⟩, ⟨⟨0, .add⟩, ((), (), ()), (), ()⟩]
   real r _ := by
     obtain ⟨⟨⟩, x₀, x₁, ⟨⟩⟩ := r
     simp only [randComb2, coin, smul, add, weft, RC.model]

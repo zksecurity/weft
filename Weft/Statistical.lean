@@ -61,7 +61,7 @@ structure RealizationStat (F : Functionality) (fs : Hybrid) where
   output : ∀ r, Pre r → Prod.fst <$> dist fs.model (impl .ideal r) = F.program r
   close : ∀ r, Pre r → PMF.statDist (dist fs.model (impl .ideal r)) (do
     let (y, d) ← F.model.step r
-    let s ← Sim ⟨r.op, (F.ops.cod r.op).blank y, d⟩
+    let s ← Sim ⟨r.op, r.args.blank, (F.ops.cod r.op).blank y, d⟩
     pure (y, s)) ≤ ε r.op
 
 /-- A perfect realisation is a statistical one with `ε = 0`. -/
