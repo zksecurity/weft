@@ -27,5 +27,5 @@ price list. Cost composes the same way (`cost_handle`, derived prices).
 
 ## Subtlety recorded
 "X given Y" is not transitive; the compositional statements are about the
-joint view, which is why `handle_private` gives reveals given (abstract
-reveals, output) and `Hiding.transport` composes joint statements.
+joint view, which is why `handle_realizes` composes joint statements of
+(output, view) and nothing is stated about the view alone.

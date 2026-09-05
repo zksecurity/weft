@@ -1,0 +1,68 @@
+# 016 — Implementation choices of the 2026-09 rewrite
+
+Choices made while implementing the final design of `report.md` that the
+design left open or did not anticipate.  Each is small; together they
+determine what the library looks like.
+
+## Semantics is a predicate, so that programs stay computable
+A `Functionality` does not store its `PMF` model.  It stores an
+evaluation model `eval : Model ops .ideal Id`, a predicate
+`IsModel : Model ops .ideal PMF → Prop` and a proof that exactly one
+model satisfies it; `Functionality.model` is that model, by choice.
+Reason: `PMF` values are noncomputable, and a program over a literal
+hybrid `[Lin F, Reveal F, MulTriple F]` mentions the functionality
+values in its type; with the model as a field every such program would
+be noncomputable and the `program` command could certify nothing.  The
+standard functionalities are `abbrev`s, so that `Has` instances are found
+by unfolding, and each has a `model_eq` simp lemma.
+
+## An evaluation model and a timed model, per functionality
+`eval` gives every functionality a deterministic run (`output`, `view`,
+`cost` by `rfl` or `decide`), with a fixed dummy for randomised
+operations (values under it are meaningless by design; costs and delays
+are not).  `timed : (Op → Nat) → Model ops .timed Sched` gives the timed
+model at given latencies.  The generic `Model.timed` is the default and
+is exact, but evaluating it by `rfl` is slow; the standard
+functionalities and every example functionality supply a hand-written
+one, which is linear.  A hybrid dispatches both by position.
+
+## Disclosure is typed per operation
+`Interface.disc : Op → Type` replaces the report's `List Pub`
+(decision 014).  `Event ⟨op, out, leak⟩` is then a dependent record;
+`Event.shift` reindexes it along a hybrid.
+
+## Scheduling metadata lives on the interface
+`Interface.pubArg` (the operation carries a clear argument, so it waits
+for the reveal clock) and `Interface.ctrl` (the operation is a barrier)
+are fields of the interface with defaults `false`, trusted like the rest
+of it.  The timed model of a functionality is what actually reads them.
+
+## Evaluation performance
+Evaluation by `rfl` was exponential in the number of requests, for three
+reasons, all pattern matches the elaborator re-forced at every reference:
+pairs in the interpreter and the operand helpers (projections now), the
+scheduling state rewritten per request (`Clock.after` returns the state
+itself when nothing changes) and a shape dispatch on every use of a
+response (`Shape.withTimed` matches once).  `Sched` must stay
+`StateT Clock Id`: its pattern-matching bind forces a step exactly once.
+Policy for examples: `rfl` for small generic programs; a closed instance
+over `Fin 7` or `ZMod 17` and `decide +kernel` for larger ones, an order
+of magnitude faster.  A clean `lake build` of library and examples is
+about a minute.
+
+## The `program` command
+Elaborates a `noncomputable def` of type `Realization F fs`, reduces the
+body to `Realization.mk` and walks the implementation's constants: it
+rejects `sorry` and `unsafe` everywhere, `noncomputable` and
+`Classical.choice` in the certificate's own term; for the package's own
+definitions it also rejects `implemented_by`, `extern` and `partial` and
+recurses into them; the standard library's externs are its own business.  Parameters whose type mentions `Weft.Domain` are
+rejected, so an implementation cannot be handed a domain-specific
+operation.  What it does not check is that a composed certificate
+(`Realization.comp`) was built from checked parts; `comp` inlines checked
+programs, so the property is preserved, but not re-verified.
+
+## Open
+The duplicate-entry and reindexing policy for list hybrids and price
+lists; the delay bound for timing profiles; the statistical budget
+theorem.

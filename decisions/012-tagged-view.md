@@ -50,3 +50,15 @@ response unless the functionality leaks it.
 as a functionality has kind `Unit`. Top-level `Hiding` may still be stated
 on the untagged model when the output is public and the kinds are
 determined by it (the case for straight-line circuits).
+
+## Revisited (2026-09-05)
+The view is still the tagged trace, but the tag is no longer chosen per
+theorem.  `kind` and `Model.tagged` are gone: the request *is* the
+operation (constructor and clear arguments) applied to share operands, so
+the tag is structural, and the record is `Event ⟨op, blank out, leak⟩`
+(decision 014).  The old remark that the simulator "never sees the
+request's payload" was not enforced by `kind` (report, Issue 2); it is
+enforced now by the interface, since operands are shares and a share is
+never in an event.  `Functionality` carries no `K`; there is no untagged
+`Hiding` (decision 015).
+
