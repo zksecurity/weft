@@ -24,3 +24,4 @@ is made or reversed; do not edit history, append a "Revisited" section.
 | 015 | [One certificate: realisation of an explicit functionality](015-one-certificate.md) |
 | 016 | [Implementation choices of the 2026-09 rewrite](016-implementation-choices.md) |
 | 017 | [Cost is an instantiation of the hybrid, never a property of a functionality](017-cost-is-an-instantiation.md) |
+| 018 | [Public values and control flow in the timed domain (open)](018-public-values-and-control-flow.md) |
