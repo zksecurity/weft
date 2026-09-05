@@ -17,3 +17,13 @@ the functionalities it calls, the same everywhere) but has a cost only
 once an MPC is fixed (delay and communication need that MPC's latencies
 and bandwidths). The same split holds one level up: a `Functionality` is
 program and leak; an MPC is a price list over functionalities.
+
+## Revisited (2026-09-05)
+Gadgets are gone (decision 015): a certificate is a `Realization`, and
+"good coins" went with decisions 009 and 011.  The choice recorded here
+stands in its new form: cost is not part of a realisation.  A program has
+semantics from the functionalities it calls, the same everywhere, and a
+cost only once an `MPC` (a hybrid list with a price per operation) is
+fixed; `cost_handle` composes costs across realisations and `Priced` is
+the separate theorem about the pair.
+
