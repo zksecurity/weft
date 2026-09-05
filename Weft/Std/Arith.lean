@@ -114,55 +114,28 @@ abbrev Inversion (F : Type) [Inv F] : Functionality := .ofEval (Inversion.ops F)
 @[simp, weft] theorem Inversion.model_eq (F : Type) [Inv F] :
     (Inversion F).model = (Inversion.eval F).lift PMF := Functionality.ofEval_model _ _
 
-/-! ## A control barrier -/
-
-namespace Barrier
-inductive Op where | barrier
-abbrev ops : Interface where
-  Op := Op
-  dom _ := []
-  cod _ := .unit
-def eval : Model ops .ideal Id := .silent fun _ => ()
-/-- The one timed model that is not the generic one: raise the control
-clock to the reveal clock, so that everything issued afterwards is
-scheduled after the values opened so far. -/
-def timed : Model ops .timed Sched := ⟨fun _ s => (((), ()), { s with clock := max s.clock s.revealed })⟩
-end Barrier
-
-/-- A control dependency: the program is about to branch on revealed
-values.  Semantically a no-op; in the timed domain it raises the control
-clock to the reveal clock, so everything issued afterwards is scheduled
-after those values are known.  Straight-line code never needs it. -/
-abbrev Barrier : Functionality := .ofEval Barrier.ops Barrier.eval
-/-- The barrier in an MPC: free, and it only moves the control clock. -/
-abbrev Barrier.priced : MPC.Entry := ⟨Barrier, Barrier.timed⟩
-
-@[simp, weft] theorem Barrier.model_eq : Barrier.model = Barrier.eval.lift PMF := Functionality.ofEval_model _ _
-
 /-! ## The operations, as a program writes them -/
 
 section Ops
 variable {F : Type} {fs : Hybrid} {D : Domain}
 
-def const [Add F] [Mul F] [Sub F] [Has (Lin F) fs] (c : F) : Prog fs.ops D (D.sh F) :=
+def const [Add F] [Mul F] [Sub F] [Has (Lin F) fs] (c : D.cl F) : Prog fs.ops D (D.sh F) :=
   Prog.op (F := Lin F) ⟨.const, (c, ())⟩
 def add [Add F] [Mul F] [Sub F] [Has (Lin F) fs] (a b : D.sh F) : Prog fs.ops D (D.sh F) :=
   Prog.op (F := Lin F) ⟨.add, (a, b, ())⟩
 def sub [Add F] [Mul F] [Sub F] [Has (Lin F) fs] (a b : D.sh F) : Prog fs.ops D (D.sh F) :=
   Prog.op (F := Lin F) ⟨.sub, (a, b, ())⟩
-def smul [Add F] [Mul F] [Sub F] [Has (Lin F) fs] (c : F) (a : D.sh F) : Prog fs.ops D (D.sh F) :=
+def smul [Add F] [Mul F] [Sub F] [Has (Lin F) fs] (c : D.cl F) (a : D.sh F) : Prog fs.ops D (D.sh F) :=
   Prog.op (F := Lin F) ⟨.smul, (c, a, ())⟩
 def mul [Mul F] [Has (Mult F) fs] (a b : D.sh F) : Prog fs.ops D (D.sh F) :=
   Prog.op (F := Mult F) ⟨.mult, (a, b, ())⟩
-def reveal [Has (Reveal F) fs] (x : D.sh F) : Prog fs.ops D F :=
+def reveal [Has (Reveal F) fs] (x : D.sh F) : Prog fs.ops D (D.cl F) :=
   Prog.op (F := Reveal F) ⟨.reveal, (x, ())⟩
 def lt [LT F] [DecidableRel (α := F) (· < ·)] [Zero F] [One F] [Has (Cmp F) fs] (a b : D.sh F) :
     Prog fs.ops D (D.sh F) :=
   Prog.op (F := Cmp F) ⟨.lt, (a, b, ())⟩
 def nativeInv [Inv F] [Has (Inversion F) fs] (x : D.sh F) : Prog fs.ops D (D.sh F) :=
   Prog.op (F := Inversion F) ⟨.inv, (x, ())⟩
-def barrier [Has Barrier fs] : Prog fs.ops D Unit :=
-  Prog.op (F := Barrier) ⟨.barrier, ()⟩
 
 end Ops
 

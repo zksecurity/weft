@@ -158,16 +158,16 @@ variable {fs : Hybrid} {D : Domain}
 /-- Ripple-carry addition of a *public* `c` (as bits) to shared bits, over
 `𝔽₂` shares: xor is free (`Lin`), and is a round (`Mult`).  `m` rounds. -/
 def addPublic [Has (Lin GF2) fs] [Has (Mult GF2) fs] :
-    (m : Nat) → (Fin m → GF2) → (Fin m → D.sh GF2) → D.sh GF2 → Prog fs.ops D (Fin m → D.sh GF2)
+    (m : Nat) → D.cl (Fin m → GF2) → (Fin m → D.sh GF2) → D.sh GF2 → Prog fs.ops D (Fin m → D.sh GF2)
   | 0, _, _, _ => pure fun i => i.elim0
   | m + 1, c, r, carry => do
     let t ← add (r 0) carry                   -- r₀ ⊕ carry
-    let cb ← const (c 0)
+    let cb ← const ((· 0) <$> c)
     let s ← add t cb                          -- s₀ = c₀ ⊕ r₀ ⊕ carry
     let rc ← mul (r 0) carry                  -- r₀ ∧ carry          (the one round)
-    let ct ← smul (c 0) t                     -- c₀ ∧ (r₀ ⊕ carry)   (public bit: free)
+    let ct ← smul ((· 0) <$> c) t             -- c₀ ∧ (r₀ ⊕ carry)   (public bit: free)
     let carry' ← add rc ct                    -- maj(c₀, r₀, carry), branch-free
-    let rest ← addPublic m (Fin.tail c) (Fin.tail r) carry'
+    let rest ← addPublic m (Fin.tail <$> c) (Fin.tail r) carry'
     pure (Fin.cons s rest)
 
 /-- A2B: reveal `x − r`, then `x = (x − r) + r` bit by bit, with `r`'s bits
@@ -179,7 +179,7 @@ def a2b (F : Type) [CommRing F] [Encodable F] (m : Nat) (coin : Nat := 0)
   let d ← sub x r
   let c ← reveal d                             -- the only revealed value: x − r
   let zero ← const (0 : GF2)
-  addPublic m (bitsOf m (Encodable.encode c)) rbits zero
+  addPublic m ((fun c => bitsOf m (Encodable.encode c)) <$> c) rbits zero
 end A2B
 
 /-- A mixed `𝔽₁₇` / `𝔽₂` MPC with 4-bit edaBits from preprocessing, the mask fixed to `3`
@@ -198,11 +198,12 @@ def openedMixed : List (Event mixed.hybrid.ops) → List (ZMod 17) :=
 -- What is revealed: `x − r`, as its representative (evaluation with the mask `r = 3`).
 example (x : ZMod 17) :
     openedMixed (view mixed.eval (a2b (ZMod 17) 4 3 (fs := mixed.hybrid) (D := .ideal) x)) = [x - 3] := rfl
--- Communication: one reveal and four ANDs.  Delay of the last bit: the reveal,
--- then three carries (the fourth AND only feeds the unused carry-out).
+-- Communication: one reveal and four ANDs.  Delay of the last bit: the carry chain starts
+-- from a program-time zero at round 0 and the opened bits arrive at round 1, so three
+-- carries (the fourth AND only feeds the unused carry-out): 3.
 example : commOn mixed.timed (a2b (ZMod 17) 4 3 (fs := mixed.hybrid) (D := .timed) ⟪5⟫) = 5 := by
   decide +kernel
-example : ((Sched.output mixed.timed (a2b (ZMod 17) 4 3 (fs := mixed.hybrid) (D := .timed) ⟪5⟫)) 3).time = 4 := by
+example : ((Sched.output mixed.timed (a2b (ZMod 17) 4 3 (fs := mixed.hybrid) (D := .timed) ⟪5⟫)) 3).time = 3 := by
   decide +kernel
 -- Correctness on instances: the bits of 5 = 0b0101, under the mask 3.  (This simplified A2B
 -- omits the modular correction of the real edaBit protocol, so it is correct under `r ≤ x`.)
@@ -227,9 +228,9 @@ def b2a (coin : Nat := 0) [Has (DaBit F coin) fs] [Has (Lin GF2) fs] [Has (Revea
   let (bF, b₂) ← dabit F coin
   let m ← add x b₂                    -- x ⊕ b, over 𝔽₂
   let c ← reveal m                    -- the one revealed value: a uniform bit
-  let cF ← const (c.toNat : F)          -- c, as an element of F
-  let s ← add cF bF                     -- c + b
-  let t ← smul (2 * (c.toNat : F)) bF   -- 2·c·b, linear: c is public
+  let cF ← const ((fun c => (c.toNat : F)) <$> c)          -- c, as an element of F
+  let s ← add cF bF                                        -- c + b
+  let t ← smul ((fun c => 2 * (c.toNat : F)) <$> c) bF     -- 2·c·b, linear: c is public
   sub s t                             -- x = c + b − 2cb
 
 /-- Hamming weight: bits in, arithmetic share out.  All conversions in one

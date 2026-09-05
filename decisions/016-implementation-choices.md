@@ -32,10 +32,10 @@ models live beside the functionalities, in the MPC.
 ## No scheduling metadata on the interface
 A first version had two trusted flags, `pubArg` (the operation carries a
 clear argument, so it waits for the reveal clock) and `ctrl` (the
-operation is a barrier).  Both are gone: a clear operand is a clear shape
-in `dom`, so the timed model reads `Operands.hasClear`; and `Barrier` is
-the one functionality with a timed model of its own, which raises the
-control clock.
+operation is a barrier), then a `Barrier` functionality with a timed
+model of its own.  All are gone (decision 018): a clear operand is a
+clear shape in `dom` and carries its own time in the timed domain, and a
+branch on an opened value is a `look`.
 
 ## Evaluation performance
 Evaluation by `rfl` was exponential in the number of requests, for three

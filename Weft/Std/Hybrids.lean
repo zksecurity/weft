@@ -52,7 +52,8 @@ end Weft
 
 /-! ## The simp set that unfolds a program's semantics -/
 namespace Weft
-attribute [weft] Prog.bind_eq Prog.pure_eq Prog.bind_pure' Prog.bind_call Prog.handle_pure Prog.handle_call
+attribute [weft] Prog.bind_eq Prog.pure_eq Prog.bind_pure' Prog.bind_call Prog.bind_look Prog.handle_pure Prog.handle_call
+  Prog.handle_look run_look_ideal dist_look Look.ideal_look Domain.ideal_map Domain.ideal_pure Domain.ideal_seq
   Prog.op_here Prog.op_there Prog.lift Prog.opHead
   dist_bind dist_call dist_pure dist_pure' Hybrid.model_cons_zero Hybrid.model_cons_succ
   Model.det_step Model.lift_step Model.silent Model.det Model.program Id.run_pure
@@ -62,7 +63,7 @@ attribute [weft] Prog.bind_eq Prog.pure_eq Prog.bind_pure' Prog.bind_call Prog.h
   Shape.blank_share Shape.blank_clear Shape.blank_unit Shape.blank_prod Shape.blank_vec Shape.blank_list
   Operands.blank_nil Operands.blank_cons
   Correlation.sample
-  Lin.eval Mult.eval Reveal.eval Cmp.eval Inversion.eval Barrier.eval
+  Lin.eval Mult.eval Reveal.eval Cmp.eval Inversion.eval
   Rand.model RandNZ.model PubCoin.model MulTriple.model SquarePair.model DoubleSharing.model
   MulTriple.corr SquarePair.corr DoubleSharing.corr
 end Weft

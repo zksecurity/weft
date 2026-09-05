@@ -30,7 +30,7 @@ def peekIdeal {fs : Hybrid} [Has (Lin F) fs] (x : F) : Prog fs.ops .ideal F :=
 -- program has; supplying it classically makes the definition noncomputable.
 noncomputable def peek {fs : Hybrid} {D : Domain} [Has (Lin F) fs] (x : D.sh F) : Prog fs.ops D (D.sh F) := by
   classical
-  exact if x = x then pure x else do let _ ← const (0 : F); pure x
+  exact if x = x then pure x else do let _ ← const (0 : D.cl F); pure x
 
 -- `program` refuses the classical implementation.
 /--

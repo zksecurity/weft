@@ -46,7 +46,7 @@ def Realizations.timed {fs gs : Hybrid} (g : Realizations fs gs) (T : Model gs.o
     pure (p.1, (fs.eval.step ⟨r.op, r.args.untime⟩).run.2)
 
 /-- The output of a run, in the monad, with the trace dropped. -/
-def runOut {ι : Interface} {D : Domain} {α : Type} {m : Type → Type} [Monad m] (M : Model ι D m)
+def runOut {ι : Interface} {D : Domain} {α : Type} {m : Type → Type} [Monad m] [Look D m] (M : Model ι D m)
     (c : Prog ι D α) : m α :=
   Prod.fst <$> run M CostModel.unit c
 
@@ -58,6 +58,9 @@ theorem Realizations.runOut_timed {fs gs : Hybrid} (g : Realizations fs gs) (T :
     runOut (g.timed T) c = runOut T (Prog.handle (g.impl .timed) c) := by
   induction c with
   | pure a => simp [runOut, Prog.handle]
+  | look c k ih =>
+    simp only [runOut, Prog.handle_look, run_look, map_bind] at ih ⊢
+    exact bind_congr fun v => ih v
   | call r k ih =>
     simp only [runOut, Prog.handle_call, run_bind, run_call, Realizations.timed, map_bind, bind_assoc, pure_bind,
       map_pure] at ih ⊢
@@ -75,7 +78,7 @@ theorem Realizations.sched_timed {fs gs : Hybrid} (g : Realizations fs gs) (T : 
 theorem Realizations.delayOn_timed {fs gs : Hybrid} (g : Realizations fs gs) (T : Model gs.ops .timed Sched)
     {X : Type} (c : Prog fs.ops .timed (Timed X)) :
     delayOn (g.timed T) c = delayOn T (Prog.handle (g.impl .timed) c) := by
-  simp [delayOn, Sched.output, g.sched_timed T c]
+  simp [delayOn, g.sched_timed T c]
 
 theorem Realizations.commOn_timed {fs gs : Hybrid} (g : Realizations fs gs) (T : Model gs.ops .timed Sched)
     {α : Type} (c : Prog fs.ops .timed α) :
@@ -86,9 +89,13 @@ theorem Realizations.commOn_timed {fs gs : Hybrid} (g : Realizations fs gs) (T :
 
 /-- The cost of a run, as a distribution (a reactive program's shape may
 depend on what it reveals). -/
-noncomputable def costDist {ι : Interface} {D : Domain} {C α : Type} [AddMonoid C] (M : Model ι D PMF)
+noncomputable def costDist {ι : Interface} {D : Domain} {C α : Type} [AddMonoid C] [Look D PMF] (M : Model ι D PMF)
     (K : CostModel ι C) (c : Prog ι D α) : PMF C :=
   (fun r => r.2.cost) <$> run M K c
+
+theorem costDist_look {ι : Interface} {C α T : Type} [AddMonoid C] (M : Model ι .ideal PMF) (K : CostModel ι C)
+    (c : Domain.ideal.cl T) (k : T → Prog ι .ideal α) : costDist M K (.look c k) = costDist M K (k c) := by
+  simp [costDist, run_look_ideal]
 
 /-- A handler is *priced* under `K` if each request's program has a cost
 independent of its operands and coins (structurally scheduled), given by `p`. -/
@@ -106,6 +113,9 @@ theorem cost_handle {fs gs : Hybrid} {C : Type} [AddMonoid C] (g : Realizations 
     costDist gs.model K (Prog.handle (g.impl .ideal) c) = costDist fs.model p c := by
   induction c with
   | pure a => simp [Prog.handle, costDist, run]
+  | look c k ih =>
+    cases hc with
+    | look _ _ hk => rw [Prog.handle_look, costDist_look, costDist_look]; exact ih c hk
   | call r k ih =>
     cases hc with
     | call _ _ hr hk =>
@@ -122,7 +132,7 @@ theorem cost_handle {fs gs : Hybrid} {C : Type} [AddMonoid C] (g : Realizations 
       simp only [costDist, PMF.monad_map_eq_map, PMF.monad_pure_eq_pure] at this
       have := congrArg PMF.support this
       rw [PMF.support_map, PMF.support_pure] at this
-      have : q.2.cost ∈ (fun q : _ × Trace gs.ops C => q.2.cost) '' (run gs.model K (g.impl .ideal r)).support :=
+      have : q.2.cost ∈ (fun q : _ × Trace gs.ops .ideal C => q.2.cost) '' (run gs.model K (g.impl .ideal r)).support :=
         ⟨q, hq, rfl⟩
       simpa [*] using this
     rw [Prog.handle_call, costDist, run_bind]

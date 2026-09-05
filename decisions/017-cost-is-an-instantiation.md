@@ -13,7 +13,7 @@ thing.
 A functionality is `⟨ops, eval, IsModel, isModel_unique⟩`, behaviour
 only.  Cost appears when a hybrid is *instantiated* in a cost model: a
 model of each interface in the scheduling monad `Sched`, whose state is
-the two clocks and a communication counter.  Such a model does the
+the round the program has reached and a communication counter.  Such a model does the
 behaviour (it computes the same values as `eval`) and something more: it
 stamps each response with the round at which it is ready, so that the
 delay of a program is the longest path through its dependency

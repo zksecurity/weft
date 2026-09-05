@@ -47,6 +47,8 @@ inductive Valid {ι : Interface} (M : Model ι .ideal PMF) (P : Req ι .ideal �
   | pure {α : Type} (a : α) : Valid M P (.pure a)
   | call {α : Type} (r : Req ι .ideal) (k : Resp ι .ideal r.op → Prog ι .ideal α)
       (hr : P r) (hk : ∀ z ∈ (M.step r).support, Valid M P (k z.1)) : Valid M P (.call r k)
+  | look {α T : Type} (c : Domain.ideal.cl T) (k : T → Prog ι .ideal α) (hk : Valid M P (k c)) :
+      Valid M P (.look c k)
 
 attribute [simp] Valid.pure
 
@@ -56,6 +58,7 @@ theorem Valid.of_forall {ι : Interface} (M : Model ι .ideal PMF) {P : Req ι .
   induction c with
   | pure a => exact .pure a
   | call r k ih => exact .call r k (hP r) fun z _ => ih z.1
+  | look c k ih => exact .look c k (ih c)
 
 /-- Validity for the trivial precondition. -/
 theorem Valid.true {ι : Interface} (M : Model ι .ideal PMF) {α : Type} (c : Prog ι .ideal α) :
@@ -84,6 +87,9 @@ theorem Valid.bind {ι : Interface} {M : Model ι .ideal PMF} {P : Req ι .ideal
     | call _ _ hr hk' =>
       exact .call r _ hr fun z hz => ih z.1 (hk' z hz) fun q hq =>
         hk (q.1, ⟨r.op, r.args.blank, (ι.cod r.op).blank z.1, z.2⟩ :: q.2) ((mem_support_dist_call M r k' _).2 ⟨z, hz, q, hq, rfl⟩)
+  | look c k' ih =>
+    cases hc with
+    | look _ _ hk' => exact .look c _ (ih c hk' fun q hq => hk q (by rw [dist_look]; exact hq))
 
 /-- **A realisation.**  `impl` is a program for every domain (it cannot
 look inside a share); `Sim` sees only the event; `real` is the equation,
@@ -157,6 +163,9 @@ theorem handle_realizes {fs gs : Hybrid} (g : Realizations fs gs) {α : Type} (c
     rw [ih z.1 (hk z hz)]
     simp only [PMF.monad_bind_eq_bind, PMF.monad_pure_eq_pure, PMF.bind_bind, PMF.pure_bind]
     rw [PMF.bind_comm]
+  | look c k ih =>
+    cases hc with
+    | look _ _ hk => rw [Prog.handle_look, dist_look, dist_look]; exact ih c hk
 
 /-- Correctness transports: the output distribution of the inlined program
 is the caller's on the abstract hybrid. -/

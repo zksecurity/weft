@@ -38,32 +38,31 @@ def chain3 [Has (Mult F) fs] (a b c d : D.sh F) : Prog fs.ops D (D.sh F) := do
   let y ← mul x c
   mul y d
 
-/-- Reveal, compute in the clear, insert back: the reveal clock carries the
-time into the clear computation and back in through `const`. -/
-def revealThenUse [Has (Lin F) fs] [Has (Mult F) fs] [Has (Reveal F) fs] (a b c : D.sh F) (k : F) :
+/-- Reveal, compute in the clear, insert back: the opened value carries its
+time through the clear computation and back in through `const`. -/
+def revealThenUse [Has (Lin F) fs] [Has (Mult F) fs] [Has (Reveal F) fs] (a b c : D.sh F) (k : D.cl F) :
     Prog fs.ops D (D.sh F) := do
   let p ← mul a b
   let v ← reveal p
   let t ← const (v * k)
   mul t c
 
-/-- Two openings in sequence: one round.  A reveal waits for the control
-clock, never for another reveal. -/
-def revealBoth [Has (Reveal F) fs] (v₁ v₂ : D.sh F) : Prog fs.ops D (F × F) := do
+/-- Two openings in sequence: one round.  Nothing waits for an opened value
+unless it uses it. -/
+def revealBoth [Has (Reveal F) fs] (v₁ v₂ : D.sh F) : Prog fs.ops D (D.cl F × D.cl F) := do
   let a ← reveal v₁
   let b ← reveal v₂
   pure (a, b)
-/-- The same with a barrier between them: the second opening is issued
-after the first is known, so two rounds. -/
-def revealBothBarrier [Has (Reveal F) fs] [Has Barrier fs] (v₁ v₂ : D.sh F) : Prog fs.ops D (F × F) := do
+/-- The same, but the program looks at the first value before issuing the
+second opening: the second is issued when the first is known, so two rounds. -/
+def revealBothLook [Has (Reveal F) fs] (v₁ v₂ : D.sh F) : Prog fs.ops D (D.cl F × D.cl F) := do
   let a ← reveal v₁
-  barrier
-  let b ← reveal v₂
-  pure (a, b)
-/-- Using the first opened value in the clear while the second is still
-opening: still one round, since the scalar waits for the reveal clock, not
-the control clock. -/
-def revealUseReveal [Has (Lin F) fs] [Has (Reveal F) fs] (v₁ v₂ x : D.sh F) : Prog fs.ops D (D.sh F × F) := do
+  Prog.look a fun _ => do
+    let b ← reveal v₂
+    pure (a, b)
+/-- Using the first opened value as a scalar while the second is still
+opening: still one round, a data dependency on the first only. -/
+def revealUseReveal [Has (Lin F) fs] [Has (Reveal F) fs] (v₁ v₂ x : D.sh F) : Prog fs.ops D (D.sh F × D.cl F) := do
   let a ← reveal v₁
   let b ← reveal v₂
   let y ← smul a x
@@ -79,15 +78,11 @@ example (a b c d : F) : delayOn (Std.timed F) (mul4seq (fs := Std F) (D := .time
 example (a b c d : F) : delayOn (Std.timed F) (chain3 (fs := Std F) (D := .timed) ⟪a⟫ ⟪b⟫ ⟪c⟫ ⟪d⟫) = 3 := rfl
 -- Reveal at 2, clear computation, `const` at 2, multiplication at 3.
 example (a b c k : F) : delayOn (Std.timed F) (revealThenUse (fs := Std F) (D := .timed) ⟪a⟫ ⟪b⟫ ⟪c⟫ k) = 3 := rfl
--- Two openings in sequence are one round; with a barrier between them, two; using the first
--- in the clear while the second opens is still one.
-abbrev StdB : Hybrid := [Lin F, Mult F, Reveal F, Barrier]
-abbrev stdB : MPC := [(Lin F).priced ⟨0, 0⟩, (Mult F).priced ⟨1, 2⟩, (Reveal F).priced ⟨1, 1⟩, Barrier.priced]
-example (v₁ v₂ : F) : delayClear (Std.timed F) (revealBoth (fs := Std F) (D := .timed) ⟪v₁⟫ ⟪v₂⟫) = 1 := rfl
+-- Two openings in sequence are one round; looking at the first before issuing the second,
+-- two; using the first as a scalar while the second opens is still one.
+example (v₁ v₂ : F) : (Sched.output (Std.timed F) (revealBoth (fs := Std F) (D := .timed) ⟪v₁⟫ ⟪v₂⟫)).2.time = 1 := rfl
 example (v₁ v₂ : F) :
-    delayClear (stdB F).timed (revealBothBarrier (fs := (stdB F).hybrid) (D := .timed) ⟪v₁⟫ ⟪v₂⟫) = 2 := rfl
-example (v₁ v₂ x : F) :
-    (Sched.run (Std.timed F) (revealUseReveal (fs := Std F) (D := .timed) ⟪v₁⟫ ⟪v₂⟫ ⟪x⟫)).2.revealed = 1 := rfl
+    (Sched.output (Std.timed F) (revealBothLook (fs := Std F) (D := .timed) ⟪v₁⟫ ⟪v₂⟫)).2.time = 2 := rfl
 example (v₁ v₂ x : F) :
     (Sched.output (Std.timed F) (revealUseReveal (fs := Std F) (D := .timed) ⟪v₁⟫ ⟪v₂⟫ ⟪x⟫)).1.time = 1 := rfl
 -- Values are unchanged: the timed model computes the same thing.

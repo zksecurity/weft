@@ -5,10 +5,12 @@ A *domain* says what a share of a `T` is.  Programs are polymorphic in the
 domain, so they can do nothing with a share except hand it to an
 operation; the semantics instantiates the domain.
 
-* `ideal`  — a share of a `T` is a `T`.  The semantics and every privacy
-  statement live here.
+* `ideal`  — a share of a `T` is a `T`, a clear value is plain.  The
+  semantics and every privacy statement live here.
 * `erased` — a share is `()`.  This is what the adversary sees of a
-  response: the clear components, and only the *shape* of the shared ones.
+  request: the clear components, and only the *shape* of the shared ones.
+* `timed` (`Weft.Timed`) — shares and clear values carry the round at
+  which they are available.
 
 The operands and the response of an operation are described by `Shape`s,
 a closed language over types, so that their public part (`blank`) is
@@ -17,15 +19,58 @@ record by shape, and a model cannot omit it.
 -/
 namespace Weft
 
-/-- A domain: what a share of a `T` is.  Programs are polymorphic in it. -/
+/-- A domain: what a share of a `T` is, and what a clear value of a `T`
+is.  Programs are polymorphic in it.  Clear values form an applicative
+functor, so that a program computes on them (`e * d`) without seeing
+inside; the only way to look at one is `Prog.look`. -/
 structure Domain where
   sh : Type → Type
+  cl : Type → Type
+  app : Applicative cl
 
-/-- The ideal domain: a share is its value.  Semantics and privacy live here. -/
-abbrev Domain.ideal : Domain := ⟨fun T => T⟩
+instance (D : Domain) : Applicative D.cl := D.app
 
-/-- The erased domain: a share is `()`.  What the adversary sees of a response. -/
-abbrev Domain.erased : Domain := ⟨fun _ => Unit⟩
+/-- Plain values, as an applicative. -/
+abbrev Domain.plain : Applicative (fun T : Type => T) where
+  map f x := f x
+  pure x := x
+  seq f x := f (x ())
+
+/-- The ideal domain: a share is its value, a clear value is plain.
+Semantics and privacy live here. -/
+abbrev Domain.ideal : Domain := ⟨fun T => T, fun T => T, Domain.plain⟩
+
+/-- `Domain.ideal.cl` unfolds to `fun T => T`, which the generic instance
+does not match; name the instance at that type. -/
+instance : Applicative Domain.ideal.cl := Domain.plain
+
+/-- The erasure of a domain: shares become `()`, clear values stay what
+they are.  What the adversary sees of a request in that domain. -/
+abbrev Domain.erase (D : Domain) : Domain := ⟨fun _ => Unit, D.cl, D.app⟩
+
+/-- The erased ideal domain: shares are `()`, clear values are plain. -/
+abbrev Domain.erased : Domain := Domain.ideal.erase
+
+namespace Domain
+variable {D : Domain} {T A B : Type}
+
+@[simp] theorem ideal_map (f : A → B) (x : Domain.ideal.cl A) : (f <$> x : Domain.ideal.cl B) = f x := rfl
+@[simp] theorem ideal_pure (a : A) : (pure a : Domain.ideal.cl A) = a := rfl
+@[simp] theorem ideal_seq (f : Domain.ideal.cl (A → B)) (x : Unit → Domain.ideal.cl A) :
+    (Seq.seq f x : Domain.ideal.cl B) = f (x ()) := rfl
+
+/-! Arithmetic on clear values, in any domain: pointwise through the applicative. -/
+instance [Add T] : Add (D.cl T) := ⟨fun a b => (· + ·) <$> a <*> b⟩
+instance [Sub T] : Sub (D.cl T) := ⟨fun a b => (· - ·) <$> a <*> b⟩
+instance [Mul T] : Mul (D.cl T) := ⟨fun a b => (· * ·) <$> a <*> b⟩
+instance [Div T] : Div (D.cl T) := ⟨fun a b => (· / ·) <$> a <*> b⟩
+instance [Neg T] : Neg (D.cl T) := ⟨fun a => Neg.neg <$> a⟩
+instance [Inv T] : Inv (D.cl T) := ⟨fun a => Inv.inv <$> a⟩
+instance {n : Nat} [OfNat T n] : OfNat (D.cl T) n := ⟨pure (OfNat.ofNat n)⟩
+/-- A program-time value is a clear value available at once. -/
+instance : Coe T (D.cl T) := ⟨pure⟩
+
+end Domain
 
 /-- The shape of a response: a closed language over types, so that the
 public part of a response is structural. -/
@@ -43,14 +88,14 @@ namespace Shape
 `Resp ι D o` unify wherever they are the same type. -/
 @[reducible] def interp (D : Domain) : Shape → Type
   | unit => Unit
-  | clear T => T
+  | clear T => D.cl T
   | share T => D.sh T
   | prod a b => a.interp D × b.interp D
   | vec n a => Fin n → a.interp D
   | list a => List (a.interp D)
 
 /-- The public part of a response: clear components are kept, shares become `()`. -/
-def blank {D : Domain} : (s : Shape) → s.interp D → s.interp .erased
+def blank {D : Domain} : (s : Shape) → s.interp D → s.interp D.erase
   | unit, _ => ()
   | clear _, x => x
   | share _, _ => ()
@@ -78,7 +123,7 @@ def Hidden : Shape → Prop
   | list a => a.Hidden
 
 @[simp] theorem blank_share {D : Domain} {T : Type} (x : D.sh T) : (share T).blank x = () := rfl
-@[simp] theorem blank_clear {D : Domain} {T : Type} (x : T) : (clear T).blank (D := D) x = x := rfl
+@[simp] theorem blank_clear {D : Domain} {T : Type} (x : D.cl T) : (clear T).blank x = x := rfl
 @[simp] theorem blank_unit {D : Domain} (x : unit.interp D) : unit.blank x = () := rfl
 @[simp] theorem blank_prod {D : Domain} {a b : Shape} (p : a.interp D × b.interp D) :
     (prod a b).blank p = (a.blank p.1, b.blank p.2) := rfl
@@ -109,14 +154,9 @@ def map {D E : Domain} (f : (s : Shape) → s.interp D → s.interp E) :
   | s :: _, p => (f s p.1, map f p.2)
 
 /-- The public part of the operands: clear operands are kept, shares become `()`. -/
-def blank {D : Domain} : {ss : List Shape} → Operands D ss → Operands .erased ss
+def blank {D : Domain} : {ss : List Shape} → Operands D ss → Operands D.erase ss
   | [], _ => ()
   | s :: _, p => (s.blank p.1, blank p.2)
-
-/-- Whether some operand has a clear component. -/
-def hasClear : List Shape → Bool
-  | [] => false
-  | s :: ss => s.hasClear || hasClear ss
 
 @[simp] theorem blank_nil {D : Domain} (a : Operands D []) : blank a = () := rfl
 @[simp] theorem blank_cons {D : Domain} {s : Shape} {ss : List Shape} (a : Operands D (s :: ss)) :
