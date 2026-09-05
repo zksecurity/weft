@@ -1,55 +1,74 @@
-# Verifying MPC circuits in Lean 4 — design notes
+# Verifying MPC programs in Lean 4 — design notes
 
-Working name: **Glean** (see §10 for alternatives). The reasons behind
-each choice, with the alternatives rejected, are in `decisions/`, one
-record per decision; this document describes the design as it stands.
-Companion files:
-`Glean.lean` (the core, type-checks; compositional lemmas are `sorry`,
-everything else is real), `Gallery.lean` (ten circuits in different
-styles, with their theorems closed by evaluation), `Features.lean` (the
-MPC as a price list: feature sets in the type, subtyping, derived costs),
-`FieldCirc.lean` (circuits needing a field), `MultiField.lean` (generic over
-field types, switching, edaBits), `Timing.lean` (delay by dependency
-tracking), `Gadget.lean` (circuits with assumptions and specs) and
-`Privacy.lean` (simulation-based privacy on Mathlib's `PMF`: fresh coins are
-jointly uniform, realisations on tagged views), `Compose.lean` (the
-composition theorem, proved) and
-`Functionality.lean` (functionalities and realisations as one notion) and
-`AesHybrid.lean` (from the AES-hybrid to a plain circuit, end to end) and
-`Cost.lean` (delay and communication as separate observables; the
-composition theorems for cost) and `Beaver.lean` (multiplication from
-triples: why the masks must be jointly uniform, with a counterexample).
-The sketch depends on Mathlib.
+Name: **Weft** (see §10 for how it was chosen). The reasons behind each
+choice, with the alternatives rejected, are in `decisions/`, one record
+per decision; this document describes the design as it stands. The
+revision of 2026-09-05 (structural events, hybrids as lists, one
+certificate) is recorded authoritatively in `report.md`, section "Final
+design"; the two decision records it adds are `decisions/014` ("Public
+observations are explicit and never automatic") and `decisions/015` ("One
+certificate: realisation of an explicit functionality").
+Companion files, under `Weft/` (the library builds; no theorem is
+`sorry`, and §4.1 lists the two items that are described but not yet
+stated in Lean):
+`Shape.lean` (domains, response shapes, operands), `Interface.lean`
+(interfaces, requests, events), `Prog.lean` (the free monad of programs),
+`Model.lean` (models, the interpreter and its laws), `Timed.lean` (delay
+by dependency tracking), `Functionality.lean` (functionalities, hybrids as
+lists, `Has`), `PMF.lean` (the mask lemma, joint uniformity, total
+variation), `Std/Arith.lean` and `Std/Random.lean` (the standard
+functionalities), `Std/Hybrids.lean` (`Std`, `Pre`), `Realization.lean`
+(the one certificate and its composition theorem), `Cost.lean` (price
+lists; composition for communication), `Statistical.lean` (statistical
+realisations and the kernel lemma) and `Program.lean` (the `program`
+command). Under `Examples/`: `Basic.lean` and `Gallery.lean` (programs in
+different styles, with their theorems closed by evaluation),
+`Beaver.lean` (multiplication from triples: why the masks must be jointly
+uniform, with a counterexample), `Privacy.lean` (the certificate and what
+it composes to), `Inversion.lean` (preconditions), `AesHybrid.lean` (from
+the AES-hybrid to a plain program, end to end), `MultiField.lean` (generic
+over field types, switching, edaBits, daBits), `Timing.lean` (delay and
+timing profiles), `RandomCombination.lean`, `Silent.lean`,
+`Statistical.lean` and `Checked.lean` (what `program` rejects). The
+library depends on Mathlib.
 
 ## 1. What we are verifying, and what we are not
 
-An *MPC circuit* here is a program that drives an ideal functionality
+An *MPC program* here is a program that drives an ideal functionality
 (an "arithmetic black box"): it hands the functionality shared values,
 asks it to multiply, open, compare, and so on, and does ordinary
-computation on whatever comes back in the clear.
+computation on whatever comes back in the clear. When it is straight-line
+we also call it a circuit; a program that implements one functionality
+over others is a protocol.
 
 We deliberately do **not** model the MPC protocol: no shares, no parties'
 views, no network. The functionality is a black box whose behaviour is a
 Lean definition. Three consequences shape everything below:
 
 * **No witness, no soundness/completeness split.** A ZK circuit is a
-  relation checked against a prover-supplied witness; an MPC circuit is a
+  relation checked against a prover-supplied witness; an MPC program is a
   function of its inputs and of the coins the functionality hands out
   (`rand`, Beaver triples). The properties of interest are *functional
-  correctness*, *cost* and *hiding*.
+  correctness*, *cost* and *privacy*.
 * **Interaction is the program.** Opening a value, computing on it in the
   clear and inserting the result back is not a special case; it is the
-  basic shape of a circuit. So the circuit language is a monad whose
-  effects are calls to the functionality, and the "reactive functionality"
-  is just the interpreter of that monad.
-* **Hiding is a property of the circuit, not of the protocol.** Because the
-  functionality is ideal, the adversary's entire view is the list of values
-  the circuit chose to open. "Reveals nothing beyond the output" becomes:
-  *the distribution of that list is a function of the output*. For
-  coin-free circuits the distribution is a point, the simulator is a
-  plain function, and the statement is checked by evaluation; with coins
-  it is an equation between distributions, proved by unfolding the run
-  and one lemma: a uniform mask pushed through a bijection is uniform.
+  basic shape of a program. So the program language is a monad whose
+  effects are requests to the functionality, and the "reactive
+  functionality" is just the interpreter of that monad.
+* **Privacy is a property of the program, not of the protocol.** Because
+  the functionality is ideal, the adversary's entire view is the *tagged
+  trace*: one event per request, recording which operation was invoked
+  (the program is public, so this includes the operation's clear
+  arguments), the clear part of the response, and whatever disclosure the
+  functionality declares (§4.1, decision 012). "Reveals nothing beyond its
+  specification" becomes: *the program realises a functionality*, i.e.
+  the joint distribution of (response, trace) is the functionality's
+  response paired with the output of a simulator that is handed the
+  functionality's own event and nothing else. For coin-free programs the
+  distribution is a point, the simulator replays a fixed list, and the
+  statement is checked by evaluation; with coins it is an equation between
+  distributions, proved by unfolding the run and one lemma: a uniform mask
+  pushed through a bijection is uniform.
 
 ### Cues from Clean, and what does not carry over
 
@@ -57,84 +76,116 @@ Clean (the Lean 4 ZK framework) gets several things right that we copy:
 
 | Clean                                             | Here                                                              |
 |---------------------------------------------------|-------------------------------------------------------------------|
-| Circuit is a monadic DSL; the monad records ops   | Same: `Circ σ` is a free monad over the functionality's signature |
-| `ProvableType` maps structured Lean types to vars | `Domain` with abstract share type; structured `SharedType` (§3.3) |
-| `FormalCircuit` bundles circuit + assumptions + spec + proofs | `Gadget` bundles circuit + spec + leakage bound + round bound (§6) |
-| Subcircuits with local proofs compose             | Handlers compose circuits; cost/leak lemmas are compositional (§5) |
+| Circuit is a monadic DSL; the monad records ops   | Same: `Prog ι D` is a free monad over an interface `ι`            |
+| `ProvableType` maps structured Lean types to vars | `Domain` with an abstract share constructor `D.sh`; response `Shape`s (§2.1, §3.3) |
+| `FormalCircuit` bundles circuit + assumptions + spec + proofs | `Realization` bundles implementation + precondition + simulator + equation; the spec is a functionality (§7) |
+| Subcircuits with local proofs compose             | Realisations compose (`Realization.comp`); cost and privacy lemmas are compositional (§5) |
 
 What does not apply: witness generation, constraints and their soundness,
 lookups and table layout, the completeness/soundness pair, `Environment`
 as an assignment of witness cells. There is no "elaborated circuit" as a
-constraint system; the circuit *is* its own semantics.
+constraint system; the program *is* its own semantics.
 
 ## 2. Core model
 
-### 2.1 Signatures: what the functionality offers
+### 2.1 Interfaces: what a functionality offers
 
-A signature is a family of request types indexed by the response type.
-Encoding the response type as an index (rather than a `Ret : Op → Type`
-function) means sums of signatures need no casts.
-
-```lean
-abbrev Sig : Type 1 := Type → Type          -- σ α = requests answered by an α
-
-inductive Sig.Sum (σ τ : Sig) (α : Type) : Type where
-  | inl : σ α → Sig.Sum σ τ α
-  | inr : τ α → Sig.Sum σ τ α
-infixr:35 " ⊞ " => Sig.Sum
-
-class Has (τ σ : Sig) where                 -- feature set τ is available in σ
-  inj : {α : Type} → τ α → σ α
-```
-
-Feature sets are small inductive families, each one an MPC *capability*:
+An interface is a *vocabulary*: the public operations (a constructor with
+its clear arguments), the operand types of each, and the shape of its
+response. A request is an operation applied to share operands. Operands
+are shares only and clear arguments belong to the operation, so the
+public part of a request is the operation itself (`Interface.lean`,
+`Shape.lean`):
 
 ```lean
-structure Domain where (F : Type) (S : Type)   -- clear values / opaque shares
+structure Domain where sh : Type → Type              -- what a share of a `T` is
+abbrev Domain.ideal  : Domain := ⟨fun T => T⟩         -- a share is its value: semantics and privacy live here
+abbrev Domain.erased : Domain := ⟨fun _ => Unit⟩      -- what the adversary sees of a response
 
-inductive Lin  (D : Domain) : Sig where       -- always free
-  | const : D.F → Lin D D.S
-  | add   : D.S → D.S → Lin D D.S
-  | sub   : D.S → D.S → Lin D D.S
-  | smul  : D.F → D.S → Lin D D.S
-inductive Mult (D : Domain) : Sig where | mult  : D.S → D.S → Mult D D.S
-inductive Reveal (D : Domain) : Sig where | reveal : D.S → Reveal D D.F
-inductive Cmp  (D : Domain) : Sig where | lt    : D.S → D.S → Cmp D D.S
-inductive Rand    (D : Domain) : Sig where | rand : Rand D D.S             -- fresh random share
-inductive PubCoin (D : Domain) : Sig where | coin : PubCoin D D.F          -- public random value
-inductive Get (D : Domain) (T : Domain → Type) : Sig where                 -- preprocessing box
-  | get : MulTriple D (D.S × D.S × D.S)                                    -- (a, b, a·b), named after its promise
+inductive Shape | unit | clear (T : Type) | share (T : Type) | prod (a b : Shape) | vec (n : Nat) (a : Shape) | list (a : Shape)
+def Shape.interp (D : Domain) : Shape → Type          -- `share T ↦ D.sh T`, `clear T ↦ T`, …
+def Shape.blank : (s : Shape) → s.interp D → s.interp .erased   -- clear parts kept, shares become `()`
 
-abbrev Std (D : Domain) : Sig := Lin D ⊞ Mult D ⊞ Reveal D          -- arithmetic black box
-abbrev Pre (D : Domain) : Sig := Lin D ⊞ Reveal D ⊞ MulTriple D     -- preprocessing model
+structure Interface where
+  Op     : Type                                       -- operations, with their clear arguments
+  dom    : Op → List Type                             -- operand types (shares)
+  cod    : Op → Shape                                 -- response shape
+  disc   : Op → Type := fun _ => Unit                 -- type of the declared disclosure
+  pubArg : Op → Bool := fun _ => false                -- scheduling metadata for the timed domain (§3.5)
+  ctrl   : Op → Bool := fun _ => false
+
+structure Req (ι : Interface) (D : Domain) where (op : ι.Op) (args : Operands D (ι.dom op))
+abbrev Resp (ι : Interface) (D : Domain) (o : ι.Op) : Type := (ι.cod o).interp D
+structure Event (ι : Interface) where (op : ι.Op) (out : Resp ι .erased op) (leak : ι.disc op)
 ```
 
-Randomness is a *feature of the functionality*, not of the circuit
-language: `rand` and `mulTriple` are requests like any other. Which of them an
-MPC offers, and what they cost, is again a signature and a cost model.
+An `Event` is the adversary's record of one request: the operation, the
+clear part of the response, the declared disclosure. The first two are
+structural, computed by the interpreter from the shape; only the third is
+written by the functionality's author (decision 014).
 
-A circuit that only needs linear ops and multiplication is written against
-`[Has (Lin D) σ] [Has (Mult D) σ]` and runs on *every* functionality whose
-signature contains those. This is the "different subsets of features"
-requirement, solved by the usual data-types-à-la-carte instances
-(`Has.refl`, `Has.left`, `Has.right`).
-
-### 2.2 Circuits: the free monad, plus parallelism
+A *functionality* is an interface with its meaning (§2.10, §3.1). The
+standard ones live in `Std/`; each is an inductive of operations, an
+interface, and a model:
 
 ```lean
-inductive Circ (σ : Sig) : Type → Type 1 where
-  | pure : α → Circ σ α
-  | call : σ β → (β → Circ σ α) → Circ σ α                     -- ask, then continue
-  | par  : Circ σ β → Circ σ γ → (β × γ → Circ σ α) → Circ σ α  -- independent branches
+namespace Lin
+inductive Op (F : Type) | const (c : F) | add | sub | smul (c : F)    -- clear arguments in the constructor
+abbrev ops (F : Type) : Interface where
+  Op := Op F
+  dom | .const _ => [] | .add => [F, F] | .sub => [F, F] | .smul _ => [F]
+  cod _ := .share F
+  pubArg | .const _ => true | .smul _ => true | _ => false
+end Lin
+abbrev Lin (F : Type) [Add F] [Mul F] [Sub F] : Functionality := .ofEval (Lin.ops F) (Lin.eval F) (Lin.timed F)
+
+abbrev Mult      (F) : Functionality      -- mult   : [F, F] → share F ; always silent
+abbrev Reveal    (F) : Functionality      -- reveal : [F] → clear F    ; the response is public by shape
+abbrev Cmp       (F) : Functionality      -- lt     : [F, F] → share F
+abbrev Rand      (F) : Functionality      -- rand   : [] → share F, uniform            (Std/Random.lean)
+abbrev PubCoin   (F) : Functionality      -- coin   : [] → clear F, uniform: public by shape
+abbrev MulTriple (F) : Functionality      -- get    : [] → share F × share F × share F, (a, b, a·b)
+abbrev Barrier       : Functionality      -- barrier : [] → unit, `ctrl := true`     (§3.5)
+
+abbrev Hybrid := List Functionality
+abbrev Std (F) : Hybrid := [Lin F, Mult F, Reveal F]          -- the arithmetic black box
+abbrev Pre (F) : Hybrid := [Lin F, Reveal F, MulTriple F]     -- the preprocessing model
+
+class Has (F : Functionality) (fs : Hybrid) where (i : Fin fs.length) (eq : fs.get i = F)   -- the certificate
 ```
 
-`call o k` sends request `o` and continues with `k` on the response.
+A *hybrid* is a list of functionalities, available as black boxes. Its
+interface indexes the list (`fs.ops.Op := (i : Fin fs.length) × (fs.get
+i).ops.Op`), and `Has F fs` is a position and one equality of
+functionalities, from which operands, response, program and disclosure
+all transport (`Prog.op` transports a request along `eq`; on a literal
+list the equality is `rfl` and everything computes). The instances
+`Has.here` and `Has.there` walk a literal list, so a program written
+against `[Has (Lin F) fs] [Has (Mult F) fs]` runs on *every* hybrid that
+lists those two functionalities, in any order and with anything else
+alongside. This is the "different subsets of features" requirement,
+solved by the usual data-types-à-la-carte instances on a list rather than
+on a sum of signatures.
+
+Randomness is a *feature of the functionality*, not of the program
+language: `rand`, `coin` and `mulTriple` are requests like any other.
+Which of them an MPC offers, and what they cost, is again a list (§2.6).
+
+### 2.2 Programs: the free monad
+
+```lean
+inductive Prog (ι : Interface) (D : Domain) : Type → Type where
+  | pure : α → Prog ι D α
+  | call (r : Req ι D) : (Resp ι D r.op → Prog ι D α) → Prog ι D α      -- ask, then continue
+```
+
+`call r k` sends request `r` and continues with `k` on the response.
 The continuation is arbitrary Lean code: that is where the "compute in the
-clear and insert back" happens, with no special support.
+clear and insert back" happens, with no special support, and where a
+program branches on a public value.
 
 ```lean
-def divByOpened [Has (Lin D) σ] [Has (Reveal D) σ] [Div D.F] [OfNat D.F 1]
-    (x d : D.S) : Circ σ D.S := do
+def divByOpened [Has (Lin F) fs] [Has (Reveal F) fs] [Div F] [OfNat F 1] (x d : D.sh F) : Prog fs.ops D (D.sh F) := do
   let dv ← reveal d           -- functionality → environment
   smul (1 / dv) x            -- clear arithmetic, then environment → functionality
 ```
@@ -143,41 +194,49 @@ There is no parallel node. Monadic `bind` is sequential *as a program*, but
 delay is not read off the program order: it is computed from data
 dependencies in the timed domain (§3.5), so `mapM mul` over a list is one
 round and a product tree written with plain binds costs its depth. The
-only annotation a circuit ever needs is a `barrier` where it branches on a
+only annotation a program ever needs is a `barrier` where it branches on a
 revealed value (decision 002).
 
-`Circ σ` is a lawful monad (`bind_pure`, `bind_assoc` by induction), so
+`Prog ι D` is a lawful monad (`bind_pure`, `bind_assoc` by induction), so
 `do`-notation, `List.mapM`, etc. all work, and the interpreter and every
-compositional theorem have exactly two cases.
+compositional theorem have exactly two cases. `Prog.handle` implements
+every request of one interface by a program over another; it is inlining,
+and it is what composition means (§5).
 
-### 2.3 Why circuits cannot cheat
+### 2.3 Why programs cannot cheat
 
-Circuits are polymorphic in the domain `D`. Since `D.S` is an abstract
-type, the only functions from `D.S` to anything are the ones the signature
-offers. A circuit cannot look at a share; it can only ask the functionality
-to open it, and opening is exactly what the leakage semantics records.
-(This is enforced by typing, not by a parametricity theorem: the hiding
-theorems are about the circuit instantiated at the ideal domain and are
-proved by evaluation.)
+Programs are polymorphic in the domain `D`. Since `D.sh T` is an abstract
+type, the only functions from `D.sh T` to anything are the ones the
+interface offers. A program cannot look at a share; it can only ask the
+functionality to open it, and opening is exactly what the trace records.
+Lean's typing enforces this for a computable `def`: comparing two shares
+would need a `DecidableEq (D.sh T)` instance that does not exist, and
+supplying one classically makes the definition noncomputable. What typing
+does not catch (`noncomputable`, `unsafe`, `implemented_by`, `partial`, or
+a parameter of the certificate that hands in a way to inspect shares) the
+`program` command checks on the fully applied implementation (§7,
+`Examples/Checked.lean`). The privacy theorems themselves are about the
+program instantiated at the ideal domain, where a share is its value, and
+are proved by evaluation.
 
-### 2.4 What a circuit looks like
+### 2.4 What a program looks like
 
-A user writes against the features they need and nothing else. Here is the
-whole of a one-round "dot product plus constant" and of Horner evaluation:
+A user writes against the functionalities they need and nothing else.
+Here is the whole of a one-round "dot product plus constant" and of Horner
+evaluation (`Examples/Basic.lean`):
 
 ```lean
-/-- ⟨xs, ys⟩ + c.  One round: the products in parallel, then free linear ops. -/
-def dotPlus [Has (Lin D) σ] [Has (Mult D) σ] [OfNat D.F 0]
-    (xs ys : List D.S) (c : D.F) : Circ σ D.S := do
-  let ps ← Circ.parMap (fun p : D.S × D.S => mul p.1 p.2) (xs.zip ys)
+/-- ⟨xs, ys⟩ + c.  One round: the products in parallel, then free linear operations. -/
+def dotPlus [Has (Lin F) fs] [Has (Mult F) fs] [OfNat F 0] (xs ys : List (D.sh F)) (c : F) :
+    Prog fs.ops D (D.sh F) := do
+  let ps ← (xs.zip ys).mapM fun p => mul p.1 p.2
   let s ← sumAll ps
   let k ← const c
   add s k
 
 /-- Σ aᵢ xⁱ by Horner: each multiplication depends on the last, so n rounds. -/
-def horner [Has (Lin D) σ] [Has (Mult D) σ] [OfNat D.F 0]
-    (x : D.S) : List D.S → Circ σ D.S
-  | [] => const (0 : D.F)
+def horner [Has (Lin F) fs] [Has (Mult F) fs] [OfNat F 0] (x : D.sh F) : List (D.sh F) → Prog fs.ops D (D.sh F)
+  | [] => const 0
   | a :: as => do
     let r ← horner x as
     let t ← mul r x
@@ -186,322 +245,337 @@ def horner [Has (Lin D) σ] [Has (Mult D) σ] [OfNat D.F 0]
 
 Things to notice:
 
-* `D.S` is opaque, so `mul`, `add`, `const` are the only things that can
-  happen to a share; `c : D.F` is a clear value the environment supplies.
-* Parallelism is where you wrote it: `parMap` gives one round, the
+* `D.sh F` is opaque, so `mul`, `add`, `const` are the only things that can
+  happen to a share; `c : F` is a clear value the environment supplies,
+  and it travels in the operation (`Lin.Op.const c`), where the adversary
+  sees it.
+* Parallelism is where you wrote it: the `mapM` gives one round, the
   recursion in `horner` gives `n`. The framework does not reschedule.
-* Nothing says which MPC this runs on. Instantiating `σ := Std D` runs it
-  on the arithmetic black box; `σ := Pre D` (after the Beaver handler,
-  §5) runs it on a preprocessing functionality; the theorems below are
-  stated once and hold for both.
+* Nothing says which MPC this runs on. Instantiating `fs := Std F` runs it
+  on the arithmetic black box; `fs := Pre F` (after the Beaver
+  realisation, §5) runs it on a preprocessing functionality; the theorems
+  below are stated once and hold for both.
 
-And what the user proves, all by `rfl` in the sketch for concrete sizes:
+And what the user proves, all by `rfl` for concrete sizes:
 
 ```lean
-example : output (Std.ideal F) (dotPlus [a, b] [c, c] k) = a * c + b * c + k := rfl
-example : delay F (Std.timed F) (dotPlus [⟪a⟫, ⟪b⟫] [⟪a⟫, ⟪b⟫] k) = 1 := rfl   -- timed domain, §3.5
-example : delay F (Std.timed F) (horner ⟪x⟫ [⟪a₀⟫, ⟪a₁⟫, ⟪a₂⟫]) = 3 := rfl
-example : leak (Std.ideal F) (horner x [a₀, a₁, a₂]) = [] := rfl     -- hence hiding
+example : output (Std F).eval (dotPlus (fs := Std F) (D := .ideal) [a, b] [c, c] k) = a * c + b * c + k := rfl
+example : delayOn (Std.timed F) (dotPlus (fs := Std F) (D := .timed) [⟪a⟫, ⟪b⟫] [⟪a⟫, ⟪b⟫] k) = 1 := rfl  -- §3.5
+example : delayOn (Std.timed F) (horner (fs := Std F) (D := .timed) ⟪x⟫ [⟪a₀⟫, ⟪a₁⟫, ⟪a₂⟫]) = 3 := rfl
+example : view (Std F).eval (horner (fs := Std F) (D := .ideal) x [a₀, a₁, a₂])
+    = [⟨Std.lin F (.const 0), (), ()⟩, ⟨Std.mult F, (), ()⟩, ⟨Std.lin F .add, (), ()⟩, …] := rfl   -- silent records only
 ```
 
-### 2.5 Polymorphism over the feature set
+### 2.5 Polymorphism over the hybrid
 
-`[Has τ σ]` makes a circuit *run* on every functionality that has `τ`. A
-circuit whose *implementation* should depend on what is available (an AES
+`[Has F fs]` makes a program *run* on every hybrid that lists `F`. A
+program whose *implementation* should depend on what is available (an AES
 S-box that uses native inversion when the MPC offers it and `x^254`
 otherwise) is written against a **capability class**, whose instances are
-the strategies:
+the strategies (`Examples/Gallery.lean`):
 
 ```lean
-inductive Inv (D : Domain) : Sig where | inv : D.S → Inv D D.S      -- native feature
+abbrev Inversion (F : Type) [Inv F] : Functionality                 -- native inversion: inv : [F] → share F
 
-class HasInv (D : Domain) (σ : Sig) where                              -- "some way to invert"
-  inv : D.S → Circ σ D.S
+class HasInv (F : Type) (fs : Hybrid) (D : Domain) where            -- "some way to invert"
+  inv : D.sh F → Prog fs.ops D (D.sh F)
 
-instance (priority := high) [Has (Inv D) σ] : HasInv D σ := ⟨fun x => Circ.op (Inv.inv x)⟩
-instance [Has (Lin D) σ] [Has (Mult D) σ] [OfNat D.F 1] : HasInv D σ := ⟨fun x => expPublic x 254⟩
+instance (priority := high) [Inv F] [Has (Inversion F) fs] : HasInv F fs D := ⟨fun x => nativeInv x⟩
+instance [OfNat F 1] [Has (Lin F) fs] [Has (Mult F) fs] : HasInv F fs D := ⟨fun x => expPublic x 254⟩
 
-def sbox [HasInv D σ] [Has (Lin D) σ] (affine : D.S → Circ σ D.S) (x : D.S) : Circ σ D.S := do
+def sbox [HasInv F fs D] (affine : D.sh F → Prog fs.ops D (D.sh F)) (x : D.sh F) : Prog fs.ops D (D.sh F) := do
   let y ← HasInv.inv x
   affine y
 ```
 
-Instance priority picks the native feature when the signature has it and
-falls back otherwise. The S-box source is written once; on `Std` it costs
-13 rounds, on `Std ⊞ Inv` one round, both by evaluation. Correctness is
-proved per instance against the same spec (`output = x⁻¹` then affine), so
-a capability class carries a *spec* the way a `Gadget` does (§7): every
-strategy must meet it, and a caller's proof uses only the spec. This is the
-MPC analogue of Clean's subcircuits with local proofs, with the extra twist
-that which subcircuit you get is decided by the type class.
+Instance priority picks the native functionality when the hybrid lists it
+and falls back otherwise. The S-box source is written once; on `Std` it
+costs 13 rounds, on `[Lin F, Mult F, Reveal F, Inversion F]` one round,
+both by evaluation. Correctness is proved per instance against the same
+functionality (`output = x⁻¹` then affine), so a capability class carries
+a *specification* the way a realisation does (§7): every strategy must
+realise it, and a caller's proof uses only the specification. This is the
+MPC analogue of Clean's subcircuits with local proofs, with the extra
+twist that which subcircuit you get is decided by the type class.
 
 The same mechanism, one level up, handles whole functionalities: an AES
-*functionality* offered natively by some MPC (`Aes D : Sig`, one round,
-opaque) versus an AES *circuit* over `Std`. Both are instances of
-`HasAes D σ`; a protocol written against `HasAes` runs on either.
+*functionality* offered natively by some MPC (`AES F aes`, one operation,
+opaque) versus an AES *program* over `Std`. A protocol written against
+`[Has (AES F aes) fs]` runs on either (§2.10, `Examples/AesHybrid.lean`).
 
 ### 2.6 The MPC as one value: a price list
 
-Should the set of enabled features be part of the circuit's type, with
-subtyping to require a feature? Yes, and there should be exactly one thing
-that describes an MPC. The design that satisfies both, worked out in
-`Features.lean`:
+Should the set of enabled functionalities be part of the program's type,
+with subtyping to require one? Yes, and there should be exactly one thing
+that describes an MPC. The design that satisfies both (`Cost.lean`,
+decision 003):
 
-**An MPC is what it charges.** It is a list of `(feature, price)` pairs.
-A feature that is absent is not offered, which is the same as infinitely
-expensive. Everything else is derived from that one value:
+**An MPC is what it charges.** It is a list of functionalities, each with
+a price per operation. A functionality that is absent is not offered,
+which is the same as infinitely expensive. Everything else is derived
+from that one value:
 
 ```lean
-inductive Feature where | lin | mult | reveal | rand | randNZ | mulTriple | cmp | inv     -- library-owned
-def Feature.Ops (D : Domain) : Feature → Sig                                 -- lin ↦ Lin D, …
+structure Price where (delay : Nat) (comm : Nat)               -- rounds and communication, per operation
 
-structure MPC where prices : List (Feature × Nat)
+abbrev MPC := List ((F : Functionality) × (F.ops.Op → Price))    -- constant pricing is `MPC.const F p`
 
-def MPC.cost (M : MPC) (f : Feature) : Option Nat := (M.prices.find? (·.1 = f)).map (·.2)
+def MPC.hybrid   (M : MPC) : Hybrid                              -- the functionalities, in order
+def MPC.price    (M : MPC) : M.hybrid.ops.Op → Price             -- looked up at the position `Has` finds
+def MPC.comm     (M : MPC) : CostModel M.hybrid.ops Nat          -- the additive cost model: derived, not chosen
+def MPC.timed    (M : MPC) : Model M.hybrid.ops .timed Sched     -- the timed model at the list's latencies
+abbrev MPC.model (M : MPC) := M.hybrid.model                     -- the semantics: never the MPC's to choose
 
-class Has (f : Feature) (M : MPC) : Prop where mem : ∃ n, (f, n) ∈ M.prices  -- by instance search
-theorem Has.finite [Has f M] : M.cost f ≠ none
-
-def Ops (D : Domain) (M : MPC) : Sig := fun α => Σ f : { f // Has f M }, f.1.Ops D α
-abbrev Circ' (D : Domain) (M : MPC) (α : Type) := Circ (Ops D M) α
+abbrev abb : MPC := [MPC.const (Lin F) ⟨0, 0⟩, MPC.const (Mult F) ⟨1, 2⟩, MPC.const (Reveal F) ⟨1, 1⟩]
 ```
 
-* **The type carries the feature set.** `Circ' D M α` may only use what
-  `M` offers: a request is a feature *with its `Has` evidence* and one of
-  that feature's operations. Calling `inv` against an MPC without it is
-  a failed instance search at the call site, not a runtime `⊤`.
-* **`Has` implies finite cost, by construction.** The cost model of `M` is
-  derived (`M.delay` prices each request by its feature), every request
-  in a well-typed circuit carries `Has`, and `Has.finite` gives the price.
-  So `cost M.delay c ≠ none` for every circuit that type-checks
-  (`cost_finite`, statement in the sketch), and `⊤` is only ever the
-  price of something the type system already ruled out.
-* **Subtyping is `M.le M' := ∀ f, Has f M → Has f M'`**, and `widen h`
-  coerces `Circ' D M α` to `Circ' D M' α`. It is a handler, so it costs
-  nothing and changes nothing semantically.
-* **Semantics is per feature, once.** `Feature.ideal f` is the ideal model
-  of feature `f`; `M.ideal` assembles it for any `M`. An MPC only prices,
-  it never redefines what an operation means. Two MPCs that both offer
-  `mult` agree on what `mult` computes and leaks, and differ only in
-  rounds.
+* **The type carries the feature set.** A program over `M.hybrid.ops` may
+  only use what `M` lists: a request names a position, and `Prog.op`
+  needs `Has F M.hybrid` for the functionality it calls. Calling
+  `nativeInv` against an MPC without `Inversion F` is a failed instance
+  search at the call site, not a runtime `⊤`.
+* **Offered means priced, by construction.** `M.price` is total on the
+  hybrid's operations, since every operation of the hybrid names the entry
+  it belongs to. There is no `⊤` and no `Option`: the price of something
+  the type system has ruled out is never asked for.
+* **Subtyping is `Incl fs gs`** (every component of `fs` is available in
+  `gs`), and `Prog.weaken` coerces `Prog fs.ops D α` to
+  `Prog gs.ops D α`. It is a handler, so it costs nothing and changes
+  nothing semantically.
+* **Semantics is per functionality, once.** The hybrid's model dispatches
+  by position to the component's own ideal model; `M.model` is assembled
+  from the entries with no per-MPC code. An MPC only prices, it never
+  redefines what an operation means. Two MPCs that both list `Mult F`
+  agree on what `mult` computes and discloses, and differ only in rounds
+  and bytes.
 
-The capability-class pattern of §2.5 is unchanged: instances of
-`HasInv D σ` become `instance [Has .inv M] : HasInv D M` (native) and
-`instance [Has .lin M] [Has .mult M] : HasInv D M` (fallback), and the
-choice can also be made by comparing `M.cost .inv` with the fallback's
-known price, since that is now a plain `Option Nat` on a plain value.
+The capability-class pattern of §2.5 is unchanged: the instances are
+`[Has (Inversion F) fs]` (native) and `[Has (Lin F) fs] [Has (Mult F) fs]`
+(fallback), and since prices are plain data the choice can also be made by
+comparing `M.price` with the fallback's known price.
 
-This also removes the wrinkle from before: prices are per *feature*, not
-per request, so nothing needs an argument to be priced.
+Prices are per *operation*, not per request, so nothing needs an argument
+to be priced; but an operation carries its clear arguments, so `const c`
+may be priced per coefficient if an MPC wants to. That is why an entry is
+a function `F.ops.Op → Price` and not a scalar (report, Issue 4).
 
-**Cost of the closed world.** `Feature` is an enumeration owned by the
-library, so a downstream user cannot add a feature without editing it.
-That is the trade for feature sets being first-class, decidable and
-printable. If open extension matters, `Feature` can be a structure with a
-name and its signature and `Has` can be by name, at the price of giving
-up exhaustiveness checks. For a library that ships the features, the
-closed world is the right default.
+**An open world.** A functionality is a value, not a constructor of a
+library-owned enumeration, so a downstream user adds one by defining it,
+and `Has` finds it in any list that mentions it. What is given up is
+exhaustiveness: nothing can enumerate "all functionalities", and two
+entries that are the same functionality at different positions are two
+entries (the duplicate-entry and reindexing policy for lists is recorded
+as open in the report).
 
-### 2.7 Adding features later must not break anything
+### 2.7 Adding functionalities later must not break anything
 
-The user-visible contract is: a circuit that did not use a feature is
-unaffected by that feature being added, to the library or to an MPC.
-Three disciplines guarantee it, and `Features.lean` tests all three:
+The user-visible contract is: a program that did not use a functionality
+is unaffected by that functionality being added, to the library or to an
+MPC. Three disciplines guarantee it:
 
-1. **Circuits state lower bounds, never a set.** A circuit is
-   `{M : MPC} [Has .lin M] [Has .mult M] … : Circ' D M α`. It is generic
-   in `M`; only examples and top-level deployments pin `M`. A larger `M`
-   still satisfies the bounds.
-2. **MPCs are lists, and absence is the default.** Adding a feature to the
-   library adds a constructor; `MPC.cost` already returns `none` for it
-   on every existing MPC. Adding a feature to an MPC appends to its list;
-   every `Has` that held before still holds (`widen` with the
-   `mem_cons_of_mem` witness is the coercion, and it is one line).
-3. **Per-feature semantics, total functions with wildcards elsewhere.**
-   `Feature.Ops` and `Feature.ideal` are library-owned total functions,
-   so the compiler names the two places that need a case. User-written
-   cost functions or models over `Feature` end in `| _ => none`.
+1. **Programs state lower bounds, never a set.** A program is
+   `{fs : Hybrid} [Has (Lin F) fs] [Has (Mult F) fs] … : Prog fs.ops D α`.
+   It is generic in `fs`; only examples and top-level deployments pin a
+   list. A longer list still satisfies the bounds.
+2. **Hybrids are lists, and absence is the default.** Adding a
+   functionality to the library is defining a value; no existing list
+   changes. Adding one to an MPC appends an entry; every `Has` that held
+   before still holds (`Has.there`), and `Prog.weaken` with the `Incl`
+   instance is the coercion.
+3. **Per-functionality semantics travel with the value.** A functionality
+   carries its own evaluation model, ideal model and timed model, so the
+   hybrid's model needs no case per name, and there is no library-owned
+   total function to extend.
 
-What survives unchanged: every circuit, every theorem about it stated with
+What survives unchanged: every program, every theorem about it stated with
 price hypotheses (§4.2) or against a named MPC value, and every
-`Gadget` (§7), whose `requires` is exactly its list of `Has` bounds.
+`Realization` (§7), whose hybrid is exactly its list of `Has` bounds.
 
-### 2.8 Circuits over a field
+### 2.8 Programs over a field
 
-The algebra of the clear type is a property of the domain, `D.F`, not a
-feature of the MPC. A circuit that needs it says so with a class
-constraint next to its `Has` bounds; with Mathlib that is `Field D.F` (the
-sketch uses a stand-in with the same operations):
+The algebra of the clear type is a property of the field `F`, not a
+feature of the MPC. A program that needs it says so with a class
+constraint next to its `Has` bounds; with Mathlib that is `Field F`
+(`Examples/Inversion.lean`):
 
 ```lean
-/-- Lagrange interpolation at a public point: coefficients need division,
-computed in the clear; the combination is linear.  Zero rounds. -/
-def interpolate {D : Domain} [Field D.F] [DecidableEq D.F] {M : MPC} [Has .lin M]
-    (nodes : List D.F) (ys : List D.S) (x : D.F) : Circ' D M D.S := do
-  let coeff (xi : D.F) : D.F :=
-    (nodes.filter (· ≠ xi)).foldl (fun acc xj => acc * ((x - xj) / (xi - xj))) 1
-  let terms ← Circ.parMap (fun p : D.F × D.S => smul (coeff p.1) p.2) (nodes.zip ys)
-  sumAll terms
-
 /-- Inversion by masking: `1/x = s / open(x·s)`.  Division in the clear, and coins. -/
-def invert {D : Domain} [Field D.F] {M : MPC} [Has .lin M] [Has .mult M] [Has .rand M] [Has .reveal M]
-    (x : D.S) : Circ' D M D.S := do
-  let s ← rand
+def invert [Has (Lin F) fs] [Has (Mult F) fs] [Has (Reveal F) fs] [Has (RandNZ F) fs] (x : D.sh F) :
+    Prog fs.ops D (D.sh F) := do
+  let s ← randNZ F
   let v ← mul x s
   let m ← reveal v
-  smul (1 / m) s
+  smul m⁻¹ s
 ```
 
-Three things follow. A ring-only MPC (`ℤ/2^k`) has a domain whose `D.F`
-does not satisfy `Field`, so `invert` does not elaborate against it, while
-a circuit asking only for `CommRing D.F` runs on both. Correctness proofs
-of field circuits are field algebra (`field_simp`, `ring`) on the
-output, for every value of the mask, e.g. `(x·s)⁻¹·s = x⁻¹` for `invert`
-with `s ≠ 0`. The mask comes from `randNZ`, a random *nonzero* share the
-functionality guarantees, so `invert` is perfectly correct and perfectly
-hiding: the opened `x·s` is a uniform nonzero element (`invert_correct`,
-`invertGadget`). With a plain `rand` the same circuit would be correct
-and hiding only off `s = 0`; that is where statistical error (§8) would
-enter, and the design keeps it out by asking the functionality for what
-the proof needs.
+Lagrange interpolation at a public point is the other canonical example:
+the coefficients need division and are computed in the clear, the
+combination is linear, so it is zero rounds, and `Field F` with
+`[Has (Lin F) fs]` is all it asks for.
 
-### 2.9 Several fields: generic over the field, switching as a capability
+Three things follow. A ring-only MPC (`ℤ/2^k`) has a clear type that does
+not satisfy `Field`, so `invert` does not elaborate against it, while a
+program asking only for `CommRing F` runs on both. Correctness proofs of
+field programs are field algebra (`field_simp`, `ring`) on the output,
+for every value of the mask, e.g. `(x·s)⁻¹·s = x⁻¹` for `invert` with
+`s ≠ 0` (`invert_correct`). The mask comes from `RandNZ`, a random
+*nonzero* share the functionality guarantees, so `invert` is perfectly
+correct and, for `x ≠ 0`, perfectly private: the opened `x·s` is a uniform
+nonzero element (`invertReal`, §7). With a plain `rand` the same program
+would be correct and private only off `s = 0`; that is where statistical
+error (§8) would enter, and the design keeps it out by asking the
+functionality for what the proof needs (decision 011).
 
-Fields are not named or numbered. Shares are a type constructor, `D.S F`
-is "a share of an `F`", every operation is generic over `F`, the field's
-algebra is a typeclass on `F`, and switching is a capability over two
-field *types* (`MultiField.lean`):
+### 2.9 Several fields: generic over the field, switching as a functionality
+
+Fields are not named or numbered. Shares are a type constructor, `D.sh F`
+is "a share of an `F`", every functionality is instantiated at a field
+type, the field's algebra is a typeclass on `F`, and switching is one more
+functionality over two field *types* (`Examples/MultiField.lean`,
+decision 004):
 
 ```lean
-structure Domain where S : Type → Type                  -- the circuit's opaque view of shares
-abbrev Domain.at (D : Domain) (F : Type) : Glean.Domain := ⟨F, D.S F⟩   -- reuse every single-field feature
+abbrev Switch (F G : Type) [Encodable F] [NatCast G] : Functionality   -- switch : [F] → share G
+abbrev EdaBit (F : Type) [NatCast F] (m : Nat) : Functionality         -- get : [] → share F × vec m (share GF2)
+abbrev DaBit  (F : Type) [NatCast F] : Functionality                   -- get : [] → share F × share GF2
 
-inductive Switch (D : Domain) (F G : Type) : Sig where
-  | switch : D.S F → Switch D F G (D.S G)
-
-/-- What an MPC offers: a feature on a field, or switching between two.
-The field's instances travel with the entry. -/
-inductive Cap where
-  | on (f : Feature) (F : Type) [Concrete F]
-  | switch (F G : Type) [Concrete F] [Concrete G]
-
-structure MPC where prices : List (Cap × Price)
-class Has (c : Cap) (M : MPC) where (price : Price) (mem : (c, price) ∈ M.prices)
-
-def mul {F} [Concrete F] [Has (.on .mult F) M] (a b : D.S F) : Circ' D M (D.S F)
-def rand (F) [Concrete F] [Has (.on .rand F) M] : Circ' D M (D.S F)        -- nothing fixes the field: pass it
-def switch (G) [Concrete G] [Has (.switch F G) M] (a : D.S F) : Circ' D M (D.S G)
+def mul    [Mul F] [Has (Mult F) fs] (a b : D.sh F) : Prog fs.ops D (D.sh F)
+def rand   (F) [Fintype F] [Inhabited F] [Has (Rand F) fs] : Prog fs.ops D (D.sh F)    -- nothing fixes the field: pass it
+def switch (G) [Encodable F] [NatCast G] [Has (Switch F G) fs] (a : D.sh F) : Prog fs.ops D (D.sh G)
 ```
 
-A circuit is generic over the fields it touches; `let a ← switch G b`
-elaborates only if `M` offers the switch from `b`'s field to `G`:
+A program is generic over the fields it touches; `let a ← switch G b`
+elaborates only if the hybrid lists the switch from `b`'s field to `G`:
 
 ```lean
-def mulThenCompare {D : Domain} {M : MPC} {F G : Type} [Concrete F] [Concrete G]
-    [Has (.on .mult F) M] [Has (.switch F G) M] [Has (.on .cmp G) M] [Has (.switch G F) M]
-    (a b c : D.S F) : Circ' D M (D.S F) := do
+def mulThenCompare (F G : Type) [CommRing F] [Encodable F] [CommRing G] [Encodable G] [LT G] [DecidableRel …]
+    [Has (Mult F) fs] [Has (Switch F G) fs] [Has (Cmp G) fs] [Has (Switch G F) fs]
+    (a b c : D.sh F) : Prog fs.ops D (D.sh F) := do
   let ab ← mul a b                              -- in F
   let ab' ← switch G ab                         -- both conversions independent: one round
   let c' ← switch G c
   let bit ← lt ab' c'                           -- comparison is offered on G
   switch F bit                                  -- back in F
 
-abbrev twoField : MPC := ⟨[(.on .mult Int, ⟨1, 2⟩), (.on .cmp Nat, ⟨2, 6⟩),
-                            (.switch Int Nat, ⟨3, 8⟩), (.switch Nat Int, ⟨2, 4⟩), …]⟩
--- instantiates at F := Int, G := Nat; cost ⟨8, 28⟩, leak [], by rfl
+abbrev twoField : MPC := [MPC.const (Mult (ZMod 7)) ⟨1, 2⟩, MPC.const (Cmp (ZMod 16)) ⟨2, 6⟩,
+                          MPC.const (Switch (ZMod 7) (ZMod 16)) ⟨3, 8⟩, MPC.const (Switch (ZMod 16) (ZMod 7)) ⟨2, 4⟩, …]
+-- instantiates at F := ZMod 7, G := ZMod 16; output, cost and delay by evaluation
 ```
 
 Which field a value lives in is in its type, so an operation infers its
 field from its argument and a mismatch is a type error. The MPC prices
-per (feature, field): multiplication on two fields are separate entries,
-and each direction of a switch has its own price.
+per (functionality, field): multiplication on two fields are separate
+entries, and each direction of a switch has its own price.
 
 Three consequences of "the field is the type":
 
-* **Semantics is assembled from the entries.** `Cap.ideal` builds the
-  ideal model of each capability from the instances the entry carries;
-  `M.ideal` works for every `M` with no per-MPC code. A switch's ideal
-  model is whatever conversion the protocol guarantees (integer value if
-  in range, bit decomposition, embedding into an extension), stated once
+* **Semantics is assembled from the entries.** Each entry is a
+  functionality carrying its own model, so `M.model` works for every `M`
+  with no per-MPC code. A switch's ideal model is whatever conversion the
+  protocol guarantees (the canonical representative re-read in the
+  target, bit decomposition, embedding into an extension), stated once
   per pair of field types.
-* **The price sits in the request.** `Has` carries the price as data and a
-  request stores its `Has` evidence, so the cost model reads `h.price`
-  with no lookup, no decidable equality on types, and no `⊤`: every
-  well-typed circuit has a finite, total cost on its MPC.
-* **Universe.** A request mentioning a field type lives in `Type 1`, so the
-  core's `Sig` is universe-polymorphic; every single-field file stays at
-  universe zero.
+* **The price sits where `Has` looks.** `Has` gives a position and
+  `MPC.price` reads the entry at that position, so the cost model needs
+  no decidable equality on types and no `⊤`: every well-typed program has
+  a finite, total cost on its MPC.
+* **Universe.** `Shape`, `Interface` and `Functionality` mention `Type`
+  and live in `Type 1`; programs `Prog ι D α` live in `Type`, and nothing
+  so far has needed more.
 
-Each field has its own leakage type; `Model.mapLeak` puts a field's
-leaked values on the shared `ℕ` alphabet through the `Encodable` instance
-the entry carries. Coins need no conversion: each field's model draws
-from the uniform distribution on that field (§6.4). This covers arithmetic/Boolean mixing (daBits become a
-correlation across two fields), `ℤ/2^k ↔ 𝔽_p` switching, and
+Each event carries its clear outputs at their own type (`Event.out :
+Resp ι .erased op`) and its disclosure at the type the operation declares,
+so there is no shared leakage alphabet to encode into; `Encodable` is used
+only where a conversion needs a canonical representative. Coins need no
+conversion either: each field's model draws from the uniform distribution
+on that field (§6.4). This covers arithmetic/Boolean mixing (daBits become
+a correlation across two fields), `ℤ/2^k ↔ 𝔽_p` switching, and
 extension-field MAC checks.
 
 ### 2.10 One notion: functionalities and realisations
 
 There is no distinction in kind between the MPC's multiplication and an
-AES circuit. Both are **functionalities**: an interface with a `program`
-and a `leak`. What differs is how they come to exist (`Functionality.lean`):
+AES program. Both are **functionalities**: an interface with its meaning,
+one joint step per request. What differs is how they come to exist
+(`Functionality.lean`, `Realization.lean`, decision 006):
 
 ```lean
-structure Functionality (L R : Type) where
-  ops   : Sig
-  model : Model ops L R                       -- program + leak, per operation
+structure Functionality where
+  ops   : Interface
+  eval  : Model ops .ideal Id                      -- coins fixed to a dummy: evaluation by `rfl`, costs, delay
+  IsModel : Model ops .ideal PMF → Prop            -- the semantics, as the predicate it uniquely satisfies
+  isModel_unique : ∃! M, IsModel M
+  timed : (ops.Op → Nat) → Model ops .timed Sched := fun ℓ => eval.timed ℓ   -- hand-written for the standard ones
 
-/-- `F` is realised over `G`: each op of `F` is a circuit over `G` computing
-`F`'s program and revealing only what `F` declares, up to simulation. -/
-structure Realization (F G : Functionality L R) where
-  impl     : {β : Type} → F.ops β → Circ G.ops β
-  realizes : Realizes impl G.model F.model
+noncomputable def Functionality.model (F : Functionality) : Model F.ops .ideal PMF   -- the unique such model
 
-def Realization.id   (F) : Realization F F                      -- trusted: the MPC provides it
-def Realization.comp : Realization F G → Realization G H → Realization F H   -- inlining; `Realizes` composes
-def Realization.inl  (F G) : Realization F ⟨F.ops ⊞ G.ops, …⟩     -- feature inclusion
-def Realization.sum  : Realization F G → Realization F' G → Realization ⟨F.ops ⊞ F'.ops, …⟩ G
+/-- `F` is realised over the hybrid `fs`: a program for every operation and every domain, a simulator
+that sees only `F`'s event, and the equation, on requests satisfying `Pre`. -/
+structure Realization (F : Functionality) (fs : Hybrid) where
+  impl : (D : Domain) → (r : Req F.ops D) → Prog fs.ops D (Resp F.ops D r.op)
+  Pre  : Req F.ops .ideal → Prop := fun _ => True
+  Sim  : Event F.ops → PMF (List (Event fs.ops))
+  real : ∀ r, Pre r → dist fs.model (impl .ideal r) =
+           do let (y, d) ← F.model.step r; let s ← Sim ⟨r.op, (F.ops.cod r.op).blank y, d⟩; pure (y, s)
+
+def Realization.incl (F) (gs) [Has F gs] : Realization F gs                        -- trusted: calling `F` realises `F`
+def Realization.comp : Realization F fs → Realizations fs gs → Realization F gs    -- inlining; `real` composes
 ```
 
-Functionalities and realisations form a category: objects are
-interfaces, morphisms are "implemented over", identities are trust, and
-composition is inlining, with `Realizes` composing by the composition
-theorem of §4.1. Everything earlier is an instance:
+The semantics of a functionality is a `PMF` model, and `PMF` is not
+computable; it is stored as the predicate `IsModel` it uniquely satisfies
+so that a functionality *value* is computable, since a program over a
+literal hybrid mentions its functionalities. An author writes
+`IsModel := (· = M)` for the model they mean and states `F.model = M` once
+(`Functionality.model_eq`); deterministic functionalities are
+`Functionality.ofEval`, whose semantics is the evaluation model lifted.
+
+Functionalities and realisations form a category, up to the
+preconditions: objects are functionalities, morphisms are "implemented
+over", identities are trust (`Realization.incl`), and composition is
+inlining, with the equation composing by the theorem of §4.1. Everything
+earlier is an instance:
 
 | Earlier notion                 | As a functionality / realisation                                   |
 |--------------------------------|--------------------------------------------------------------------|
-| primitive feature (`mult`, `rand`, `reveal`) | a functionality the MPC provides; realisation `id`; price on the MPC's list |
-| MPC price list (§2.6)          | the set of functionalities realised by `id`, with their prices     |
-| `Has τ σ`                      | the trivial realisation `inl : τ → τ ⊞ σ`                          |
-| circuit with spec and declared leak | a one-operation functionality (`Functionality.ofCircuit`) realised over `σ` |
-| gadget (§7)                    | such a realisation plus assumptions and a price; assumptions are the domain on which the program is defined |
-| handler (`beaver`, `onPre`)    | a realisation of `Std` over `Pre`                                  |
+| primitive operation (`mult`, `rand`, `reveal`) | a functionality the MPC provides; realisation `incl`; price on the MPC's list |
+| MPC price list (§2.6)          | the list of functionalities realised by `incl`, with their prices  |
+| `Has F fs`                     | the trivial realisation `Realization.incl F fs`                    |
+| program with spec and declared disclosure | a one-operation functionality realised over `fs` (§7)  |
+| gadget (old §7)                | such a realisation plus a `Pre`; a price is a separate theorem per MPC |
+| handler (`beaver`, "`Std` on `Pre`") | `Realizations (Std F) (Pre F)`: Beaver for `Mult`, `incl` for the rest |
 | capability class (§2.5)        | several realisations of one functionality; instance choice picks one |
-| derived price                  | the cost of `impl o` on the target; composes through `comp` as prices do |
+| derived price                  | the cost of `impl` on the target; composes through `comp` as prices do (`cost_handle`) |
 
-The AES example in the file says it concretely. `AES` is a functionality
-with one operation, program `aes k m`, empty leak. `cbc2` is written
-against `[Has (AesOp D) σ] [Has (Lin D) σ]` and knows nothing about how
-AES exists. Instantiation one: the MPC offers AES natively,
-`Realization.id`. Instantiation two: `aesCircuit`, a circuit over the ABB
-with one new obligation, its own `Realizes` proof. Either way `cbc2`'s
-privacy is proved once, against `AES ⊞ ABB`, and `Hiding.transport` moves
-it to whichever realisation is plugged in:
+The AES example says it concretely (`Examples/AesHybrid.lean`). `AES F
+aes` is a functionality with one operation, program `aes k m`, nothing
+declared. `cbc2` is written against `[Has (AES F aes) fs] [Has (Lin F)
+fs]` and knows nothing about how AES exists. Instantiation one: the MPC
+offers AES natively, `Realization.incl`. Instantiation two:
+`aesByProgram`, a program over the black box with one new obligation, its
+own `real` proof. Either way the protocol's own specification `CBC` is
+realised once, in the AES-hybrid, and composition moves it to whichever
+realisation is plugged in:
 
 ```lean
-example (P : I → Circ ((AES F aes).sum (ABB F)).ops (F × F))
-    (hP : Hiding (((AES F aes).sum (ABB F)).model.tagged ((AES F aes).sum (ABB F)).kind) P) :
-    Hiding ((ABB F).model.tagged (ABB F).kind)
-      (fun i => Circ.handle (Realization.sum (aesCircuit F aes impl h) (Realization.id (ABB F))).impl (P i)) :=
-  Hiding.transport (Realization.sum … ).realizes P hP
+program cbcOverHybrid : Realization (CBC F) (AesHybrid F) where      -- once, against the AES specification
+  impl D r := cbc2 toyAes r.args.1 r.args.2.1 r.args.2.2.1 r.args.2.2.2.1
+  Sim _ := pure [⟨⟨1, .add⟩, (), ()⟩, ⟨⟨0, .enc⟩, (), ()⟩, ⟨⟨1, .add⟩, (), ()⟩, ⟨⟨0, .enc⟩, (), ()⟩]
+  real r _ := by …
+
+noncomputable def hybridOverStd : Realizations (AesHybrid F) (Std F) :=
+  .cons (aesByProgram F) (Realizations.incl [Lin F, Mult F, Reveal F] (Std F))
+noncomputable def cbcOverStd : Realization (CBC F) (Std F) := (cbcOverHybrid F).comp (hybridOverStd F)
+example : (cbcOverStd F).impl .ideal ⟨(), (k, iv, m₁, m₂, ())⟩ = cbc2Plain F k iv m₁ m₂ := rfl   -- literally the inlined program
 ```
 
 So "the basic functionalities from which everything else is derived" is
-literal: the trusted base is the set of `id` realisations, which is the
+literal: the trusted base is the set of `incl` realisations, which is the
 MPC's price list, and every other functionality is a composite of
 realisations down to that base. A change of MPC changes the base; a change
 of implementation changes one morphism; neither touches a caller's proof.
 
-### 2.11 What this buys: circuits at the level of the functionality
+### 2.11 What this buys: programs at the level of the functionality
 
 A protocol is written against the functionalities it needs and proved
 against their specifications. Every way of providing a functionality is
@@ -509,279 +583,303 @@ then a realisation that plugs in without touching the protocol or its
 proof. For an AES-CBC protocol written in the AES-hybrid, the AES
 functionality can be provided by:
 
-| Realisation of `AES`                | What it is here                                                        | Trusted base                           |
+| Realisation of `AES F aes`          | What it is here                                                        | Trusted base                           |
 |-------------------------------------|------------------------------------------------------------------------|----------------------------------------|
-| arithmetic circuit over the ABB     | `Realization AES ABB`: S-boxes by inversion, linear layers free        | the ABB (the MPC's price list)         |
-| Boolean circuit (garbled-circuit style) | `Realization AES BoolABB`: a circuit over `⟦ZMod 2⟧` with xor/and, plus a switch at the boundary if the caller's shares are arithmetic | the Boolean ABB, itself a primitive layer |
-| hardware enclave                    | `Realization.id`: AES is a *primitive* functionality, priced on the list, with the leak the enclave is trusted to have (empty, or a declared side channel) | the enclave |
+| arithmetic program over the black box | `Realization (AES F aes) (Std F)`: S-boxes by inversion, linear layers free | the black box (the MPC's price list) |
+| Boolean program (garbled-circuit style) | a realisation over a Boolean black box `[Lin GF2, Mult GF2, …]` with xor/and, plus a `Switch` at the boundary if the caller's shares are arithmetic | the Boolean black box, itself a primitive layer |
+| hardware enclave                    | `Realization.incl`: AES is a *primitive* functionality, priced on the list, with the disclosure the enclave is trusted to have (nothing, or a declared side channel) | the enclave |
 
-The protocol and its `Realizes` proof are identical in all three cases,
-because the interface, program and leak of `AES`, is the contract. Two
-consequences deserve to be said out loud:
+The protocol and its certificate are identical in all three cases,
+because the interface, program and declared disclosure of `AES`, is the
+contract. Two consequences deserve to be said out loud:
 
 * **The framework proves the hybrid layer.** What is verified is that the
   protocol realises its specification given ideal functionalities, and
   that realisations compose. That the garbling protocol realises the
-  Boolean ABB, or that the enclave realises AES, is a statement about a
-  protocol or a piece of hardware, outside this model and in its trusted
-  base. The UC composition theorem is what joins the two, and it also
-  says which security notion the whole inherits: perfect in the hybrid,
-  composed with a computationally secure base, gives computational
-  security overall.
+  Boolean black box, or that the enclave realises AES, is a statement
+  about a protocol or a piece of hardware, outside this model and in its
+  trusted base. The UC composition theorem is what joins the two. Which
+  security notion the whole then inherits is *not* a consequence of
+  `Realization.comp`: the simulators here are arbitrary `PMF` kernels
+  with no efficiency certificate, and the realisation equation is about
+  one request, not an interactive execution. Transferring the perfect
+  hybrid step to a computationally secure base is a conditional, external
+  application (it needs an efficient simulator and an interactive
+  embedding, neither of which the framework provides); the framework
+  supplies the hybrid step and nothing more (report, Scope decisions).
 * **Representations meet at the interface.** A Boolean realisation works
   on bit shares and an arithmetic caller holds field shares, so the
   realisation includes the conversion (§2.9, §6.5) and its price includes
   the switch. Alternatively the AES functionality is stated generic in the
-  domain and each realisation fixes its own; either way the caller sees
-  one `AesOp`.
+  field and each realisation fixes its own; either way the caller sees
+  one `enc`.
 
-The same holds one level up: the CBC functionality of `AesHybrid.lean` is
-itself an interface, and a higher protocol written against `CBC` never
-learns whether it is running on the hybrid circuit, on a direct
-implementation, or on hardware.
+The same holds one level up: the `CBC` functionality of
+`Examples/AesHybrid.lean` is itself a specification, and a higher protocol
+written against `CBC` never learns whether it is running on the hybrid
+program, on a direct implementation, or on hardware.
 
 **Terminology.** The latency notion is called *delay*: the length of the
-critical path through a circuit's dependency graph under the per-operation
+critical path through a program's dependency graph under the per-operation
 latencies of an MPC. Rounds are its unit. "Depth" is the special case where
 every operation has latency one.
 
-### 2.12 Interfaces and meaning: when a circuit has semantics
+### 2.12 Interfaces and meaning: when a program has semantics
 
-A signature is a *vocabulary*. `MulTriple D` is one request, `get`, whose
-answer has type `D.S × D.S × D.S`; `Has (MulTriple D) σ` says that request is
-available to circuits over `σ`. Nothing else: no distribution, no leak, no
-spec. The same holds for every feature. `Has (Mult D) σ` does not say that
-`mult` multiplies. So the type of a circuit,
+An interface is a *vocabulary*. `MulTriple.ops F` is one operation, `get`,
+whose response has shape `share F × share F × share F`. Nothing else: no
+distribution, no disclosure, no spec. A *functionality* is an interface
+together with its meaning, and the library fixes **one ideal model per
+functionality name**: `MulTriple F` says `get ↦ (a, b, a·b)` with `(a, b)`
+uniform on `F²` and nothing declared, `Mult F` says `mult ↦ a·b`,
+`Reveal F` says `reveal ↦ x`, public by shape. That binding is what the
+name promises, and it is why a functionality is named after what it does:
+`MulTriple`, not "triple", and `SquarePair` and `DoubleSharing` are
+distinct functionalities although their responses have the same shape
+(§6.1).
+
+Since a hybrid is a list of functionalities and not of interfaces, the
+type of a program,
 
 ```lean
-def mulBeaver [Has (Lin D) σ] [Has (Reveal D) σ] [Has (MulTriple D) σ] [Mul D.F] (x y : D.S) : Circ σ D.S
+def mulBeaver [Has (Lin F) fs] [Has (Reveal F) fs] [Has (MulTriple F) fs] (x y : D.sh F) : Prog fs.ops D (D.sh F)
 ```
 
-reads "written using the interfaces of the linear, reveal and triple
-functionalities", and a `Circ σ α` is a syntax tree: which requests are
-made, in what order, and how each continuation depends on the answers.
-Output, leakage, delay and cost are all `run` under a model (§3), so an
-unmodelled circuit has a shape and nothing more.
+reads "written using the linear, reveal and triple *functionalities*",
+and its meaning is fixed the moment it typechecks: `fs.model` dispatches
+to the components' ideal models and nothing else. (Decision 013 left a
+functionality-indexed `Has` as the step still to take; the list hybrid
+takes it, and it is now the only `Has`.) A `Prog fs.ops D α` is still a
+syntax tree: which requests are made, in what order, and how each
+continuation depends on the answers. Output, view, delay and cost are all
+`run` under a model (§3).
 
-A *functionality* is an interface together with its meaning: a
-`Model`, program and leak (`Functionality.lean` bundles the two, with
-the request kinds of §4.1). The library fixes **one ideal model per
-interface name**: `MulTriple.ideal` says `get ↦ (a, b, a·b)` with `(a, b)`
-uniform on `F²` and nothing leaked, `Mult.ideal` says `mult ↦ a·b`,
-`Reveal.ideal` says `reveal ↦ x`, leaking `[x]`. That binding is what the
-name promises, and it is why the interface must be named after the
-functionality it is the interface of: `MulTriple`, not "triple", and
-`SquarePair` and `DoubleSharing` are distinct interfaces although their
-responses have the same type (§6.1).
+"Instantiating" therefore means two different things, and only one of
+them is needed for semantics:
 
-"Instantiating" an interface therefore means two different things, and
-only one of them is needed for semantics:
+* **Giving the interface its ideal model.** This happens when the
+  functionality is defined, once, and is not a per-MPC choice. Every MPC
+  that lists `MulTriple F` offers *that* functionality; the price list
+  only says what it charges and cannot redefine what it means.
+* **Realising the functionality** by a protocol, or by a program over
+  other functionalities (`beaverMult`, `aesByProgram`). This never
+  touches semantics. The program is a program in the hybrid where the
+  functionality is ideal, its meaning is with respect to the ideal model,
+  and a realisation carries the theorems across (§4.1,
+  `handle_realizes`). That is the UC reading: a hybrid protocol is a
+  program in the `F`-hybrid, and `F`'s ideal functionality is part of its
+  definition.
 
-* **Giving the interface its ideal model.** This is what a circuit's
-  semantics needs, and it is not a per-MPC choice. On the price-list
-  route (§2.6, `Features.lean`) it happens by name: `Feature.ideal
-  .mulTriple := MulTriple.ideal`, and a circuit `Circ' D M` has its
-  semantics `M.ideal` the moment it typechecks. Every MPC that offers
-  `.mulTriple`
-  offers *that* functionality; the price list only says what it charges
-  and cannot redefine what it means.
-* **Realising the interface** by a protocol, or by a circuit over other
-  features (`onPre`, `aesByCircuit`). This never touches semantics. The
-  circuit is a program in the hybrid where the interface is ideal, its
-  meaning is with respect to the ideal model, and a realisation carries
-  the theorems across (§4.1, `handle_realizes`). That is the UC reading:
-  a hybrid protocol is a program in the `F`-hybrid, and `F`'s ideal
-  functionality is part of its definition.
-
-This is the invariant stated in §7 from the other side: **a circuit has
+This is the invariant stated in §7 from the other side: **a program has
 semantics regardless of the MPC, but a cost only once an MPC is fixed.**
-Semantics needs the functionality (fixed per name by the library); cost
+Semantics needs the functionality (fixed per name by its author); cost
 needs the price list.
 
 What the core keeps open, by leaving the model a parameter of `run`, is
-the ability to interpret the same syntax in other ways: evaluation at
-`Id` for `rfl`, the clock model for delay, a hybrid model in which a
-callee is abstract, or a deliberately wrong model to state a
-counterexample (`BadMulTriple`, `Beaver.lean`: same interface, `a = b`,
-still correct, not hiding). Those are other *interpretations* of one
-program, not other meanings of "triple", and every theorem names the
-model it is about, so nothing proved against `MulTriple.ideal` can be
-mistaken for a statement about another model. If the canonical model
-should also appear in the types of core circuits, the change is a
-functionality-indexed `Has` on top of `Functionality`, the feature-name
-route already being that for price lists (decision 013).
+the ability to interpret the same syntax in other ways: the
+functionality's `eval` at `Id` for `rfl`, its `timed` model for delay, a
+hybrid model in which a callee is abstract, or a deliberately wrong
+functionality to state a counterexample (`BadMulTriple`,
+`Examples/Beaver.lean`: same interface, `a = b`, still correct, provably
+not a realisation). Those are other *interpretations* of one program, not
+other meanings of "triple", and every theorem names the model it is about,
+so nothing proved against `MulTriple F` can be mistaken for a statement
+about `BadMulTriple F`.
 
 ## 3. Semantics
 
-### 3.1 Models: return values and leakage, in a monad
+### 3.1 Models: one joint step, in a monad
 
 ```lean
-structure Model (σ : Sig) (L : Type) (m : Type → Type) where
-  program : {α : Type} → σ α → m α           -- what the operation returns, in `m`
-  leak    : {α : Type} → σ α → α → List L    -- what the adversary sees: request and response
+structure Model (ι : Interface) (D : Domain) (m : Type → Type) where
+  step : (r : Req ι D) → m (Resp ι D r.op × ι.disc r.op)     -- the response *and* the disclosure, jointly
+
+def Model.det     (program : (r : Req ι D) → Resp ι D r.op) (leak : (r : Req ι D) → ι.disc r.op) : Model ι D m
+def Model.silent  (program : (r : Req ι D) → Resp ι D r.op) : Model ι D m      -- every disclosure type `Unit`
+def Model.lift    (m) (M : Model ι D Id) : Model ι D m                          -- an evaluation model, in any monad
+def Model.program (M : Model ι D m) (r : Req ι D) : m (Resp ι D r.op)          -- the response marginal
 ```
 
-A model says, for each request, what comes back and what is observed.
-The monad `m` is the one design decision of this section, and it is what
+A model says, for each request, what comes back and what is declared, as
+one joint law. There is no separate `leak` accessor: the correlation
+between response and disclosure is part of the specification (a public
+coin whose value is disclosed but not returned, §6.3), and a
+deterministic function of (request, response) could not express it. The
+monad `m` is the one design decision of this section, and it is what
 removed the coin tape:
 
 * `m := PMF` (Mathlib's probability mass functions) is **the semantics**.
-  `rand` is `PMF.uniformOfFintype F`; a Beaver triple is the image of a
-  uniform draw from `Fin 2 → F`; a run is a distribution over
-  (output, revealed values). Privacy is stated here and nowhere else.
-* `m := Id` is **evaluation**. Deterministic features (`Lin`, `Mult`,
-  `Reveal`, `Cmp`, …) are modelled at `Id` once and lifted into any
-  monad by `Model.lift`, whose program is `pure`. Coin-free circuits
-  compute output, leakage and cost by `rfl`/`decide`, and `dist_lift`
-  says their `PMF` semantics is the point at that evaluation, so `rfl`
-  proofs transfer to the semantics.
+  `rand` is `uniform F` (`PMF.uniformOfFintype`); a Beaver triple is the
+  image of a uniform draw from `Fin 2 → F`; a run is a distribution over
+  (output, trace). Privacy is stated here and nowhere else.
+* `m := Id` is **evaluation**. Deterministic functionalities (`Lin`,
+  `Mult`, `Reveal`, `Cmp`, …) are modelled at `Id` once and lifted
+  (`Functionality.ofEval`); randomised ones carry an `eval` model with
+  the coins fixed to a dummy, so that costs and delays evaluate (values
+  under it are meaningless by design). Coin-free programs compute output,
+  view and cost by `rfl`/`decide`, and `dist_lift` says their `PMF`
+  semantics is the point at that evaluation, so `rfl` proofs transfer to
+  the semantics.
 * `m := Sched := StateT Clock Id` is **scheduling**: the timed domain of
   §3.5, where a clock records what has been revealed.
 
-Leakage is a function of the request *and* the response: for `reveal x`
-either would do; for a public coin only the response carries the value.
+The *ideal* domain identifies shares with values, `Domain.ideal := ⟨fun T
+=> T⟩`; models are stated there. The models of `Std` are the obvious
+ones: `mult ↦ a * b`, silent; `reveal ↦ x`, whose response is clear and
+therefore in the trace by shape, nothing further declared. `Rand.model`
+draws `uniform F`; `MulTriple.model` samples its correlation from a
+*jointly* uniform `Fin 2 → F` (§6.1); `RandNZ.model` draws a uniform
+nonzero element, for programs that mask by multiplication. There is no
+tape and no coin index: each draw is a fresh `bind`, and `k` draws are one
+draw from `F^k` (`seqUniform_eq_uniform`, §4.1). The model of a hybrid
+dispatches by position to the model of the component, so the model of an
+MPC is assembled functionality by functionality, like the list.
 
-The *ideal* domain identifies shares with values, `Domain.ideal F := ⟨F, F⟩`.
-The ideal model of `Std` is the obvious one: `mult a b ↦ pure (a * b)`,
-silent; `reveal x ↦ pure x`, leaks `[x]`. `Rand.ideal` draws
-`uniform F`; `MulTriple.ideal` samples its correlation from a *jointly*
-uniform `Fin c.k → F` (§6.1); `RandNZ.ideal` draws a uniform nonzero
-element, for gadgets that mask by multiplication. There is no tape and
-no coin index: each draw is a fresh `bind`, and `k` draws are one draw
-from `F^k` (`seqUniform_eq_uniform`, §4.1). Models of sums are sums of
-models, so the model of a functionality is assembled feature by feature,
-like the signature.
-
-The models carry no state of their own. That is what makes running
-`c >>= k` the same as running `c` and then `k` in *every* lawful monad
-(`run_bind`), and that one law is what every composition theorem rests on.
+Functionalities carry no state of their own across requests. That is not
+what makes `run_bind` hold: `run_bind` holds in every lawful monad, state
+included, and is used at `Sched`. Statelessness is what makes the
+per-request realisation equation compose: `handle_realizes` commutes the
+simulator's coins for one request past the rest of the run
+(`PMF.bind_comm`), which a hidden state shared between requests would
+forbid. Stateful functionalities (persistent hidden state, interleaved
+sessions, batched MAC checks, amortised preprocessing) are out of scope
+for the foreseeable future; response-dependent callers are not what this
+excludes, and are supported (report, Scope decisions).
 
 ### 3.2 Cost: an additive monoid, and a price per operation
 
 ```lean
-structure Price where (delay : Nat) (comm : Nat)      -- what an MPC charges for a feature
+structure Price where (delay : Nat) (comm : Nat)      -- what an MPC charges for an operation
 
-structure CostModel (σ : Sig) (C : Type) where
-  op : {α : Type} → σ α → C                            -- price per call, in an `AddMonoid C`
+structure CostModel (ι : Interface) (C : Type) where
+  op : ι.Op → C                                        -- price per operation, in an `AddMonoid C`; never sees an operand
 ```
 
 Costs add along a run; the carrier is any Mathlib `AddMonoid`: `ℕ` for
-communication, `WithTop ℕ` when unsupported operations are priced `⊤`
-("runs on this MPC" is "has finite cost", `Has.finite`, `cost_finite`),
-`Unit` for none. Delay is *not* a cost in this sense: it is computed
+communication, `Unit` for none (`CostModel.unit`, which `output` and
+`view` run under). Delay is *not* a cost in this sense: it is computed
 from data dependencies in the timed domain (§3.5), and a `Price` feeds
-its `delay` to that domain and its `comm` to the additive model.
+its `delay` to that domain (`MPC.timed`) and its `comm` to the additive
+model (`MPC.comm`).
 
-An MPC prices every feature with a `Price`. Four independent
-multiplications written one after another have delay 1 and
-communication 8; four dependent ones have delay 4 and communication 8
-(`Features.lean`). Delay does not stack, and nothing has to say so per
-circuit: it falls out of the dependency graph.
+An MPC prices every operation with a `Price`. Two dependent
+multiplications (`mul3`) have delay 2 and communication 4 on `abb`; two
+independent ones feeding a third (`mul4seq`) still have delay 2, for
+three multiplications' worth of communication. Delay does not stack, and
+nothing has to say so per program: it falls out of the dependency graph.
 
 "Score different sub-functionalities differently" is a price list. Several
-lists coexist for one feature set, and for sums of signatures cost models
-are sums of cost models:
+lists coexist for one hybrid, and for concatenated lists price lists
+concatenate:
 
-| Feature  | honest-majority rounds | preprocessing rounds | online triple generation | `total` (openings) |
-|----------|-----------------------:|---------------------:|-------------------------:|-------------------:|
-| `Lin`    | 0                      | 0                    | 0                        | 0                  |
-| `Mult`   | 1                      | (via `MulTriple`)    | (via `MulTriple`)        | 1                  |
-| `Reveal` | 1                      | 1                    | 1                        | 1                  |
-| `Rand`   | 0 (PRSS)               | 0                    | 1                        | 0                  |
-| `MulTriple` | —                   | 0 (precomputed)      | 2                        | 0                  |
-| `Cmp`    | e.g. 3                 | e.g. 2               | e.g. 4                   | e.g. 5             |
+| Functionality | honest-majority rounds | preprocessing rounds | online triple generation | `total` (openings) |
+|---------------|-----------------------:|---------------------:|-------------------------:|-------------------:|
+| `Lin`         | 0                      | 0                    | 0                        | 0                  |
+| `Mult`        | 1                      | (via `MulTriple`)    | (via `MulTriple`)        | 1                  |
+| `Reveal`      | 1                      | 1                    | 1                        | 1                  |
+| `Rand`        | 0 (PRSS)               | 0                    | 1                        | 0                  |
+| `MulTriple`   | —                      | 0 (precomputed)      | 2                        | 0                  |
+| `Cmp`         | e.g. 3                 | e.g. 2               | e.g. 4                   | e.g. 5             |
 
-The sketch has `Pre.timed F 1 0` and `Pre.timed F 1 2` for the two
-`MulTriple` columns; the same Beaver circuit has delay 1 under the first and
-3 under the second, both by `rfl`.
+`Examples/Beaver.lean` has `preMPC` (triples precomputed, priced `⟨0, 0⟩`)
+and `preOnline` (triples generated online, `⟨2, 3⟩`); the same Beaver
+program has delay 1 under the first and 3 under the second, both by
+evaluation.
 
 ### 3.3 The interpreter
 
 ```lean
-def run (M : Model σ L m) (K : CostModel σ C) : Circ σ α → m (α × Trace C L)
+def run (M : Model ι D m) (K : CostModel ι C) : Prog ι D α → m (α × Trace ι C)
   | .pure a   => pure (a, Trace.zero)
-  | .call o k => do let x ← M.program o
-                    let r ← run M K (k x)
-                    pure (r.1, Trace.seq ⟨K.op o, M.leak o x⟩ r.2)      -- cost adds, leaks append
+  | .call r k => do let p ← M.step r                                          -- (response, disclosure)
+                    let res ← run M K (k p.1)
+                    pure (res.1, Trace.seq ⟨K.op r.op, [⟨r.op, (ι.cod r.op).blank p.1, p.2⟩]⟩ res.2)
 
-def output (M : Model σ L Id)  (c) : α        := (Id.run (run M .unit c)).1
-def leak   (M : Model σ L Id)  (c) : List L   := (Id.run (run M .unit c)).2.leak
-def cost   (M : Model σ L Id)  (K) (c) : C    := (Id.run (run M K c)).2.cost
-def dist   (M : Model σ L PMF) (c) : PMF (α × List L) := (fun p => (p.1, p.2.leak)) <$> run M .unit c
+def output (M : Model ι D Id)  (c) : α                 := (Id.run (run M .unit c)).1
+def view   (M : Model ι D Id)  (c) : List (Event ι)    := (Id.run (run M .unit c)).2.view
+def cost   (M : Model ι D Id)  (K) (c) : C             := (Id.run (run M K c)).2.cost
+def dist   (M : Model ι D PMF) (c) : PMF (α × List (Event ι)) := (fun p => (p.1, p.2.view)) <$> run M .unit c
 ```
 
-One interpreter, written once for any monad, yields every observable.
-Cost is orthogonal to semantics by construction: `output` and `leak` are
-computed under the unit cost model and provably do not depend on the cost
-model (`run_fst`), and the cost model never sees values. The only
-coupling is control flow: an `if` on an opened value decides which
-branch's cost is paid, so cost depends on the *model* exactly as far as
-the circuit's shape depends on opened data. For structurally scheduled
-circuits it does not depend on it at all; in general it is a
-distribution (`costDist`), as it should be.
+One interpreter, written once for any monad, yields every observable, and
+it records one event per request: the operation, the blanked response,
+the sampled disclosure. The first two are not the model's to choose
+(decision 014). Cost is orthogonal to semantics by construction: `output`
+and `view` are computed under the unit cost model and provably do not
+depend on the cost model (`run_fst`), and the cost model never sees
+values. The only coupling is control flow: an `if` on an opened value
+decides which branch's cost is paid, so cost depends on the *model*
+exactly as far as the program's shape depends on opened data. For
+straight-line programs it does not depend on it at all; in general it is
+a distribution (`costDist`), as it should be.
 
-The laws, proved once by induction on the free monad:
+The laws, proved once by induction on the free monad (`Model.lean`):
 
 ```lean
 run_bind  : run M K (c.bind k) = do r ← run M K c; s ← run M K (k r.1); pure (s.1, r.2.seq s.2)  -- any lawful `m`
 run_lift  : run (M.lift m) K c = pure (Id.run (run M K c))          -- a coin-free run is a point
-dist_lift : dist (M.lift PMF) c = pure (output M c, leak M c)       -- so `rfl` at `Id` is a theorem at `PMF`
+dist_lift : dist (M.lift PMF) c = pure (output M c, view M c)       -- so `rfl` at `Id` is a theorem at `PMF`
 dist_bind : dist M (c.bind k)  = do r ← dist M c; s ← dist M (k r.1); pure (s.1, r.2 ++ s.2)
-dist_call : dist M (.call o k) = do x ← M.program o; r ← dist M (k x); pure (r.1, M.leak o x ++ r.2)
+dist_call : dist M (.call r k) = do p ← M.step r; res ← dist M (k p.1); pure (res.1, ⟨r.op, blank p.1, p.2⟩ :: res.2)
 ```
 
-A concrete circuit that draws coins has its distribution *computed* by
-`simp` with the run lemmas: `dist (Pre.ideal F) (onPre (mul x y))`
-unfolds to "draw `(a, b)` uniform on `F²`, output `x·y`, reveal
-`(x − a, y − b)`" in one call (`Glean.lean`, `beaver_hiding`), and the
-proof of hiding is then the mask lemma. The tape semantics that used to
-be needed for evaluation is gone: `Model.lift` and `dist_lift` give
-evaluation by `rfl` for exactly the circuits where evaluation makes
-sense, and `simp` does the rest.
+A concrete program that draws coins has its distribution *computed* by
+`simp` with the `weft` simp set (the laws, the transports along `Has`, and
+each standard functionality's model): `dist (Pre F).model (mulBeaver x y)`
+unfolds to "draw `v` uniform on `Fin 2 → F`, output `x·y`, trace
+`beaverView (x − v 0, y − v 1)`" in one call (`mulBeaver_dist`,
+`Examples/Beaver.lean`), and the proof of privacy is then the mask lemma.
+The tape semantics that used to be needed for evaluation is gone:
+`Model.lift` and `dist_lift` give evaluation by `rfl` for exactly the
+programs where evaluation makes sense, and `simp` does the rest. (Two
+engineering notes from the sources: responses are taken apart by
+projections, not patterns, and the scheduling state is threaded by
+`StateT`'s own bind; either choice the other way makes evaluation by `rfl`
+exponential in the number of requests.)
 
-Structured share types (`Vector D.S n`, records of shares) need nothing
-new: they are Lean values holding handles. A Clean-style `SharedType T`
-class mapping `T D.F ↔ T D.S` is worth adding for I/O ergonomics
-(`open` a whole struct, `const` a whole struct), but it is sugar.
+Structured share types (`Fin n → D.sh F`, records of shares such as
+`Point D F` in the gallery) need nothing new on the program side: they are
+Lean values holding handles. Responses of operations are described by a
+`Shape` (`unit`, `clear T`, `share T`, products, vectors, lists), so that
+their public part is structural; a Clean-style class mapping a Lean record
+to a shape is worth adding for I/O ergonomics, but it is sugar.
 
-### 3.4 Delay and communication are separate theorems, and both compose
+### 3.4 Delay and communication are separate theorems; communication composes, delay is bounded
 
-A price list carries both numbers per feature, but theorems mention one
-resource at a time. `delayOn M c` runs the circuit in the timed domain
-with the latencies of the timed model `M`, and `comm M b c` runs it under
-the additive cost model with per-operation bandwidths `b`; an MPC's list
-yields `M.timed` and `M.bandwidth` separately (`Cost.lean`). `fourPar`
-is 1 round and 8 units of communication; `fourSeq` is 4 rounds and 8
-units; each is its own `rfl`.
+A price list carries both numbers per operation, but theorems mention one
+resource at a time. `delayOn M.timed c` runs the program in the timed
+domain with the latencies of the list, and `cost M.eval M.comm c` runs it
+under the additive cost model with per-operation bandwidths (`Cost.lean`).
+`mul4seq` is 2 rounds and `chain3` is 3 rounds, both with three
+multiplications' worth of communication; each is its own `rfl`.
 
-**Composition for cost** has the same shape as composition for privacy.
-Call an implementation *priced* under `K` if each operation's circuit has
-a cost independent of its arguments and coins (structurally scheduled):
+**Composition for communication** has the same shape as composition for
+privacy. Call a handler *priced* under `K` if each request's program has
+a cost independent of its operands and coins (structurally scheduled):
 
 ```lean
-def PricedImpl (Mσ) (impl : {β} → τ β → Circ σ β) (K : CostModel σ C) (p : Costs τ C) : Prop :=
-  ∀ o, costDist Mσ K (impl o) = pure (p o)
+def Priced (M : Model ι .ideal PMF) (impl : (r : Req κ .ideal) → Prog ι .ideal (Resp κ .ideal r.op))
+    (K : CostModel ι C) (p : CostModel κ C) : Prop :=
+  ∀ r, costDist M K (impl r) = pure (p.op r.op)
 
-theorem cost_handle (h : Realizes kσ kτ impl Mσ Mτ) (hp : PricedImpl Mσ impl K p) (P : Circ τ α) :
-    costDist Mσ K (Circ.handle impl P) = costDist Mτ ⟨p⟩ P
+theorem cost_handle (g : Realizations fs gs) (hp : Priced gs.model (g.impl .ideal) K p)
+    (c : Prog fs.ops .ideal α) (hc : Valid fs.model g.Pre c) :
+    costDist gs.model K (Prog.handle (g.impl .ideal) c) = costDist fs.model p c
 ```
 
-Inlining a priced implementation into any caller costs what the caller
+Inlining priced realisations into any valid caller costs what the caller
 costs with each abstract operation priced at its implementation's cost
 (proved, `Cost.lean`: by induction on the caller, `run_bind`, and the
-fact that a realisation's result is distributed as the abstract program's).
-`comm_handle` is its communication instance, and at the level of
-functionalities a realisation's *derived price* composes along
-`Realization.comp` (`Realization.comp_derivedPrice`), one `cost_handle`
-per level. So a
-protocol's round and communication complexity are stated once in the
-hybrid with abstract prices, and instantiating AES by a circuit
-substitutes that circuit's cost for the abstract price, with no new
-analysis of the protocol.
+fact that a realisation's result is distributed as the abstract
+program's). So a protocol's communication complexity is stated once in
+the hybrid with abstract prices, and instantiating AES by a program
+substitutes that program's cost for the abstract price, with no new
+analysis of the protocol (`Examples/AesHybrid.lean`: 20 units in the
+hybrid, 8 once inlined, by `rfl`).
 
-**Delay under eager scheduling compose exactly too, with one
-refinement.** Under dependency tracking (§3.5) an abstract operation must
-not be modelled by a single latency: that serialises its whole
+**Delay under eager scheduling is a conservative bound, not yet an exact
+composition.** Under dependency tracking (§3.5) an abstract operation
+should not be modelled by a single latency: that serialises its whole
 implementation behind all of its inputs, and an implementation with a
 "late" input (`mulAdd a b c = a·b + c` needs `c` only after the
 multiplication) would then be over-counted. Model it instead by its
@@ -791,69 +889,88 @@ preprocessing):
 
     ready(out) = max (d₀, max_i (ready(in_i) + d_i))
 
-With profiles, the caller's round count equals the inlined circuit's,
-because the longest path through a substituted dependency graph
-decomposes at the substitution boundary. `Timing.lean` checks the
-three numbers on a caller whose `c` arrives at round 1: atomic model 2,
-profiled model 1, inlined circuit 1. A single latency is the profile with
-all `d_i` equal, which is exact for native operations like `mult` that do
-wait for all inputs. So the recommended round semantics is eager
-scheduling with profiles: no `∥` to write, no upper-bound caveat, and
-communication and rounds both compose exactly.
+For a straight-line callee in isolation the profile is exact:
+`Examples/Timing.lean` checks the three numbers on a caller whose `c`
+arrives at round 1: atomic model 2, profiled model 1, inlined program 1.
+It is **not** exact in general (report, Issue 10). The reveal and control
+clocks are global state: an inlined callee that reveals, computes in the
+clear and inserts back waits on every earlier reveal of the *caller*,
+which no per-input profile of the callee can know, and even `smul 1 x`
+after a reveal at time `T` returns at `T` while its isolated profile is
+zero. What holds is that a profile is an upper bound for a reactive
+callee; the clock-aware hypothesis under which it composes, and its
+proof, are still to be stated and proved (§8), and the exact alternative
+(specifying an abstract operation by its full clock-state transformer) is
+recorded for when an exact number is needed. What is kept: `Barrier` and
+the control clock (the reveal-then-branch program undercounts, 1 round
+instead of 3, without it), and the interface's `pubArg`/`ctrl` flags as
+trusted scheduling metadata. Known gap: a revealed branch that selects an
+existing share with `pure` escapes the control time.
+
+So the recommended round semantics is still eager scheduling with
+profiles: no `∥` to write, communication composing exactly, and delay as
+a bound whose exactness is a theorem still owed.
 
 ### 3.5 Delay is computed, not proved, and needs no `∥`
 
-Round complexity is a pass over the circuit, and the user proves nothing
-for a concrete circuit: the interpreter is the pass and `rfl` runs it.
-There is no parallel node in the circuit language (decision 002):
+Round complexity is a pass over the program, and the user proves nothing
+for a concrete program: the interpreter is the pass and `rfl` runs it.
+There is no parallel node in the program language (decision 002):
 parallelism is **computed from data dependencies**.
 
-**Dependency tracking (`Timing.lean`).** Let every share carry the round
+**Dependency tracking (`Timed.lean`).** Let every share carry the round
 at which it is available. An operation's result is ready at
-`max (inputs' ready times, clock) + latency`, and the round complexity of
-a circuit is the ready time of its output: the critical path of the data
-dependency graph. This is a *second domain*, because circuits are
+`max (operand times, clock) + latency`, and the round complexity of
+a program is the ready time of its output: the critical path of the data
+dependency graph. This is a *second domain*, because programs are
 polymorphic in the domain, and a second monad, because the clock is state:
 
 ```lean
-structure Timed (F : Type) where (val : F) (time : Nat)
-abbrev Domain.timed (F : Type) : Domain := ⟨F, Timed F⟩     -- shares are timed, clear values plain
-structure Clock where (clock : Nat := 0) (revealed : Nat := 0)
-abbrev Sched := StateT Clock Id                             -- the scheduling monad
+structure Timed (T : Type) where (val : T) (time : Nat)
+abbrev Domain.timed : Domain := ⟨Timed⟩                       -- shares are timed, clear values plain
+structure Clock where (clock : Nat := 0) (revealed : Nat := 0)  -- control clock, reveal clock
+abbrev Sched := StateT Clock Id                               -- the scheduling monad
 
-def Mult.timed (ℓ) : Model (Mult (Domain.timed F)) F Sched where
-  program | .mult a b => Timed.after [a.time, b.time] ℓ (a.val * b.val)   -- max of inputs and clock, plus ℓ
-def Reveal.timed (ℓ) … program | .reveal a => fun s => (a.val, { s with revealed := max s.revealed (… + ℓ) })
+/-- One generic timed model for every interface, from the evaluation model and a latency per operation:
+ready at `max (operand times, clock) + ℓ`; a `pubArg` operation also waits for the reveal clock;
+a clear response raises the reveal clock; a `ctrl` operation raises the control clock. -/
+def Model.timed (E : Model ι .ideal Id) (ℓ : ι.Op → Nat) : Model ι .timed Sched
+def Mult.timed (F) (ℓ) : Model (Mult.ops F) .timed Sched       -- hand-written for the standard ones: linear-time `rfl`
+  -- ⟨.mult, (a, b, ())⟩ ↦ ⟨a.val * b.val, max a.time (max b.time s.clock) + ℓ .mult⟩, state unchanged
+def Reveal.timed (F) (ℓ) …                                     -- clear at `t`; `revealed := max s.revealed t`
 
-def delayOn (M : Model σ L Sched) (c : Circ σ (Timed F)) : Nat := (Sched.output M c).time
+def delayOn    (M : Model ι .timed Sched) (c : Prog ι .timed (Timed T)) : Nat := (Sched.output M c).time
+def delayClear (M : Model ι .timed Sched) (c : Prog ι .timed α) : Nat := (Sched.run M c).2.revealed
 ```
 
 With this, sequential `do`-code gets the parallel count and no `∥` is
 needed anywhere:
 
 ```lean
-def mul4seq (a b c d : D.S) : Circ σ D.S := do
+def mul4seq [Has (Mult F) fs] (a b c d : D.sh F) : Prog fs.ops D (D.sh F) := do
   let ab ← mul a b
   let cd ← mul c d          -- independent of ab: the pass sees it
   mul ab cd
--- rounds = 2 (rfl); the chain x·b·c·d is 3; the product tree with plain binds is its depth
+-- delay 2 (rfl); the chain a·b·c·d is 3; the product tree with plain binds is its depth
 ```
 
-Clear values stay plain, so generic circuits branch on them as usual; what
+Clear values stay plain, so generic programs branch on them as usual; what
 the dependency graph cannot see about them, two clocks in the scheduling
-state cover. The *reveal clock* is the latest time at which anything was
-revealed, and any operation with a clear argument (`const`, `smul`)
-inherits it, since clear computation is opaque: a value revealed at
-round 2, multiplied in the clear and inserted back with `const`, carries
-round 2 into whatever uses it (`revealThenUse`, 3 rounds by `rfl`). The
-*control clock* handles a branch on a revealed value whose arms do not
-data-depend on it: the circuit says `barrier`, which raises the control
-clock to the reveal clock, so everything issued afterwards is scheduled
-after the values it branched on (`binarySearch`: 3 levels × 4 rounds).
-Reveal itself does not raise the control clock, so independent reveals
-share a round (Beaver's two openings). Semantics is untouched: the timed
-model computes the same values, only tagged, and coins get a dummy
-value, which delay never depends on.
+state cover. The *reveal clock* is the latest time at which anything
+became clear, and any operation with a clear argument (`const`, `smul`;
+`pubArg := true`) inherits it, since clear computation is opaque: a value
+revealed at round 2, multiplied in the clear and inserted back with
+`const`, carries round 2 into whatever uses it (`revealThenUse`, 3 rounds
+by `rfl`). The *control clock* handles a branch on a revealed value whose
+arms do not data-depend on it: the program says `barrier` (the `Barrier`
+functionality, `ctrl := true`, semantically a no-op), which raises the
+control clock to the reveal clock, so everything issued afterwards is
+scheduled after the values it branched on (`binarySearch`: 3 levels × 4
+rounds, 12 by kernel `decide`; 4 without the barrier). Reveal itself does
+not raise the control clock, so independent reveals share a round
+(Beaver's two openings). Semantics is untouched: the timed model computes
+the same values, only tagged, and coins get a dummy value, which delay
+never depends on.
 
 For families ("`prodAll` on `n` elements is `⌈log₂ n⌉` rounds") the generic
 technique is an induction using `run_bind` and `omega`, with the gallery
@@ -862,105 +979,112 @@ as templates. Proof-by-evaluation uses `rfl` and kernel `decide` only;
 
 ## 4. Properties and the shape of proofs
 
-All three are stated against a model, and for concrete circuits all three
+All three are stated against a model, and for concrete programs all three
 are proved by `rfl` / `decide`: the interpreter just runs.
 
 ```lean
 -- correctness
-example (a b c : F) : output (Std.ideal F) (mul3 a b c) = a * b * c := rfl
+example (a b c : F) : output (Std F).eval (mul3 (fs := Std F) (D := .ideal) a b c) = a * b * c := rfl
 -- rounds (timed domain, inputs at round 0)
-example (a b c : F) : delay F (Std.timed F) (mul3 ⟪a⟫ ⟪b⟫ ⟪c⟫) = 2 := rfl
-example : delay F (Std.timed F) (prodTree depth2Tree) = 2 := rfl   -- 4 leaves, plain binds
--- leakage is computed, not asserted
-example (a b : F) : leak (Std.ideal F) (openMul a b)  = [a * b] := rfl
-example (a b : F) : leak (Std.ideal F) (leakyMul a b) = [a, b]  := rfl
+example (a b c : F) : delayOn (Std.timed F) (mul3 (fs := Std F) (D := .timed) ⟪a⟫ ⟪b⟫ ⟪c⟫) = 2 := rfl
+example : delayOn (Std.timed F) (prodTree (fs := Std F) (D := .timed) depth2Tree) = 2 := rfl   -- 4 leaves, plain binds
+-- the view is computed, not asserted
+example (a b : F) : view (Std F).eval (openMul (fs := Std F) (D := .ideal) a b)
+    = [⟨Std.mult F, (), ()⟩, ⟨Std.reveal F, a * b, ()⟩] := rfl
+example (a b : F) : view (Std F).eval (leakyMul (fs := Std F) (D := .ideal) a b)
+    = [⟨Std.reveal F, a, ()⟩, ⟨Std.reveal F, b, ()⟩] := rfl
 ```
 
 ### 4.1 Privacy: simulation at the level of the functionality
 
-**Setting.** Every functionality has two parts, `program` (what it
-computes and returns) and `leak` (what the adversary observes when it is
-invoked): `rand` has an empty leak, `reveal` leaks its value, `mult` leaks
-nothing. A circuit is a program in the functionality-hybrid model, and we
-prove it secure *there*. This is the arithmetic-black-box methodology of
-Damgård–Nielsen and SPDZ: the UC composition theorem turns "the circuit
-is secure given an ideal ABB" plus "the protocol realises the ABB" into
-security of the whole, so the MPC protocol is never modelled here. What
-remains to be simulated is exactly what the circuit chooses to reveal,
+**Setting.** Every functionality is one joint step: what it returns and
+what it declares. `rand` returns a share and declares nothing; `reveal`
+returns a clear value, which is public by shape; `mult` returns a share
+and declares nothing. A program is a program in the functionality-hybrid
+model, and we prove it secure *there*. This is the arithmetic-black-box
+methodology of Damgård–Nielsen and SPDZ: the UC composition theorem turns
+"the program is secure given an ideal ABB" plus "the protocol realises
+the ABB" into security of the whole, so the MPC protocol is never modelled
+here. What remains to be simulated is exactly the trace of the program,
 and the values inside shares (`⟦a⟧`, notation for a share of `a`) are
 hidden by fiat.
 
-**One shape of statement.** The semantics of a circuit is a
-distribution over (output, revealed values), `dist M c : PMF (α × List L)`.
-Every privacy statement is
+**One shape of statement.** The semantics of a program is a distribution
+over (output, trace), `dist M c : PMF (α × List (Event ι))`. Every privacy
+statement is a realisation:
 
-> *X can be simulated given Y*
+> *the program realises functionality `F`*
 
-meaning the joint distribution of `(Y, X)` equals that of `(Y, Sim Y)`
-with the simulator's coins fresh, i.e. one equation between `PMF`s. The
-top-level instance (`Glean.lean`):
+meaning: for every request, the joint distribution of (response, trace)
+of the program equals `F`'s response paired with the output of a simulator
+that is handed `F`'s event and nothing else, one equation between `PMF`s
+(`Realization.lean`, §2.10, decision 015):
 
 ```lean
-def Hiding (M : Model σ L PMF) (c : I → Circ σ α) : Prop :=
-  ∃ Sim : α → PMF (List L), ∀ i,
-    dist M (c i) = do let y ← Prod.fst <$> dist M (c i); let s ← Sim y; pure (y, s)
-
-def HidingStat (M) (ε : ENNReal) (c) : Prop :=          -- within ε in total variation
-  ∃ Sim, ∀ i, PMF.statDist (dist M (c i)) (do …) ≤ ε
+real : ∀ r, Pre r → dist fs.model (impl .ideal r) = do
+  let (y, d) ← F.model.step r                                   -- the functionality's response and disclosure
+  let s ← Sim ⟨r.op, (F.ops.cod r.op).blank y, d⟩               -- the simulator sees the event only
+  pure (y, s)
 ```
 
-Read it as: draw the output as the circuit draws it, let a simulator
-that sees only the output invent the revealed values, and the pair must
-be distributed as the real run. There is no coin tape, no bijection and
-no re-randomisation in the definition; the simulator's independence from
-the output is what `bind` means. The usual instances:
+Read it as: draw the response as the functionality draws it, let a
+simulator that sees only the public record of that request (the
+operation, the clear part of the response, the declared disclosure)
+invent the trace, and the pair must be distributed as the real run. The
+response stays in the joint: a hidden component may be opened later by
+the caller, and the trace must be consistent with that opening. This is
+why "`do reveal x; pure x` realises the identity" is false here
+(`openKeep_not_realizes`, `Examples/Privacy.lean`), although a definition
+that handed the simulator the output would have accepted it at the ideal
+domain, where a share is its value (report, Issue 1). The usual
+instances:
 
-| X (to simulate)       | Y (given)                          | reads as                                   |
-|-----------------------|------------------------------------|--------------------------------------------|
-| revealed values       | output                             | hiding: reveals nothing beyond the output  |
-| revealed values       | output, corrupt inputs             | hiding against a corrupt coalition         |
-| revealed values       | nothing                            | the reveals are pure noise (Beaver, a2b)   |
-| revealed values       | output, `argmax`                   | declared extra leakage                     |
-| concrete view         | abstract (declared) view           | a realisation, the compositional notion    |
-| contents of shares    | nothing                            | trivially, shares are hidden by fiat       |
+| The functionality realised                                   | reads as                                                    |
+|--------------------------------------------------------------|-------------------------------------------------------------|
+| returns `a·b` in the clear, declares nothing (`OpenMul`)     | `openMul` reveals nothing beyond its output (`openMulReal`) |
+| returns `⟦a·b⟧`, declares nothing (`Mult F`)                  | Beaver's openings are pure noise (`beaverMult`)             |
+| returns `⟦x⁻¹⟧`, declares nothing, for `x ≠ 0` (`Invert`, `Pre`) | inversion by masking, under a precondition (`invertReal`) |
+| returns `⟦x₀ + r·x₁⟧`, discloses `r` (`RandComb`)             | a declared disclosure that is not a function of the output (`randComb2Real`) |
+| every component of one hybrid over another (`Realizations (Std F) (Pre F)`) | the compositional notion (`stdOverPre`)     |
+| contents of shares, given nothing                            | trivially, shares are hidden by fiat                        |
 
 **Why the masks must be jointly uniform, and why that is a theorem
-here.** A simulator has to produce the *whole list* of revealed values
-with the right joint distribution, so every mask argument needs the
-whole vector of masks a run draws to be uniform on `F^k`, not each
-coordinate uniform on `F`. Coordinate-wise uniformity is not enough:
-Beaver with `a = b` (each uniform) reveals `x − a` and `y − a`, whose
-difference is `x − y`. Pairwise independence is not enough either:
-`r₁, r₂` independent uniform and `r₃ := r₁ + r₂` are pairwise
-independent and each uniform, but revealing `x − r₁`, `y − r₂`,
-`z − r₃` publishes `x + y − z`. Only joint uniformity of the mask vector
-(equivalently, mutual independence of the masks) makes the revealed
-vector the image of a uniform vector under a bijection, which is the one
-fact every proof uses. In a tape semantics this is an *assumption* about
-the measure on tapes, and the proof rule "a bijection on tapes preserves
-it" is false for infinite tapes and a counting argument for finite
-prefixes. In the `PMF` semantics it is a *theorem*: each coin is a fresh
-`bind` of `uniform F`, and
+here.** A simulator has to produce the *whole trace* with the right joint
+distribution, so every mask argument needs the whole vector of masks a
+run draws to be uniform on `F^k`, not each coordinate uniform on `F`.
+Coordinate-wise uniformity is not enough: Beaver with `a = b` (each
+uniform) reveals `x − a` and `y − a`, whose difference is `x − y`.
+Pairwise independence is not enough either: `r₁, r₂` independent uniform
+and `r₃ := r₁ + r₂` are pairwise independent and each uniform, but
+revealing `x − r₁`, `y − r₂`, `z − r₃` publishes `x + y − z`. Only joint
+uniformity of the mask vector (equivalently, mutual independence of the
+masks) makes the revealed vector the image of a uniform vector under a
+bijection, which is the one fact every proof uses. In a tape semantics
+this is an *assumption* about the measure on tapes, and the proof rule "a
+bijection on tapes preserves it" is false for infinite tapes and a
+counting argument for finite prefixes. In the `PMF` semantics it is a
+*theorem*: each coin is a fresh `bind` of `uniform F`, and
 
 ```lean
 theorem uniform_prod : (do a ← uniform α; b ← uniform β; pure (a, b)) = uniform (α × β)
 theorem seqUniform_eq_uniform : seqUniform F n = uniform (Fin n → F)     -- n fresh draws = one draw from Fⁿ
 ```
 
-(`Privacy.lean`). Correlations draw their `k` coins as one uniform
+(`PMF.lean`). Correlations draw their `k` coins as one uniform
 `Fin k → F` outright (§6.1), so a triple's `(a, b)` is jointly uniform by
-definition. `Beaver.lean` shows all of this on multiplication from
-triples: one triple (`mulBeaver_hiding`, a bijection of `F²`), two chained
-multiplications (`mul3Beaver_hiding`: two calls are one draw from
-`F² × F²` by `uniform_prod`, then a bijection of `F⁴`), and the
-counterexample `BadMulTriple` whose `a` and `b` are each uniform but equal:
-the circuit is still perfectly correct on it, and provably not hiding
-(`mulBeaver_bad_not_hiding`, the opened pair publishes `x − y`). This is the whole reason there is no tape and no bijection on
+definition. `Examples/Beaver.lean` shows all of this on multiplication
+from triples: one triple (`beaverMult`, a bijection of `F²`), two chained
+multiplications (`mul3Beaver`: two calls are one draw from `F² × F²` by
+`uniform_prod`, then a bijection of `F⁴`), and the counterexample
+`BadMulTriple` whose `a` and `b` are each uniform but equal: the program
+is still perfectly correct on it, and provably not a realisation of
+`Mult F` (`mulBeaver_bad_not_realizes`, the opened pair publishes
+`x − y`). This is the whole reason there is no tape and no bijection on
 tapes anywhere: the only bijections in the development are on finite
 types, in the one lemma that follows.
 
 **The generic per-operation technique: the mask lemma.** Almost every
-revealed vector in an MPC circuit is `v = f(secrets, masks)` with fresh
+revealed vector in an MPC program is `v = f(secrets, masks)` with fresh
 masks. If, for every value of the secrets, `masks ↦ v` is a bijection of
 `F^k`, then `v` is uniform and independent of the secrets: the simulator
 draws `v` fresh. Packaged once, as a fact about Mathlib's uniform
@@ -972,121 +1096,160 @@ theorem uniform_map_equiv (e : α ≃ β) : (uniform α).map e = uniform β
 
 with the bijections coming from Mathlib's `Equiv` library: `Equiv.subLeft x`
 for `a ↦ x − a`, `Equiv.mulLeft₀ x hx` for `s ↦ x·s` on the nonzero
-elements, `Equiv.prodCongr` and `piFinTwoEquiv` to assemble vectors. The
-proof of Beaver's hiding (`beaver_hiding`) is: `simp` unfolds the run to
-"draw `v` uniform on `Fin 2 → F`, output `x·y`, reveal
-`(x − v 0, y − v 1)`"; `ring` closes the output; `uniform_map_equiv` with
-`(v 0, v 1) ↦ (x − v 0, y − v 1)` closes the reveals. Inversion by a
-nonzero mask (`invertGadget`) is the same three steps with `mulLeft₀`.
-This lemma is the one-time-pad lemma, the `rnd` rule of EasyCrypt, the
-random-mask elimination step of maskVerif, and the affine treatment of
-random values in λ_obliv, in one statement. It is also what a tactic
-should automate: a leakage entry of the form `x ± r` or `x · r` with a
-fresh mask `r` is discharged by constructing the shift or scale bijection.
+elements, `Equiv.prodCongr` and `piFinTwoEquiv` to assemble vectors
+(`maskEquiv`). The proof of `beaverMult` is: `simp only [weft]` with
+`mulBeaver_dist` unfolds the run to "draw `v` uniform on `Fin 2 → F`,
+output `x·y`, trace of `(x − v 0, y − v 1)`"; `ring` closes the output;
+`uniform_map_equiv` with `(v 0, v 1) ↦ (x − v 0, y − v 1)` closes the
+trace. Inversion by a nonzero mask (`invertReal`) is the same three steps
+with `mulLeft₀`. This lemma is the one-time-pad lemma, the `rnd` rule of
+EasyCrypt, the random-mask elimination step of maskVerif, and the affine
+treatment of random values in λ_obliv, in one statement. It is also what a
+tactic should automate: a trace entry of the form `x ± r` or `x · r` with
+a fresh mask `r` is discharged by constructing the shift or scale
+bijection.
 
-**The adversary's view is the tagged trace.** The adversary also sees
-*which* operations are invoked (the parties execute them, and the program
-is public). So the view of a run is, per request, the request's public
-*kind* together with what the functionality declares for it:
+**The adversary's view is the tagged trace, structurally.** The adversary
+also sees *which* operations are invoked (the parties execute them, and
+the program is public). So the trace of a run is one `Event` per request:
+the operation, with its clear arguments; the clear part of the response,
+by shape (`Shape.blank`); and what the functionality declares. The first
+two are recorded by `run` and no model can omit them: a model that
+returned an opened value and declared nothing would still show it
+(decision 014). The operation carries no share (operands are not part of
+an `Event`), and it is what lets a simulator know that a `mult` happened
+without seeing its inputs.
+
+**Only realisations over structural events transport.** A privacy
+statement that ignores the operation channel, "the list of opened values
+is a function of the output", does not survive composition: a program
+whose *shape* depends on a share's value at the ideal domain has
+different traces for different inputs with the same opened values (the
+report's `shapeLeak`). So every leaf proof is stated as a realisation, and
+the old "over `add` and `mul` alone everything is hiding" becomes
+`arith_private` (`Examples/Silent.lean`): over a hybrid whose
+functionalities declare nothing and return only shares, a program
+realises its own output distribution *if its trace is the same list for
+every input*, a public-trace hypothesis that a straight-line program
+satisfies and a share-dependent one does not.
+
+**Composition: a verified program is a functionality.** A primitive
+operation has a joint step. A verified program gets the same thing: its
+functionality is its spec, and its declared disclosure is what its
+simulator is given. Callers treat the program as one more functionality of
+the hybrid, prove their own certificate against that abstract model, and
+never look inside. The definitions and the theorem that make this sound
+(`Realization.lean`), all proved:
 
 ```lean
-def Model.tagged (Mτ : Model τ L m) (kind : {β} → τ β → K) : Model τ (K × List L) m :=
-  { program := Mτ.program, leak := fun o y => [(kind o, Mτ.leak o y)] }
+/-- Realisations of every component of `fs` over `gs`; `g.impl`, `g.Pre`, `g.Sim` dispatch by position. -/
+inductive Realizations : Hybrid → Hybrid → Type 1
+  | nil : Realizations [] gs
+  | cons : Realization F gs → Realizations fs gs → Realizations (F :: fs) gs
+
+/-- Every request `c` issues, on the support of its run under `M`, satisfies `P`. -/
+inductive Valid (M : Model ι .ideal PMF) (P : Req ι .ideal → Prop) : Prog ι .ideal α → Prop
+  | pure a : Valid M P (.pure a)
+  | call r k (hr : P r) (hk : ∀ z ∈ (M.step r).support, Valid M P (k z.1)) : Valid M P (.call r k)
+
+/-- Inlining realised operations into any valid caller: the concrete run is the abstract run with each
+event replaced by its simulation. -/
+theorem handle_realizes (g : Realizations fs gs) (c : Prog fs.ops .ideal α) (hc : Valid fs.model g.Pre c) :
+    dist gs.model (Prog.handle (g.impl .ideal) c) = do let r ← dist fs.model c; let s ← simList g.Sim r.2; pure (r.1, s)
+
+theorem output_transport : … → Prod.fst <$> dist gs.model (Prog.handle (g.impl .ideal) c) = Prod.fst <$> dist fs.model c
+def Realization.comp (f : Realization F fs) (g : Realizations fs gs) : Realization F gs
+  -- impl := inline;  Sim := f.Sim then simList g.Sim;  Pre r := f.Pre r ∧ Valid fs.model g.Pre (f.impl .ideal r)
+def Realization.incl (F) (gs) [Has F gs] : Realization F gs        -- Sim replays the event at F's position
 ```
 
-`dist (Mτ.tagged kind) c` is the distribution of (output, view). The kind
-carries no payload (the request's shares never appear), and it is what
-lets a simulator know that a `mult` happened without seeing its inputs.
-
-**Composition: a verified circuit is a functionality.** A primitive
-operation has a `program` and a `leak`. A verified circuit gets the same
-two things: its `program` is its spec, and its `leak` is its *declared*
-leakage, the `view` of its gadget. Callers treat the circuit as one more
-operation of an abstract signature, prove their own privacy against that
-abstract model, and never look inside. The definitions and the theorem
-that make this sound (`Privacy.lean`, `Compose.lean`), all proved:
-
-```lean
-/-- `impl` realises the abstract `Mτ` on the concrete `Mσ`: for each request, the concrete
-(response, view) is the abstract response with the view simulated from the abstract record. -/
-def Realizes (kσ) (kτ) (impl : {β} → τ β → Circ σ β) (Mσ : Model σ L PMF) (Mτ : Model τ L PMF) : Prop :=
-  ∃ Sim : Kτ → List L → PMF (List (Kσ × List L)), ∀ o,
-    dist (Mσ.tagged kσ) (impl o) = do let y ← Mτ.program o; let s ← Sim (kτ o) (Mτ.leak o y); pure (y, s)
-
-/-- Inlining realised operations into any caller: the concrete run is the abstract run with each
-declared record replaced by its simulation. -/
-theorem handle_realizes (h : ∀ o, dist (Mσ.tagged kσ) (impl o) = …Sim…) (c : Circ τ α) :
-    dist (Mσ.tagged kσ) (Circ.handle impl c) = do let r ← dist (Mτ.tagged kτ) c; let s ← simList Sim r.2; pure (r.1, s)
-
-theorem Realizes.comp : Realizes kτ kρ f Mτ Mρ → Realizes kσ kτ g Mσ Mτ → Realizes kσ kρ (fun o => handle g (f o)) Mσ Mρ
-theorem Realizes.id   : Realizes k k (fun o => Circ.op o) M M
-theorem Hiding.transport : Realizes kσ kτ impl Mσ Mτ → Hiding (Mτ.tagged kτ) P → Hiding (Mσ.tagged kσ) (fun i => handle impl (P i))
-theorem output_transport : Realizes … → Prod.fst <$> dist Mσ (handle impl c) = Prod.fst <$> dist Mτ c
-```
-
-Read `Realizes` as: the simulator is given only the abstract record
-(kind and declared leak), never the response unless the functionality
-leaks it and never the request's payload, and must reproduce the
-concrete view jointly with the response. `handle_realizes` is the UC
-composition theorem at the level of this semantics: induction on the
-caller's free-monad trace, `dist_bind` at each `call`, the realisation
-equation for that call, and one commutation of independent draws
+Read `Realization` as: the simulator is given only the event (operation,
+clear outputs, declared disclosure), never a hidden component of the
+response and never an operand, and must reproduce the concrete trace
+jointly with the response. `handle_realizes` is the UC composition
+theorem at the level of this semantics: induction on the caller's
+free-monad trace, `dist_bind` at each `call`, the realisation equation
+for that call, and one commutation of independent draws
 (`PMF.bind_comm`: the simulator's coins for this call do not interact with
-the rest of the run). `Realizes.comp` is why functionalities and
-realisations form a category (§2.10); `Hiding.transport` and
-`output_transport` are the payoff for a caller's privacy and correctness.
+the rest of the run). `Realization.comp` is why functionalities and
+realisations form a category (§2.10); `output_transport` is the payoff
+for a caller's correctness, and `comp` itself for its privacy: a caller
+certified in the hybrid is a certificate over the target by one
+application.
 
-Worked instance: the Beaver handler realises `Std` on `Pre`
-(`preHandler_realizes`, `Privacy.lean`): the simulator for `mult`
-produces the records of a Beaver run with a fresh uniform pair in the two
-reveals; `lin` and `reveal` replay their record. Hence *every* circuit
-proved hiding on the arithmetic black box is hiding on the preprocessing
-functionality with Beaver inlined, with no new proof (`Compose.lean`,
-last example), and the same for a2b via edaBits realising an `A2B`
-operation with empty leak, `binarySearch` realising a lookup operation
-whose declared leak is its public output, or an entire AES functionality
-realised by a circuit (`AesHybrid.lean`, `cbcOverABB`).
+Preconditions ride along. A realisation's guarantee holds for requests
+satisfying `Pre`; a caller discharges it by `Valid`, every request it
+issues, on the support of its ideal run, satisfying the precondition
+(`Valid.of_forall` when there is none to discharge, `Valid.bind` for
+sequential composition, `invertFresh_valid` for a real one, §7), and the
+composite's `Pre` records what is still owed.
 
-So privacy proofs compose exactly as programs do: prove each gadget once
-against its declared leak, wrap it as an operation (`Gadget.toModel`:
-`program := its output distribution`, `leak := view`), and prove callers
-against the abstract model. Nothing is redone when a callee's
-implementation changes, as long as the new one still `Realizes` the same
-abstract operation. This is what Clean's local subcircuit proofs become in
-MPC: the local proof is a realisation, and the abstract operation is the
-interface. Sequential composition of two gadgets needs no primitive of
+Worked instance: Beaver realises `Mult F` over `Pre F`, and with the two
+trivial realisations this is `stdOverPre : Realizations (Std F) (Pre F)`
+(`Examples/Privacy.lean`). Hence *every* program over the arithmetic
+black box transports to the preprocessing functionality with Beaver
+inlined, with no new proof (`transport_std_pre`, `output_std_pre`);
+`openMulOverPre := (openMulReal F).comp (stdOverPre F)` is a certificate
+over `Pre F` obtained the same way; `b2aReal` realises a `B2A`
+functionality with nothing declared over a daBit hybrid; and an entire AES
+functionality realised by a program gives `cbcOverStd`
+(`Examples/AesHybrid.lean`).
+
+So privacy proofs compose exactly as programs do: prove each program once
+as a realisation of its functionality, and prove callers in the hybrid
+where that functionality is primitive. Nothing is redone when a callee's
+implementation changes, as long as the new one still realises the same
+functionality. This is what Clean's local subcircuit proofs become in MPC:
+the local proof is a realisation, and the functionality is the interface.
+Sequential composition of two certified programs needs no primitive of
 its own: it is a two-call caller in the hybrid.
 
 **A subtlety about transitivity.** "X given Y" is *not* transitive in
 general: from "X simulatable given Y" and "Y simulatable given Z" one
-cannot conclude "X given Z" (take `Z` a coin, `Y = ()`, `X = Z`). The
-compositional statements are therefore always about the *joint* view:
-`Realizes` reproduces (response, view) jointly, and `Hiding.transport`
-composes two joint statements rather than chaining two conditionals.
-This is the same reason UC keeps the environment in the definition: what
-is simulated is the whole view, not one projection at a time. It is also
-why the compositional notion conditions on the callee's *declared leak*
-and not on its output: a sub-gadget's output is a hidden handle nobody
-sees, and a simulator that needed it could not be run by the caller's
-simulator.
+cannot conclude "X given Z". Take a secret `i : ZMod 2`, a fresh uniform
+`Z`, `Y := ()` and `X := i + Z`. "X given Y" holds (`X` is uniform
+whatever `i`) and "Y given Z" holds trivially, but "X given Z" needs a
+simulator `Sim z = pure z` when `i = 0` and `pure (z + 1)` when `i = 1`,
+which depends on the secret. The compositional statements are therefore
+always about the *joint* view: a realisation reproduces (response, trace)
+jointly, and `comp` composes two joint statements rather than chaining
+two conditionals. This is the same reason UC keeps the environment in the
+definition: what is simulated is the whole view, not one projection at a
+time. It is also why the compositional notion conditions on the callee's
+*event* and not on its output: a callee's share output is a hidden handle
+nobody sees, and a simulator that needed it could not be run by the
+caller's simulator.
 
-**Statistical privacy** is the same statement up to `ε` in total
-variation (`PMF.statDist`, `HidingStat`, `RealizesStat`); a gadget
-carries its `ε`, zero for perfect ones (§7). Zero distance is equality
-(`PMF.eq_of_statDist_eq_zero`), so perfect gadgets prove the equation.
-See `decisions/009-statistical-privacy.md` for what remains (the
-contraction of `bind` in total variation, which makes `ε` add under
-composition).
+**Statistical privacy** is the same statement with the output marginal
+exact and the joint within `ε` in total variation, per operation
+(`RealizationStat`, `Statistical.lean`); a perfect realisation is one with
+`ε = 0` (`Realization.toStat`), and zero distance is equality
+(`PMF.eq_of_statDist_eq_zero`). The bound is on the joint, not the view
+alone: over `𝔽₂`, `b ← rand; reveal (x + b); pure b` has a uniform view
+for every `x` while a later opening of `b` reveals `x`. The kernel lemma
+that makes errors add is proved, `PMF.statDist_bind_le`: the distance of
+two binds is at most the distance of the first draws plus the expected
+distance of the continuations. The caller's `budget` (the sum, over its
+ideal execution, of the per-request errors) is defined; the theorem that
+`handle_realizes` holds up to `min 1 (budget …)` is described in §8 and
+not yet stated in Lean.
+
+**What is proved, and what is not.** The compositional theorems exist and
+none is `sorry`: `handle_realizes`, `output_transport`,
+`Realization.comp`, `cost_handle`, `PMF.statDist_bind_le`. Two items are
+described here but not yet stated in Lean, let alone proved: the
+statistical budget theorem just mentioned, and the clock-aware delay
+bound of §3.4.
 
 **Related work that shaped this.**
 
 * Damgård & Nielsen 2003, and SPDZ (Damgård, Pastro, Smart, Zakarias
-  2012): the arithmetic black box and circuits as programs over it.
+  2012): the arithmetic black box and programs as programs over it.
   Damgård, Fitzi, Kiltz, Nielsen, Toft 2006 and Catrina & de Hoogh 2010:
   the standard "the opened value is uniform because the mask is fresh"
-  privacy arguments for ABB sub-protocols, which `Masked` packages.
+  privacy arguments for ABB sub-protocols, which the mask lemma packages.
 * Canetti 2001 (UC), Lindell "How to simulate it": the real/ideal
-  definition `Realizes`/`Hiding` specialises, and the composition theorem that
+  definition `Realization` specialises, and the composition theorem that
   justifies never modelling the protocol.
 * Haagh, Karbyshev, Oechsner, Spitters, Strub 2018 (EasyCrypt, MPC over an
   ABB with active security); Almeida, Barbosa, Barthe, Pacheco, Pereira,
@@ -1097,7 +1260,7 @@ composition).
 * Barthe, Belaïd, Dupressoir, Fouque, Grégoire, Strub 2015/2016
   (maskVerif, t-NI/t-SNI): "a set of observations is simulatable from a
   subset of inputs" as a per-gadget, composable notion, proved by
-  random-mask elimination; the closest formal ancestor of `Realizes`.
+  random-mask elimination; the closest formal ancestor of `Realization`.
 * Darais, Sweet, Liu, Hicks 2020 (λ_obliv): uniform random values as
   affine resources in a type system, giving probabilistic obliviousness
   by typing; the discipline a `masked` tactic would check.
@@ -1105,27 +1268,33 @@ composition).
   on couplings: bijection-based equidistribution as the proof rule.
   Brzuska et al. 2018 (state-separating proofs) and SSProve 2021:
   modular packages with local simulators composed by a hybrid argument,
-  which is the shape of `Gadget` plus `handle_realizes`. IPDL (Gancher et al.
-  2023): equational simulation proofs for protocols, including MPC.
+  which is the shape of `Realization` plus `handle_realizes`. IPDL
+  (Gancher et al. 2023): equational simulation proofs for protocols,
+  including MPC.
 * Wysteria / Wys★ (Rastogi, Hammer, Hicks 2014; Rastogi, Swamy, Hicks
   2019) and Viaduct (Acay et al. 2021): mixed-mode MPC languages whose
   security is stated over an ideal functionality, with information-flow
   labels doing the bookkeeping our `Has`/domain typing does.
 
-### 4.2 Generic circuits, generic theorems
+### 4.2 Generic programs, generic theorems
 
-Circuits are polymorphic in `σ` and `D`; theorems can be too. Round bounds
-are best stated for *any* cost model that prices the features a certain way:
+Programs are polymorphic in `fs` and `D`; theorems can be too. Cost
+bounds are best stated for *any* price list that prices the
+functionalities a certain way. The shape (schematic; the examples state
+these for concrete sizes):
 
 ```lean
-theorem inner_rounds (κ : {α : Type} → σ α → Nat)
-    (hlin : ∀ {α} (o : Lin D α), κ (Has.inj o) = 0)
-    (hmul : ∀ a b, κ (Has.inj (Mult.mult a b)) = 1) (xs ys : List D.S) :
-    cost M ⟨.rounds, κ⟩ (inner xs ys) = min (xs.zip ys).length 1
+theorem inner_comm {M : MPC} [Has (Lin F) M.hybrid] [Has (Mult F) M.hybrid]
+    (hlin : ∀ o : Lin.Op F, (M.price (Has.op o)).comm = 0) (hmul : (M.price (Has.op Mult.Op.mult)).comm = 1)
+    (xs ys : List F) :
+    cost M.eval M.comm (inner (fs := M.hybrid) (D := .ideal) xs ys) = (xs.zip ys).length
 ```
 
-This reads "in any model where linear ops are free and multiplication is
-one round, inner product is one round", and it holds for every `M`.
+This reads "on any MPC where linear operations are free and
+multiplication costs one unit, inner product costs one unit per pair",
+and it holds for every `M`. Delay bounds have the same shape against
+`M.timed`, with the caveat of §3.4 once a bound is composed through a
+realisation.
 
 ## 5. Composition
 
@@ -1134,51 +1303,58 @@ Proofs about `bind` reduce to proofs about the pieces, in any lawful monad:
 ```lean
 run_bind  : run M K (c.bind k) = do r ← run M K c; s ← run M K (k r.1); pure (s.1, r.2.seq s.2)
 dist_bind : dist M (c.bind k)  = do r ← dist M c; s ← dist M (k r.1); pure (s.1, r.2 ++ s.2)
-dist_call : dist M (.call o k) = do x ← M.program o; r ← dist M (k x); pure (r.1, M.leak o x ++ r.2)
-dist_lift : dist (M.lift PMF) c = pure (output M c, leak M c)
+dist_call : dist M (.call r k) = do p ← M.step r; res ← dist M (k p.1); pure (res.1, ⟨r.op, blank p.1, p.2⟩ :: res.2)
+dist_lift : dist (M.lift PMF) c = pure (output M c, view M c)
 ```
 
 (all by induction on `c`; `run_bind` needs only that costs form a
-monoid). With these as `simp` lemmas, the distribution of a concrete
-circuit normalises to closed form (a uniform draw, then a point), and
-hiding proofs reduce to the mask lemma.
+monoid). With these in the `weft` simp set, the distribution of a
+concrete program normalises to closed form (a uniform draw, then a
+point), and privacy proofs reduce to the mask lemma.
 
-**Handlers.** `Circ.handle : ({β} → τ β → Circ σ β) → Circ τ α → Circ σ α`
-implements every op of `τ` by a circuit over `σ`. The sketch does this for
-multiplication:
+**Handlers.** `Prog.handle : ((r : Req ι D) → Prog κ D (Resp ι D r.op)) →
+Prog ι D α → Prog κ D α` implements every request of `ι` by a program
+over `κ`. The library does this for multiplication
+(`Examples/Beaver.lean`, `Examples/Privacy.lean`):
 
 ```lean
-def beaver [Has (Lin D) σ] [Has (Reveal D) σ] [Has (MulTriple D) σ] [Mul D.F] :
-    {β : Type} → Mult D β → Circ σ β
-  | _, .mult x y => do
-    let (a, b, c) ← mulTriple
-    let u₁ ← sub x a
-    let e ← reveal u₁
-    let u₂ ← sub y b
-    let d ← reveal u₂                   -- independent of the first reveal: same round (§3.5)
-    ... -- x·y = c + e·b + d·a + e·d, linear from here
+def mulBeaverFrom [Has (Lin F) fs] [Has (Reveal F) fs] (triple : Prog fs.ops D (D.sh F × D.sh F × D.sh F))
+    (x y : D.sh F) : Prog fs.ops D (D.sh F) := do
+  let (a, b, c) ← triple
+  let u ← sub x a
+  let e ← reveal u              -- e = x − a
+  let v ← sub y b
+  let d ← reveal v              -- d = y − b: independent of the first reveal, same round (§3.5)
+  … -- x·y = c + e·b + d·a + e·d, linear from here
 
-def onPre : Circ (Std D) α → Circ (Pre D) α :=       -- Std circuits run on Pre
-  Circ.handle fun o => match o with
-    | .inl o => Circ.op o | .inr (.inl o) => beaver o | .inr (.inr o) => Circ.op o
+program beaverMult : Realization (Mult F) (Pre F) where            -- the certificate
+  impl D r := match r with | ⟨.mult, (x, y, ())⟩ => mulBeaver x y
+  Sim _ := (uniform (F × F)).map (beaverView F)
+  real r _ := by …                                                  -- unfold the run, then the mask lemma
+
+/-- Every component of `Std F` over `Pre F`: linear operations and reveal by themselves, `Mult` by Beaver. -/
+noncomputable def stdOverPre : Realizations (Std F) (Pre F) :=
+  .cons (Realization.incl (Lin F) (Pre F)) (.cons (beaverMult F) (.cons (Realization.incl (Reveal F) (Pre F)) .nil))
+-- Prog.handle ((stdOverPre F).impl D) : Prog (Std F).ops D α → Prog (Pre F).ops D α      -- Std programs run on Pre
 ```
 
 This is the mechanism for
 
-* realising a feature on top of others (`Mult` as above; `Cmp` via bit
-  decomposition; `Rand` via `MulTriple`), and
-* deriving cost, output and leakage of the composite from those of the
-  handler: cost of `handle h c` under `K` equals cost of `c` under the
-  model that prices each `o` at the cost of `h o` (`cost_handle`); the
-  output distribution is unchanged (`output_transport`); the view of
-  `handle h c` is the view of `c` with each record simulated
-  (`handle_realizes`), so a realising handler composed with a hiding
-  circuit is hiding (`Hiding.transport`). These are the theorems that
-  make the library modular, and they are proved (`Compose.lean`,
-  `Cost.lean`).
+* realising a functionality on top of others (`Mult` as above; `Cmp` via
+  bit decomposition; `Rand` via `MulTriple`), and
+* deriving cost, output and view of the composite from those of the
+  realisations: cost of `handle h c` under `K` equals cost of `c` under
+  the model that prices each operation at the cost of its implementation
+  (`cost_handle`); the output distribution is unchanged
+  (`output_transport`); the view of `handle h c` is the view of `c` with
+  each event simulated (`handle_realizes`), so realisations composed with
+  a certified caller give a certificate over the target
+  (`Realization.comp`). These are the theorems that make the library
+  modular, and they are proved (`Realization.lean`, `Cost.lean`).
 
-`Circ.weaken` (a circuit over fewer features runs on more) is the
-degenerate handler.
+`Prog.weaken` (a program over a smaller hybrid runs on a larger one,
+`Incl`) is the degenerate handler, and `Realizations.incl` is its
+certificate.
 
 ## 6. Correlated randomness
 
@@ -1188,353 +1364,390 @@ one place in the design.
 ### 6.1 Primitive correlations: a function of fresh coins
 
 A correlation is a deterministic function of `k` uniform coins. That is the
-whole definition. Each correlation is its own interface, named after the
-functionality (decision 013), and `Correlation` is the generic way to give
-it a model:
+whole definition. Each correlation is its own functionality, named after
+what it promises (decision 013), and `Correlation` is the generic way to
+give it a model (`Std/Random.lean`):
 
 ```lean
 structure Correlation (R T : Type) where
   k     : Nat
   build : (Fin k → R) → T
 
-def Correlation.sample (c : Correlation R T) : PMF T :=
+noncomputable def Correlation.sample (c : Correlation R T) : PMF T :=
   (uniform (Fin c.k → R)).map c.build            -- the k coins are drawn *jointly* uniform on Rᵏ
 
-/-- A multiplication triple: the interface. -/
-inductive MulTriple (D : Domain) : Sig where
-  | get : MulTriple D (D.S × D.S × D.S)
-
-/-- Its ideal model: sample the correlation, leak nothing. -/
-def MulTriple.corr : Correlation F (F × F × F) := ⟨2, fun x => (x 0, x 1, x 0 * x 1)⟩
-def MulTriple.ideal : Model (MulTriple (.ideal F)) L PMF where
-  program o := match o with | .get => (MulTriple.corr F).sample
-  leak _ _ := []
+namespace MulTriple
+inductive Op where | get
+abbrev ops (F : Type) : Interface where            -- the interface
+  Op := Op
+  dom _ := []
+  cod _ := .prod (.share F) (.prod (.share F) (.share F))
+def corr (F : Type) [Mul F] : Correlation F (F × F × F) := ⟨2, fun x => (x 0, x 1, x 0 * x 1)⟩
+noncomputable def model (F : Type) : Model (ops F) .ideal PMF :=            -- sample the correlation, declare nothing
+  ⟨fun _ => (corr F).sample.map fun t => (t, ())⟩
+end MulTriple
+abbrev MulTriple (F) : Functionality := ⟨MulTriple.ops F, MulTriple.eval F, (· = MulTriple.model F), …, MulTriple.timed F⟩
 ```
 
-The response type describes a sample in terms of the domain, so the same
-interface works for every representation of shares; `build` is written
-once, at the ideal domain, where a share is its value. `SquarePair` and
-`DoubleSharing` have the same response type and are different interfaces:
-a circuit asking for one cannot be handed the other.
+The response shape describes a sample in terms of the domain, so the same
+functionality works for every representation of shares; `build` is
+written once, at the ideal domain, where a share is its value.
+`SquarePair` and `DoubleSharing` have the same response shape and are
+different functionalities: a program asking for one cannot be handed the
+other.
 
-| Correlation        | `T D`                      | coins | `build`                                  |
-|--------------------|----------------------------|------:|------------------------------------------|
-| random share       | `D.S`                      | 1     | `x 0`                                    |
-| square pair        | `D.S × D.S`                | 1     | `(x 0, x 0 * x 0)`                       |
-| Beaver triple      | `D.S × D.S × D.S`          | 2     | `(x 0, x 1, x 0 * x 1)`                  |
-| double sharing     | `D.S × D.S` (or `D.S × D.S₂`) | 1  | `(x 0, x 0)`                             |
-| matrix triple      | `Mat n m D.S × Mat m k D.S × Mat n k D.S` | nm + mk | `(A, B, A·B)`               |
-| random bit         | `D.S`                      | 1 bit | needs the bit alphabet, §6.4             |
-| daBit              | `D.S × D.B`                | 1 bit | `(embed b, b)`, cross-domain, §6.5       |
-| random permutation | `Perm n D.S`               | Fisher–Yates | needs a `Fin`-valued alphabet, §6.4 |
+| Correlation        | response shape                        | coins | `build`                                  |
+|--------------------|---------------------------------------|------:|------------------------------------------|
+| random share       | `share F`                             | 1     | `x 0`                                    |
+| square pair        | `share F × share F`                   | 1     | `(x 0, x 0 * x 0)`                       |
+| Beaver triple      | `share F × share F × share F`         | 2     | `(x 0, x 1, x 0 * x 1)`                  |
+| double sharing     | `share F × share F`                   | 1     | `(x 0, x 0)`                             |
+| matrix triple      | `vec n (vec m (share F)) × …`         | nm + mk | `(A, B, A·B)`                          |
+| random bit         | `share F`                             | 1 bit | needs the bit alphabet, §6.4             |
+| daBit              | `share F × share GF2`                 | 1 bit | `(embed b, b)`, cross-field, §6.5        |
+| random permutation | `vec n (share F)`                     | Fisher–Yates | needs a `Fin`-valued alphabet, §6.4 |
 
 The double sharing row makes a general point: in the black box, `[r]_t` and
 `[r]_2t` are the same value seen twice, because sharing degree is not
-observable there. If a circuit must respect degrees (it may only add
+observable there. If a program must respect degrees (it may only add
 same-degree shares, it needs a `reduce` operation to go from `2t` to `t`),
-give the domain two share types, `D.S` and `D.S₂`, and type the operations
-accordingly. The ideal model still identifies the values; the types stop
-the circuit from misusing them. The same move handles authenticated
-versus unauthenticated shares, or shares over different rings.
+index the share type by the degree (a phantom parameter on the clear type,
+so that `D.sh` tells them apart) and type the operations accordingly. The
+ideal model still identifies the values; the types stop the program from
+misusing them. The same move handles authenticated versus unauthenticated
+shares, or shares over different rings.
 
-### 6.2 Assembling correlations: the offline phase is a handler
+### 6.2 Assembling correlations: the offline phase is a program
 
 A correlation that the MPC does not hand out natively is *assembled* from
-ones it does, and the assembly is a handler in the sense of §5:
+ones it does, and the assembly is a program, certified as a realisation
+in the sense of §5:
 
 ```lean
 /-- Triples from random shares and one secure multiplication. -/
-def tripleFromRand [Has (Rand D) σ] [Has (Mult D) σ] : {β : Type} → MulTriple D β → Circ σ β
-  | _, .get => do
-    let a ← rand
-    let b ← rand                    -- independent: one round
-    let c ← mul a b
-    pure (a, b, c)
-
-/-- Squares from random shares. -/
-def squareFromRand [Has (Rand D) σ] [Has (Mult D) σ] : {β : Type} → SquarePair D β → Circ σ β
-  | _, .get => do
-    let r ← rand
-    let r2 ← mul r r
-    pure (r, r2)
+def tripleFromRand [Has (Rand F) fs] [Has (Mult F) fs] : Prog fs.ops D (D.sh F × D.sh F × D.sh F) := do
+  let a ← rand F
+  let b ← rand F                  -- independent: one round
+  let c ← mul a b
+  pure (a, b, c)
 ```
 
-Under the offline signature `Lin ⊞ Mult ⊞ Rand` with `rand` free and
-`mult` one round, the sketch checks by `rfl` that assembling a triple
-costs one round and leaks nothing; its output distribution is that of
-`MulTriple.corr`, two fresh draws being one draw from `F²`
-(`uniform_prod`). The
-last point is the one that matters: a silent handler is hiding, so
-replacing `mulTriple` by `tripleFromRand` under any circuit preserves that
-circuit's hiding proof (the handler composition theorem of §5).
+Under the offline list `[Lin F, Mult F, Rand F]` with `rand` free and
+`mult` one round, `Examples/Basic.lean` checks by `rfl` that assembling a
+triple costs one round and two units; its
+output distribution is that of `MulTriple.corr`, two fresh draws being one
+draw from `F²` (`uniform_prod`). The last point is the one that matters:
+packaged as a `Realization (MulTriple F) [Lin F, Mult F, Rand F]` with a
+simulator that replays the three silent records, it replaces the
+preprocessing box under any caller and preserves that caller's certificate
+(the composition theorem of §5).
 
-Two assemblies that *do* open something, and are still hiding because what
-they open is independent of everything (both need `Field F`, so they are
-described here rather than in the sketch):
+Two assemblies that *do* open something, and are still private because
+what they open is independent of everything (both need `Field F`; they
+are described here and not in the examples):
 
 ```lean
 /-- Random bit (odd characteristic): open r², take a square root. -/
-def bitFromRand (sqrt : D.F → D.F) : {β : Type} → Bit D β → Circ σ β
-  | _, .get => do
-    let r ← rand
-    let s ← mul r r
-    let v ← reveal s                       -- leaks r², uniform on squares, independent of r's sign
-    let inv ← const (1 / sqrt v)
-    let t ← smul (1 / sqrt v) r           -- ±1
-    let one ← const 1
-    let u ← add t one
-    smul (1/2) u                          -- (±1 + 1)/2 ∈ {0, 1}
+def bitFromRand (sqrt : F → F) : Prog fs.ops D (D.sh F) := do
+  let r ← rand F
+  let s ← mul r r
+  let v ← reveal s                       -- opens r², uniform on squares, independent of r's sign
+  let t ← smul (1 / sqrt v) r           -- ±1
+  let one ← const 1
+  let u ← add t one
+  smul (1/2) u                          -- (±1 + 1)/2 ∈ {0, 1}
 
 /-- Random share with its inverse (Bar-Ilan–Beaver): open r·s for fresh r, s. -/
-def randInv : {β : Type} → RandInv D β → Circ σ β
-  | _, .get => do
-    let r ← rand
-    let s ← rand
-    let p ← mul r s
-    let v ← reveal p                       -- leaks r·s, uniform (given rs ≠ 0), independent of r
-    let sInv ← smul (1 / v) s             -- s / (r s) = 1/r
-    pure (r, sInv)
+def randInv : Prog fs.ops D (D.sh F × D.sh F) := do
+  let r ← randNZ F
+  let s ← randNZ F
+  let p ← mul r s
+  let v ← reveal p                       -- opens r·s, uniform on the nonzero elements, independent of r
+  let sInv ← smul (1 / v) s             -- s / (r s) = 1/r
+  pure (r, sInv)
 ```
 
-Their hiding proofs are the Beaver pattern: the simulator draws a fresh
+Their certificates are the Beaver pattern: the simulator draws a fresh
 coin and reports it, and the mask lemma says the opened value is that
 coin. For `randInv` the map is `s ↦ r·s`, a bijection of the nonzero
 elements when `r ≠ 0`: with `randNZ` for both masks the proof is perfect,
 with plain `rand` it holds only off `r = 0`, which is exactly the
 statistical slack the real protocol has (§8).
 
-**Offline versus online is a cost split, not a semantic one.** Price with a
-product resource `(offline rounds, online rounds)`: `Get` costs `(1, 0)`
-when assembled, `mult` in the online circuit costs `(0, 1)`. The single
-interpreter then reports both counters at once, and "this circuit needs
-`n` triples" is the `total` resource on `Get`.
+**Offline versus online is a cost split, not a semantic one.** Price the
+same functionality differently on two lists: `MulTriple F` costs
+`⟨0, 0⟩` on `preMPC` (precomputed) and `⟨2, 3⟩` on `preOnline`
+(generated online), and the single interpreter reports the difference
+(`Examples/Beaver.lean`: 2 versus 5 units, 1 versus 3 rounds). "This
+program needs `n` triples" is a cost model charging one unit per `get`.
 
 ### 6.3 Public coins
 
-A public coin is a correlation whose sample everybody sees. Its model
-draws one coin and leaks the *response*, which is why leakage is a
-function of request and response:
+A public coin is a correlation whose sample everybody sees. Its response
+is *clear*, so it is in the trace by shape; nothing further needs to be
+declared:
 
 ```lean
-def PubCoin.ideal : Model (PubCoin (.ideal F)) F PMF where
-  program o := match o with | .coin => uniform F
-  leak o x  := match o with | .coin => [x]
+namespace PubCoin
+abbrev ops (F : Type) : Interface where
+  Op := Op                                  -- coin
+  dom _ := []
+  cod _ := .clear F                         -- public by shape
+noncomputable def model (F : Type) : Model (ops F) .ideal PMF := ⟨fun _ => (uniform F).map fun x => (x, ())⟩
+end PubCoin
 
 /-- A random linear combination of shares, challenge chosen after the shares exist. -/
-def randomCombination [Has (Lin D) σ] [Has (PubCoin D) σ] (xs : List D.S) : Circ σ D.S := do
-  let r ← coin
-  ...                                     -- Σ rⁱ · xᵢ, all linear
+def randomCombination [Has (Lin F) fs] [Has (PubCoin F) fs] (xs : List (D.sh F)) : Prog fs.ops D (D.sh F) := do
+  let r ← coin F
+  …                                         -- Σ rⁱ · xᵢ, all linear
 ```
 
-The distribution of `randomCombination [a, b]` is "draw `r`, reveal
-`[r]`", and hiding is immediate: the simulator draws its own coin. This
-is the pattern for MAC checks, batched openings and any "challenge" step.
+The distribution of `randomCombination [a, b]` is "draw `r`, trace
+`[coin ↦ r, smul r, add, …]`, return `⟦a + r·b⟧`". It is *not* hiding in
+the old sense, and the old claim that it was is false (report, Issue 5):
+the response and the coin are correlated, and a caller that later opens
+the result learns both. Its honest specification is a functionality
+`RandComb` whose joint step draws `r`, returns `⟦x₀ + r·x₁⟧` and
+*discloses* `r`, a disclosure that is not a function of the response (on
+all-zero inputs the response is `0` for every `r`), which is exactly what
+a joint `step` can say and a deterministic `leak (request, response)`
+could not. `randComb2Real` (`Examples/RandomCombination.lean`) realises
+it: the simulator reads `r` off the event and replays the three records.
+This is the pattern for MAC checks, batched openings and any "challenge"
+step.
 
 ### 6.4 Several coin alphabets
 
 Bits, `Fin n` values (for permutations) and elements of a second ring are
 not functions of a uniform field element in odd characteristic, so a
 single alphabet of coins would not do. With coins as distributions there
-is nothing to do: each feature's ideal model draws from the uniform
+is nothing to do: each functionality's ideal model draws from the uniform
 distribution on whatever finite type it needs (`uniform F`,
 `uniform (Fin (2 ^ m))`, `uniform {x // x ≠ 0}`, `uniform (Fin k → F)`),
-and independence across features is `bind`. The leakage alphabet is the
-one thing shared across fields, and `Model.mapLeak` with `Encodable`
-handles it (§2.9).
+and independence across functionalities is `bind`. The trace needs no
+shared alphabet either: each event carries its clear outputs and its
+disclosure at the type the operation declares (§2.9).
 
 ### 6.5 Cross-field correlations: edaBits
 
 An edaBit is a random `r < 2^m` shared over the arithmetic field together
 with its `m` bits shared over `𝔽₂`. In the field-generic design of §2.9 it
-is a capability whose sample spans two fields, and `𝔽₂` is just another
-field (`+` is xor, `*` is and), so Boolean circuits are ordinary
-`lin`/`mult` circuits over `Bool` (`MultiField.lean`):
+is a functionality whose sample spans two fields, and `𝔽₂` (`GF2 :=
+ZMod 2`) is just another field (`+` is xor, `*` is and), so Boolean
+programs are ordinary `Lin`/`Mult` programs over `GF2`
+(`Examples/MultiField.lean`):
 
 ```lean
-inductive EdaBit (D : Domain) (F : Type) (m : Nat) : Sig where
-  | get : EdaBit D F m (D.S F × List (D.S Bool))          -- r, and its m bits (LSB first)
-
-inductive Cap where
-  | on (f : Feature) (F : Type) [Concrete F]
-  | switch (F G : Type) [Concrete F] [Concrete G]
-  | edabit (F : Type) [Concrete F] (m : Nat)
-
--- ideal model: a uniform r < 2^m, and its bits; nothing leaked
-| @Cap.edabit F _ m => ⟨fun | .get => (uniform (Fin (2 ^ m))).map fun r => ((r.val : F), bitsOf m r.val),
-                        fun _ _ => []⟩
+namespace EdaBitF
+abbrev ops (F : Type) (m : Nat) : Interface where
+  Op := Op                                                 -- get
+  dom _ := []
+  cod _ := .prod (.share F) (.vec m (.share GF2))          -- r, and its m bits (LSB first)
+noncomputable def model (F : Type) [NatCast F] (m : Nat) : Model (ops F m) .ideal PMF :=   -- a uniform r < 2^m, its bits
+  ⟨fun _ => (uniform (Fin (2 ^ m))).map fun r => ((((r.val : ℕ) : F), bitsOf m r.val), ())⟩
+end EdaBitF
+abbrev EdaBit (F : Type) [NatCast F] (m : Nat) (coin : Nat := 0) : Functionality   -- `coin` fixes the mask under `eval`
 ```
 
 The canonical use is arithmetic-to-binary conversion: reveal `x - r`, then
 add the public value back onto the shared bits with a binary adder. The
 adder is branch-free (a public bit multiplies, it never `if`s), which is
-both the right circuit and what lets evaluation run on symbolic inputs:
+both the right program and what lets evaluation run on symbolic inputs:
 
 ```lean
 /-- Ripple-carry addition of a public `c` to shared bits: xor free, and one round; `m` rounds. -/
-def addPublic [Has (.on .lin Bool) M] [Has (.on .mult Bool) M] :
-    List Bool → List (D.S Bool) → D.S Bool → Circ' D M (List (D.S Bool))
-  | ci :: cs, ri :: rs, carry => do
-    let t ← add ri carry                      -- rᵢ ⊕ carry
-    let cb ← const ci
-    let s ← add t cb                          -- sᵢ = cᵢ ⊕ rᵢ ⊕ carry
-    let rc ← mul ri carry                     -- rᵢ ∧ carry          (the one round)
-    let ct ← smul ci t                        -- cᵢ ∧ (rᵢ ⊕ carry)   (public bit: free)
-    let carry' ← add rc ct                    -- maj(cᵢ, rᵢ, carry)
-    let rest ← addPublic cs rs carry'
-    pure (s :: rest)
-  | _, _, _ => pure []
+def addPublic [Has (Lin GF2) fs] [Has (Mult GF2) fs] :
+    (m : Nat) → (Fin m → GF2) → (Fin m → D.sh GF2) → D.sh GF2 → Prog fs.ops D (Fin m → D.sh GF2)
+  | 0, _, _, _ => pure fun i => i.elim0
+  | m + 1, c, r, carry => do
+    let t ← add (r 0) carry                   -- r₀ ⊕ carry
+    let cb ← const (c 0)
+    let s ← add t cb                          -- s₀ = c₀ ⊕ r₀ ⊕ carry
+    let rc ← mul (r 0) carry                  -- r₀ ∧ carry          (the one round)
+    let ct ← smul (c 0) t                     -- c₀ ∧ (r₀ ⊕ carry)   (public bit: free)
+    let carry' ← add rc ct                    -- maj(c₀, r₀, carry)
+    let rest ← addPublic m (Fin.tail c) (Fin.tail r) carry'
+    pure (Fin.cons s rest)
 
 /-- A2B: reveal `x - r`, then `x = (x - r) + r` bit by bit. -/
-def a2b {F} [Concrete F] (m : Nat) [Has (.edabit F m) M] [Has (.on .lin F) M] [Has (.on .reveal F) M]
-    [Has (.on .lin Bool) M] [Has (.on .mult Bool) M] (x : D.S F) : Circ' D M (List (D.S Bool)) := do
-  let (r, rbits) ← edabit F m
+def a2b (F : Type) [CommRing F] [Encodable F] (m : Nat) (coin : Nat := 0)
+    [Has (EdaBit F m coin) fs] [Has (Lin F) fs] [Has (Reveal F) fs] [Has (Lin GF2) fs] [Has (Mult GF2) fs]
+    (x : D.sh F) : Prog fs.ops D (Fin m → D.sh GF2) := do
+  let (r, rbits) ← edabit F m coin
   let d ← sub x r
   let c ← reveal d                            -- the only revealed value
-  let zero ← const false
-  addPublic (bitsOf m (Concrete.toNat c)) rbits zero
+  let zero ← const (0 : GF2)
+  addPublic m (bitsOf m (Encodable.encode c)) rbits zero
 
-abbrev mixed : MPC := ⟨[(.on .lin Int, ⟨0,0⟩), (.on .reveal Int, ⟨1,1⟩),
-                        (.on .lin Bool, ⟨0,0⟩), (.on .mult Bool, ⟨1,1⟩), (.edabit Int 4, ⟨0,0⟩)]⟩
+abbrev mixed : MPC := [MPC.const (Lin (ZMod 17)) ⟨0, 0⟩, MPC.const (Mult (ZMod 17)) ⟨1, 2⟩, MPC.const (Reveal (ZMod 17)) ⟨1, 1⟩,
+                       MPC.const (Lin GF2) ⟨0, 0⟩, MPC.const (Mult GF2) ⟨1, 1⟩, MPC.const (EdaBit (ZMod 17) 4 3) ⟨0, 0⟩]
 ```
 
-Checked by evaluation (an `Id` model with the mask fixed, `mixed.eval 3`):
-the leakage is `[x - 3]` and nothing else (`rfl`), the price is `⟨5, 5⟩`,
-one reveal round plus four adder rounds (`decide`), and `a2b 5` yields
-`[1, 0, 1, 0]` for two different masks. Hiding is the Beaver pattern with
-one coin, perfect when `r` is uniform in the field (`ℤ/2^k` with `m = k`)
-and statistical when `r < 2^m` masks a value in a larger field, which is
-what a gadget's `ε` (§7) is for. B2A, truncation and comparison via
-edaBits are the same ingredients in a different order.
+Checked by evaluation (the evaluation model with the mask fixed to `3`):
+the opened values are `[x - 3]` and nothing else (`rfl`), the
+communication is 5 and the last bit is ready at round 4, one reveal round
+plus three carries (kernel `decide`), and `a2b 5` yields the bits of `5`. Privacy is the
+Beaver pattern with one coin, perfect when `r` is uniform in the field
+(`ℤ/2^k` with `m = k`) and statistical when `r < 2^m` masks a value in a
+larger field, which is what a statistical realisation's `ε` (§4.1, §8) is
+for. B2A, truncation and comparison via edaBits are the same ingredients
+in a different order.
 
 **daBits** (Rotaru–Wood 2019) are the simplest cross-field correlation:
-one uniform bit `b`, shared over `F` and over `𝔽₂` (`Cap.dabit F`, ideal
-model `(uniform 𝔽₂).map fun b => (b, b)`). Boolean → arithmetic
+one uniform bit `b`, shared over `F` and over `𝔽₂` (`DaBit F`, ideal
+model `(uniform GF2).map fun b => ((b, b), ())`). Boolean → arithmetic
 conversion is one reveal: open `c = x ⊕ b` in `𝔽₂`, then
 `x = c + b − 2·c·b` in `F`, linear in `⟦b⟧_F` since `c` is public
-(`b2a`). A circuit spanning both worlds, `hammingWeight`, converts each
+(`b2a`). A program spanning both worlds, `hammingWeight`, converts each
 bit and sums in `F`: all conversions are independent, so one round for
 any number of bits (`decide` on the timed model), one revealed bit per
 input, and the count comes out as an arithmetic share. Its privacy is
 the mask lemma over `𝔽₂`: the revealed `x ⊕ b` is uniform for either
-`x`, by the bijection `b ↦ x + b` (`b2a_dist`, `b2a_hiding`), and the
-output is `x` in `F` with certainty (`fin_cases` on the two bits).
+`x`, by the bijection `b ↦ x + b` (`b2a_dist`, `b2aReal` realising the
+`B2A` functionality), and the output is `x` in `F` with certainty
+(`fin_cases` on the two bits).
 
-Switching itself is not special: `Cap.switch F G` is one more priced
-capability with an ideal model, exactly like `Cap.on .mult F`, and a
-switch implemented via edaBits is a handler for it.
+Switching itself is not special: `Switch F G` is one more functionality
+with an ideal model, exactly like `Mult F`, and a switch implemented via
+edaBits is a realisation of it.
 
-## 7. Gadgets: circuits come with their specs
+## 7. Specifications are functionalities; certificates are realisations
 
 Clean's `FormalCircuit` bundles a circuit with `Assumptions`, a `Spec` and
 the proofs, so that a caller uses the spec and discharges the assumptions
-without unfolding the callee. The MPC version (`Gadget.lean`) adds the one
-thing MPC cares about: the declared leakage, and the proof that the real
-reveals are simulatable from it.
+without unfolding the callee. Here there is no separate bundle (decisions
+006, 015; report, Issue 4): the specification *is* a functionality,
+written by its author as a total joint step, and the certificate is a
+`Realization` of it, whose `Pre` is the assumption and whose `real` is
+correctness and privacy in one equation, the output marginal being part
+of the joint. The old `Gadget`, which certified a program against its own
+output distribution and blocked composition on its assumptions, is gone;
+so is `Hiding`, which handed the simulator the output.
 
 ```lean
-structure Gadget (M : Model σ L PMF) (I O : Type) where
-  circ        : I → Circ σ O
-  Assumptions : I → Prop                       -- what the caller must guarantee
-  Spec        : I → O → Prop                   -- what the gadget guarantees, under the assumptions
-  view        : I → O → List L                 -- declared leakage, of input and output (like `Model.leak`)
-  correct     : ∀ i, Assumptions i → ∀ o ∈ (Prod.fst <$> dist M (circ i)).support, Spec i o
-  ε           : ENNReal := 0                   -- simulation error, total variation
-  simulatable : ∃ Sim : List L → PMF (List L), ∀ i, Assumptions i →
-                  PMF.statDist (dist M (circ i))
-                    (do let y ← Prod.fst <$> dist M (circ i); let s ← Sim (view i y); pure (y, s)) ≤ ε
+/-- Inversion, silent: returns `⟦x⁻¹⟧`, declares nothing. -/
+abbrev Invert : Functionality :=
+  .ofEval ⟨Unit, fun _ => [F], fun _ => .share F, fun _ => Unit, fun _ => false, fun _ => false⟩
+    ⟨fun r => pure (r.args.1⁻¹, ())⟩
 
-def Gadget.cost   (g) (K : CostModel σ C) (i : I) : PMF C   -- computed, per MPC; a point for structural circuits
-def Gadget.Priced (g) (K) (p : C) : Prop := ∀ i, g.cost K i = pure p
+/-- Inversion by masking realises silent inversion for `x ≠ 0`: the simulator draws a fresh uniform
+nonzero element and presents it as the opened value (`s ↦ x·s` is a bijection of the nonzero elements). -/
+program invertReal : Realization (Invert F) (InvHyb F) where
+  impl D r := invert r.args.1
+  Pre r := r.args.1 ≠ 0
+  Sim _ := (uniform {t : F // t ≠ 0}).map fun t => invView F t.1
+  real r hx := by …                     -- `invert_dist`, field algebra on the support, `Equiv.mulLeft₀`
 
-/-- Inversion by masking: needs x ≠ 0; the mask is a random nonzero share, so correctness is
-perfect and the one revealed value is a uniform nonzero element. -/
-def invertGadget : Gadget (InvSig.ideal F) F F where
-  circ := invert                    -- s ← randNZ; v ← mul x s; m ← reveal v; smul m⁻¹ s
-  Assumptions x := x ≠ 0
-  Spec x y := y * x = 1
-  view _ _ := []
-  correct := …                      -- every output is x⁻¹: field algebra on the support
-  simulatable := Gadget.perfect …   -- simulator: a fresh uniform nonzero element; `Equiv.mulLeft₀`
-
-theorem invert_priced : (invertGadget F).Priced (InvSig.comm F) 3        -- one mult, one reveal
-example : delayOn (InvSig.timed F 0) (invert ⟨x, 0⟩) = 2 := rfl         -- random shares free
-example : delayOn (InvSig.timed F 1) (invert ⟨x, 0⟩) = 3 := rfl         -- random shares cost a round
+/-- A caller discharges the precondition on the support of its own ideal run. -/
+theorem invertFresh_valid : Valid (CallerHyb F).model (fun r => … a.1 ≠ 0 …) (invertFresh F) := …
 ```
 
-Three choices are visible here (decisions 009, 011):
+Three choices are visible here (decisions 005, 009, 011):
 
-* **Correctness is perfect.** Every output the circuit can produce
-  satisfies the spec: a statement on the support of the output
-  distribution, which for a coin-free circuit is `rfl`. There is no set
-  of "good coins". A gadget that needs an invertible mask asks the
-  functionality for one (`randNZ`, a uniformly random nonzero share, a
-  priced feature like any other) rather than gambling on the coins.
-* **The error is in privacy, as a number.** `ε` is total variation
-  between the real and the simulated (output, reveals); perfect gadgets
-  carry `0` and prove an equation (`Gadget.perfect`). This is what adds
-  under composition, and it is where the statistical masking of §6.5
-  will live.
-* **No price.** A circuit has semantics regardless of the MPC, but a
-  cost only once an MPC is fixed: its `output` and `leak` are determined
-  by the `program` and `leak` of the functionalities it calls, the same
-  everywhere; its delay and communication need that MPC's latencies and
-  bandwidths. So `Gadget.cost` takes the MPC's cost model as an argument,
-  and a bound is a separate theorem about the pair: the same
-  `invertGadget` has delay 2 or 3 depending on the MPC (decision 005).
+* **Correctness is perfect, and it is in the joint.** The output marginal
+  of the equation is the functionality's response; for a coin-free
+  program that is `rfl`. There is no set of "good coins": a program that
+  needs an invertible mask asks the functionality for one (`RandNZ`, a
+  uniformly random nonzero share, a priced functionality like any other)
+  rather than gambling on the coins.
+* **Assumptions are preconditions on requests, discharged by `Valid`.** A
+  polymorphic caller cannot state `x ≠ 0` about a share, and UC
+  functionalities are total; so the precondition lives on the
+  realisation, at the ideal domain, and a caller discharges it by
+  `Valid`: every request it issues, on the support of its ideal run,
+  satisfies it (`invertFresh_valid`: the support of `RandNZ` is the
+  nonzero elements). `Realization.comp` accumulates it: the composite's
+  `Pre` is the outer one together with validity of the outer program for
+  the inner preconditions. The total alternative, a functionality that
+  returns `⟦x⁻¹⟧` with `0⁻¹ = 0` and discloses whether `x = 0`, is
+  realised by the same program with no precondition; the caller pays the
+  disclosure instead (`InvertTotal`, `invertTotalReal` in
+  `Examples/Inversion.lean`: the simulator reads the zero test off the
+  event).
+* **No price.** A program has semantics regardless of the MPC, but a
+  cost only once an MPC is fixed: its `output` and `view` are determined
+  by the functionalities it calls, the same everywhere; its delay and
+  communication need that MPC's latencies and bandwidths. So a bound is a
+  separate theorem about the pair: the same `invert` has delay 2 or 3
+  depending on the MPC (`invMPC`, `invMPC'`; decision 005).
 
-**Composition** is by specification. A gadget is one operation of a
-one-op signature (`Gadget.toModel`: `program := its output distribution`,
-`leak := view`) realised by its circuit (`Gadget.impl`,
-`Gadget.realizes`); callers are written in the hybrid where that
-operation is primitive, and `handle_realizes` (§4.1) transports their
-proofs. The caller's obligation is exactly Clean's: discharge the
-gadget's assumptions at the call site. Sequential composition of two
-gadgets is the two-call caller `do o ← call g₁ i; call g₂ o`, so no
-`Gadget.seq` primitive is needed, and its view is the two records, which
-is the only thing a composite could honestly declare (the intermediate
-output is a hidden, possibly random handle, so a composite's view cannot
-be a function of its own input and output alone).
+**The `program` command** (`Program.lean`, `Examples/Checked.lean`) is how
+certificates are built. It declares the `Realization` and then checks the
+fully applied `impl` as it sits in it: every constant it uses,
+transitively through the package's definitions, is computable, not
+`unsafe`, `partial` or `implemented_by`; no parameter of the certificate
+mentions a domain. Simulators and proofs are unconstrained (the simulator
+is a `PMF`, so the certificate is `noncomputable`). This is what makes
+"the simulator sees only the event" mean what it says: an implementation
+that could inspect a share (`peekIdeal`, fixed at the ideal domain;
+`peek`, with classical decidable equality; a `peekAt` callback passed as
+a parameter) is rejected, and the honest `keepReal` passes. How the check
+binds to a certificate obtained through `comp` is recorded as open in the
+report.
 
-A gadget's `Assumptions` and `view` are its interface; a capability class
-(§2.5) whose instances are gadgets with a common spec gives the "same
-interface, several implementations, prices differ" pattern for free.
+**Composition** is by specification. Callers are written in the hybrid
+where the functionality is primitive, and `handle_realizes` (§4.1)
+transports their proofs; sequential composition of two certified programs
+is the two-call caller `do o ← op g₁ i; op g₂ o`, whose trace is the two
+events, which is the only thing a composite could honestly declare (the
+intermediate output is a hidden, possibly random handle, so a composite's
+trace cannot be a function of its own input and output alone). A
+capability class (§2.5) whose instances all realise one functionality
+gives the "same interface, several implementations, prices differ"
+pattern for free.
 
 ## 8. Extensions, in the order they will be needed
 
-1. **Statistical composition.** `ε` exists on gadgets and on
-   realisations (`RealizesStat`); what is missing is the lemma that makes
-   it add: `bind` is a contraction in total variation (data-processing),
-   so `handle_realizes` holds up to the sum of the per-call errors.
-   Needed for edaBit masking of a bounded value by a longer one (§6.5).
-2. **Adaptive environment.** Party inputs that depend on earlier openings:
-   make `Model.program` a function of the leakage so far.
-3. **Corruption.** Tag leaked values with recipients (`revealto p`), view
-   includes corrupt parties' inputs; both are instances of `view`.
-4. **Abort / malicious.** An `Abort` response in the signature (`Option`
-   results); hiding then also quantifies over adversarial abort choices.
-5. **Static round bounds.** A syntactic `Circ.bound` that over-approximates
-   `cost` without running, for circuits with data-dependent control flow.
+1. **Statistical composition.** `RealizationStat` exists,
+   `PMF.statDist_bind_le` (`bind` is a contraction in total variation,
+   data-processing) is proved, and `budget` is defined; what is missing
+   is the theorem that `handle_realizes` holds up to
+   `min 1 (budget fs.model ε c)` for a valid caller. Needed for edaBit
+   masking of a bounded value by a longer one (§6.5).
+2. **Clock-aware delay composition** (§3.4): the hypothesis under which a
+   timing profile composes through a realisation, and its proof; or the
+   exact alternative, an abstract operation timed by its full clock-state
+   transformer.
+3. **Adaptive environment.** Party inputs that depend on earlier
+   openings: make the model's step a function of the trace so far.
+4. **Corruption.** Tag disclosures with recipients (`revealto p`), the
+   trace includes corrupt parties' inputs; both are instances of `disc`.
+5. **Abort / malicious.** An abort response in the shape language
+   (`Option` and sums are still to be added to `Shape`); privacy then also
+   quantifies over adversarial abort choices.
+6. **Static round bounds.** A syntactic over-approximation of delay that
+   does not run the program, for programs with data-dependent control
+   flow.
+
+Not planned: stateful functionalities (hidden state across requests,
+sessions, batching); the `PMF` realisation layer models fresh per-request
+calls, and those need a different layer (report, Scope decisions).
 
 ## 9. Proof methodology, summarised
 
-| Property           | Concrete circuit                      | Generic circuit                         |
+| Property           | Concrete program                      | Generic program                         |
 |--------------------|---------------------------------------|-----------------------------------------|
-| correctness        | `rfl` / `decide` / `ring`; on the support for coins | `simp [run_bind, …]` + algebra   |
-| delay / cost       | `rfl`                                 | `simp [run_bind]` + `omega`             |
-| hiding (coin-free) | `Hiding.of_lift`, `rfl`               | `hiding_of_silent`; realisations        |
-| hiding (coins)     | `simp` unfolds the run; `uniform_map_equiv` with an `Equiv` | `handle_realizes`, `Hiding.transport` |
-| not hiding         | two inputs, evaluate (`leakyMul_not_hiding`) | —                                |
+| correctness        | `rfl` / `decide +kernel` / `ring`; on the support for coins | `simp [weft]` + algebra; `output_transport` |
+| delay / cost       | `rfl`                                 | `simp [run_bind]` + `omega`; `cost_handle` |
+| privacy (coin-free) | `dist_lift`, `rfl`: the simulator replays the trace | `arith_private`, under a public-trace hypothesis |
+| privacy (coins)    | `simp [weft]` unfolds the run; `uniform_map_equiv` with an `Equiv` | `handle_realizes`, `Realization.comp` |
+| not private        | two inputs, evaluate (`leakyMul_not_realizes`, `openKeep_not_realizes`) | —                        |
 
 Evaluation means `rfl` or kernel `decide`; `native_decide` is not used.
 
 ## 10. Names
 
-Clean is the sibling, so a one-word English word that puns on Lean, or
-rhymes with it, or says what MPC does.
+The name is **Weft** (chosen 2026-09-05): the threads a protocol weaves
+across the parties; short, an English word, and free of collisions. The
+working name had been *Glean* ("to glean": gather scraps of information;
+the adversary gleans only what the program opens), which had the same
+shape as Clean, the sibling ZK framework. It was dropped because it
+collides with Meta's code-index tool and Mozilla's telemetry SDK, and the
+repository was already `weft`. The Lean namespace is `Weft`.
 
-* **Glean** — "to glean": gather scraps of information. The adversary
-  gleans only what the circuit opens; the framework is about bounding that.
-  Same shape as Clean. My first choice.
+The alternatives that were considered, kept for the record: a one-word
+English word that puns on Lean, or rhymes with it, or says what MPC does.
+
 * **Convene** — parties convene to compute; rhymes with Clean.
 * **Unseen** — hiding; rhymes with Clean.
 * **Screen** — screens values from view; also a stage on which things run.
@@ -1546,33 +1759,39 @@ rhymes with it, or says what MPC does.
 Avoid *Shamir*, *Beaver*, *SPDZ*-derived names: the framework is
 explicitly protocol-agnostic.
 
-## 11. Reveal questions
+## 11. Open questions
 
-* **`Type 1`.** Quantifying over response types puts `Circ σ α` in
-  `Type 1`. Harmless so far; if it bites (universe issues in Mathlib
-  interop), index requests by a code for the response type instead.
+* **Universes.** `Shape`, `Interface` and `Functionality` are in `Type 1`
+  because they quantify over response types; programs and models are in
+  `Type → Type`. Harmless so far; if it bites (universe issues in Mathlib
+  interop), index shapes by a code for the response type instead.
 * **Parallelism is computed.** `bind` never parallelises, and there is no
   parallel node; the timed domain reads the dependency graph (decision
-  002). A circuit whose branch on a revealed value is not a data
+  002). A program whose branch on a revealed value is not a data
   dependency must say `barrier`; forgetting it under-counts, which a
   syntactic check ("every `if` on a revealed value is preceded by a
   barrier") could enforce.
-* **Mathlib is the base.** The sketch depends on Mathlib and uses its
+* **Mathlib is the base.** The library depends on Mathlib and uses its
   definitions wherever one exists: `Field`, `CommRing`, `Inv` and `ZMod`
-  for fields (`ring`/`field_simp` close the algebra), `Encodable` for the
-  shared leak alphabet, `Equiv` for the mask lemma, `PMF` and
-  `uniformOfFintype` for the semantics, `AddMonoid` for costs, `WithTop`
-  for unbounded cost, `Fin m →` vectors. See
-  `decisions/010-mathlib.md`.
-* **Coin alphabet.** None to choose: each feature draws from the uniform
-  distribution on the finite type it needs, and independence across
-  draws is `bind` (§6.4).
+  for fields (`ring`/`field_simp` close the algebra), `Equiv` for the mask
+  lemma, `PMF` and `uniformOfFintype` for the semantics, `AddMonoid` for
+  costs, `Fin m →` vectors, `Encodable` where a conversion needs a
+  canonical representative. See `decisions/010-mathlib.md`.
+* **Coin alphabet.** None to choose: each functionality draws from the
+  uniform distribution on the finite type it needs, and independence
+  across draws is `bind` (§6.4).
 * **Evaluation scales like evaluation.** Closing theorems by `rfl` runs
-  the interpreter inside `whnf`; around a dozen sequential rounds it takes
-  tens of seconds, and kernel `decide` needs a closed instance. Both are
-  fine for examples and for concrete small circuits. Real proofs go
-  through the compositional lemmas (§5), which never evaluate the circuit,
-  and through gadget specs (§7), which never unfold callees.
-* **Equality of circuits.** Do we want an equational theory (independent
-  calls commute up to cost/leak-equivalence) or only observational
+  the interpreter inside `whnf`; closed instances over `Fin 7` use
+  `decide +kernel`, an order of magnitude faster at that size. Both are
+  fine for examples and for concrete small programs. Real proofs go
+  through the compositional lemmas (§5), which never evaluate the
+  program, and through specifications (§7), which never unfold callees.
+* **Equality of programs.** Do we want an equational theory (independent
+  calls commute up to cost/trace-equivalence) or only observational
   equivalence via `run`? Observational is enough for everything above.
+* **Recorded as open in the report.** The duplicate-entry and reindexing
+  policy for list hybrids and price lists; the response shapes still to
+  be added (`Option`, sums, clear-indexed dependent pairs); how the
+  `program` check binds to a certificate obtained through `comp`; the
+  timing contract (trusted `pubArg`/`ctrl`, random public control flow,
+  the `pure`-selection gap).
