@@ -229,7 +229,7 @@ variable (F : Type) [Add F] [Mul F] [Sub F] [LT F] [DecidableRel (α := F) (· <
 
 /-- Its cost instantiation, with the comparison priced at `cmp` rounds. -/
 def StdCmp.timed (cmp : Nat := 3) : Model (StdCmp F).ops .timed Sched :=
-  MPC.timed [Lin.priced F, Mult.priced F, Reveal.priced F, Cmp.priced F ⟨cmp, 4⟩, Barrier.priced]
+  MPC.timed [(Lin F).priced ⟨0, 0⟩, (Mult F).priced ⟨1, 2⟩, (Reveal F).priced ⟨1, 1⟩, (Cmp F).priced ⟨cmp, 4⟩, Barrier.priced ⟨0, 0⟩]
 end Cmp
 
 -- 4. sorting network: the middle outputs go through all 3 layers, 3 × (3 + 1) rounds;
@@ -305,7 +305,7 @@ section
 def affineId {F : Type} {fs : Hybrid} {D : Domain} : D.sh F → Prog fs.ops D (D.sh F) := pure
 abbrev StdInv (F : Type) [Field F] : Hybrid := [Lin F, Mult F, Reveal F, Inversion F]
 def StdInv.timed (F : Type) [Field F] : Model (StdInv F).ops .timed Sched :=
-  MPC.timed [Lin.priced F, Mult.priced F, Reveal.priced F, Inversion.priced F ⟨1, 2⟩]
+  MPC.timed [(Lin F).priced ⟨0, 0⟩, (Mult F).priced ⟨1, 2⟩, (Reveal F).priced ⟨1, 1⟩, (Inversion F).priced ⟨1, 2⟩]
 -- (closed instance with kernel `decide`; the elaborator's `whnf` is slow at this depth)
 example : delayOn (Std.timed Rat) (sbox (F := Rat) (fs := Std Rat) (D := .timed) affineId ⟪3⟫) = 13 := by decide +kernel
 example (x : Rat) : delayOn (StdInv.timed Rat) (sbox (fs := StdInv Rat) (D := .timed) affineId ⟪x⟫) = 1 := rfl

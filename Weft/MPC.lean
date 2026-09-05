@@ -11,12 +11,12 @@ The same list gives membership (`Has`), semantics (the hybrid's model)
 and cost, so "the MPC offers `X`" is said once; two MPCs with the same
 hybrid differ only in what they charge.
 
-An entry is written with the hand-written timed model of a standard
-interface (`Lin.priced F p`, `Mult.priced F p`, ...), with any timed model
-at all (`MPC.entry`), or, for an abstract operation that a realisation
-implements, with the exact instantiation that runs the implementation
-(`Realization.timed`, `Weft.Cost`).  `MPC.const` uses the generic timed
-model and is too slow to evaluate; it is the specification of the others.
+An entry is a functionality at a price (`(Mult F).priced ⟨1, 2⟩`, the
+generic timed model of its interface), any timed model of the interface
+at all (`MPC.entry`, a per-input profile for instance), or, for an
+abstract operation that a realisation implements, the exact
+instantiation that runs the implementation (`Realization.timed`,
+`Weft.Cost`).
 -/
 namespace Weft
 
@@ -49,10 +49,11 @@ def timed : (M : MPC) → Model M.hybrid.ops .timed Sched
 /-- An entry from any timed model of the functionality's interface. -/
 abbrev entry (F : Functionality) (T : Model F.ops .timed Sched) : Entry := ⟨F, T⟩
 
-/-- An entry at a constant price, by the generic timed model: exact, and
-too slow to evaluate; prefer the interface's hand-written model. -/
-abbrev const (F : Functionality) (p : Price) : Entry := ⟨F, Model.timed F.eval fun _ => p⟩
-
 end MPC
+
+/-- A functionality at a price per operation, by the generic timed model. -/
+abbrev Functionality.pricedBy (F : Functionality) (p : F.ops.Op → Price) : MPC.Entry := ⟨F, Model.timed F.eval p⟩
+/-- A functionality at one price for all of its operations. -/
+abbrev Functionality.priced (F : Functionality) (p : Price) : MPC.Entry := F.pricedBy fun _ => p
 
 end Weft

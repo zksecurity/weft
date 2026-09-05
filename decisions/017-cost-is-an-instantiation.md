@@ -21,13 +21,11 @@ hypergraph, and it adds the operation's communication to the counter.
 Both are read off one scheduled run (`delayOn`, `commOn`).
 
 An MPC is a list of such instantiations, `(F : Functionality) × Model
-F.ops .timed Sched`.  The standard interfaces have hand-written timed
-models beside their functionalities, at a price (`Lin.timed F p`), and
-entry constructors that pair the two (`Lin.priced F p`); any timed model
-of the interface may be used instead (`MPC.entry`); the generic
-`Model.timed`, built from an evaluation model and the interface's
-scheduling metadata, is the specification of the hand-written ones and
-is too slow to evaluate.
+F.ops .timed Sched`.  One generic timed model, `Model.timed`, instantiates
+any interface from its evaluation model, a price per operation and the
+interface's scheduling metadata; a functionality at a price is an entry
+(`(Mult F).priced ⟨1, 2⟩`), and any other timed model of the interface
+may be used instead (`MPC.entry`, a per-input profile for instance).
 
 The exact instantiation of an abstract operation under a realisation is
 to run the implementation in the target's cost model
@@ -44,9 +42,14 @@ of an abstract operation are approximations of the derived one.
   it makes cost a property of behaviour, forces one functionality per
   cost model, and puts the profile of a compound operation on the wrong
   side of the line.
-* **A typeclass supplying the timed model of an interface**, so that
-  `MPC.const F p` could stay fast.  Rejected as the same thing in
-  disguise: a canonical cost per functionality.  The MPC names the
+* **A hand-written timed model per standard interface**, beside the
+  functionality, so that evaluation stays fast: the first form of this
+  decision.  Dropped once the generic model, written without `let`
+  bindings, proved linear in the kernel (a chain of forty
+  multiplications in a few seconds); hand-written models remain for what
+  the generic one cannot express, such as a per-input profile.
+* **A typeclass supplying the timed model of an interface.**  Rejected
+  as a canonical cost per functionality in disguise.  The MPC names the
   instantiation it uses.
 * **Communication as an additive cost model only**, accumulated by the
   interpreter's trace from a price per operation.  Kept for the

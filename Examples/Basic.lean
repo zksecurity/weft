@@ -112,7 +112,7 @@ section Theorems
 variable (F : Type) [Add F] [Mul F] [Sub F] [Inhabited F]
 
 /-- The black box, priced: multiplication one round and two units, reveal one round and one unit. -/
-abbrev abb : MPC := [Lin.priced F, Mult.priced F, Reveal.priced F]
+abbrev abb : MPC := [(Lin F).priced ⟨0, 0⟩, (Mult F).priced ⟨1, 2⟩, (Reveal F).priced ⟨1, 1⟩]
 
 -- Functional correctness (against the ideal model), by evaluation.
 example (a b c : F) : output (Std F).eval (mul3 (fs := Std F) (D := .ideal) a b c) = a * b * c := rfl
@@ -142,20 +142,21 @@ example (a b c : F) (k : F) :
     output (Std F).eval (dotPlus (fs := Std F) (D := .ideal) [a, b] [c, c] k) = a * c + b * c + k := rfl
 example (a b : F) (k : F) :
     delayOn (Std.timed F) (dotPlus (fs := Std F) (D := .timed) [⟪a⟫, ⟪b⟫] [⟪a⟫, ⟪b⟫] k) = 1 := rfl
-example (x a₀ a₁ a₂ : F) :
-    delayOn (Std.timed F) (horner (fs := Std F) (D := .timed) ⟪x⟫ [⟪a₀⟫, ⟪a₁⟫, ⟪a₂⟫]) = 3 := rfl
+-- (seven operations: a closed instance, evaluated by the kernel)
+example : delayOn (Std.timed (Fin 7)) (horner (F := Fin 7) (fs := Std (Fin 7)) (D := .timed) ⟪3⟫ [⟪1⟫, ⟪2⟫, ⟪4⟫]) = 3 := by
+  decide +kernel
 example (x a₀ a₁ a₂ : F) :
     view (Std F).eval (horner (fs := Std F) (D := .ideal) x [a₀, a₁, a₂])
       = [⟨Std.lin F (.const 0), (), ()⟩, ⟨Std.mult F, (), ()⟩, ⟨Std.lin F .add, (), ()⟩, ⟨Std.mult F, (), ()⟩,
          ⟨Std.lin F .add, (), ()⟩, ⟨Std.mult F, (), ()⟩, ⟨Std.lin F .add, (), ()⟩] := rfl
-example (x a₀ a₁ a₂ : F) :
-    commOn (abb F).timed (horner (fs := (abb F).hybrid) (D := .timed) ⟪x⟫ [⟪a₀⟫, ⟪a₁⟫, ⟪a₂⟫]) = 6 := rfl
+example : commOn (abb (Fin 7)).timed (horner (F := Fin 7) (fs := (abb (Fin 7)).hybrid) (D := .timed) ⟪3⟫ [⟪1⟫, ⟪2⟫, ⟪4⟫])
+    = 6 := by decide +kernel
 end
 
 /-! ### The offline phase, timed: a triple costs one multiplication round when assembled from random shares -/
 section
 variable [Fintype F]
-abbrev offline : MPC := [Lin.priced F, Mult.priced F, Rand.priced F ⟨0, 0⟩]
+abbrev offline : MPC := [(Lin F).priced ⟨0, 0⟩, (Mult F).priced ⟨1, 2⟩, (Rand F).priced ⟨0, 0⟩]
 example : (Sched.output (offline F).timed (tripleFromRand (F := F) (fs := (offline F).hybrid) (D := .timed))).2.2.time = 1 := rfl
 example : commOn (offline F).timed (tripleFromRand (F := F) (fs := (offline F).hybrid) (D := .timed)) = 2 := rfl
 end

@@ -87,9 +87,9 @@ theorem get_eq (fs : Hybrid) (i : Fin fs.length) : fs.get i = List.get fs i := b
   Op := (i : Fin fs.length) × (fs.get i).ops.Op
   dom o := (fs.get o.1).ops.dom o.2
   cod o := (fs.get o.1).ops.cod o.2
-  disc o := (fs.get o.1).ops.disc o.2
-  pubArg o := (fs.get o.1).ops.pubArg o.2
-  ctrl o := (fs.get o.1).ops.ctrl o.2
+  leak o := (fs.get o.1).ops.leak o.2
+  clearArg o := (fs.get o.1).ops.clearArg o.2
+  barrier o := (fs.get o.1).ops.barrier o.2
 
 /-- The semantics of a hybrid: dispatch to the component's ideal model. -/
 noncomputable def model (fs : Hybrid) : Model fs.ops .ideal PMF where

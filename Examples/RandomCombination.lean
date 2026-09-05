@@ -24,7 +24,7 @@ abbrev ops (F : Type) : Interface where
   Op := Op
   dom _ := [F, F]
   cod _ := .share F
-  disc _ := F
+  leak _ := F
 /-- The joint step: draw `r`, return `x₀ + r·x₁`, disclose `r`. -/
 noncomputable def model (F : Type) [Add F] [Mul F] [Fintype F] [Inhabited F] : Model (ops F) .ideal PMF :=
   ⟨fun r => (uniform F).map fun c => (r.args.1 + c * r.args.2.1, c)⟩

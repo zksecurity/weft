@@ -61,9 +61,9 @@ end Programs
 section MPCs
 variable (F : Type) [Add F] [Mul F] [Sub F] [Fintype F] [Inhabited F]
 /-- A preprocessing MPC: triples are free (precomputed), openings cost one round and one unit. -/
-abbrev preMPC : MPC := [Lin.priced F, Reveal.priced F, MulTriple.priced F ⟨0, 0⟩]
+abbrev preMPC : MPC := [(Lin F).priced ⟨0, 0⟩, (Reveal F).priced ⟨1, 1⟩, (MulTriple F).priced ⟨0, 0⟩]
 /-- The same MPC generating triples online, in two rounds. -/
-abbrev preOnline : MPC := [Lin.priced F, Reveal.priced F, MulTriple.priced F ⟨2, 3⟩]
+abbrev preOnline : MPC := [(Lin F).priced ⟨0, 0⟩, (Reveal F).priced ⟨1, 1⟩, (MulTriple F).priced ⟨2, 3⟩]
 end MPCs
 
 section Evaluation

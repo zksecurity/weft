@@ -49,17 +49,10 @@ abbrev ops (F G : Type) : Interface where
 /-- The canonical representative, re-read in the target (the integer value if in range). -/
 def eval (F G : Type) [Encodable F] [NatCast G] : Model (ops F G) .ideal Id :=
   .silent fun ⟨.switch, (x, ())⟩ => ((Encodable.encode x : ℕ) : G)
-def timed (F G : Type) [Encodable F] [NatCast G] (p : Price) : Model (ops F G) .timed Sched :=
-  ⟨fun r s => match r with
-    | ⟨.switch, (x, ())⟩ =>
-      ((⟨((Encodable.encode x.val : ℕ) : G), max x.time s.clock + p.delay⟩, ()), s.pay p.comm)⟩
 end SwitchF
 
 /-- Share conversion from `F` to `G`. -/
 abbrev Switch (F G : Type) [Encodable F] [NatCast G] : Functionality := .ofEval (SwitchF.ops F G) (SwitchF.eval F G)
-/-- Share conversion in an MPC, at a price. -/
-abbrev Switch.priced (F G : Type) [Encodable F] [NatCast G] (p : Price) : MPC.Entry :=
-  ⟨Switch F G, SwitchF.timed F G p⟩
 
 /-- The `m` low bits of `n` as elements of `𝔽₂`, least significant first. -/
 def bitsOf (m : Nat) (n : Nat) : Fin m → GF2 := fun i => if n.testBit i then 1 else 0
@@ -76,8 +69,6 @@ noncomputable def model (F : Type) [NatCast F] (m : Nat) : Model (ops F m) .idea
 /-- With the mask fixed to `coin`. -/
 def eval (F : Type) [NatCast F] (m : Nat) (coin : Nat) : Model (ops F m) .ideal Id :=
   ⟨fun _ => let r := coin % 2 ^ m; pure ((((r : ℕ) : F), bitsOf m r), ())⟩
-def timed (F : Type) [NatCast F] (m : Nat) (p : Price) : Model (ops F m) .timed Sched :=
-  ⟨fun _ s => let t := s.clock + p.delay; (((⟨(0 : ℕ), t⟩, fun i => ⟨bitsOf m 0 i, t⟩), ()), s.pay p.comm)⟩
 end EdaBitF
 
 /-- An edaBit: a random `r < 2^m` shared over `F`, together with its `m` bits
@@ -85,9 +76,6 @@ shared over `𝔽₂` (least significant first).  A correlation across two
 fields.  `coin` fixes the mask under the evaluation model. -/
 abbrev EdaBit (F : Type) [NatCast F] (m : Nat) (coin : Nat := 0) : Functionality :=
   ⟨EdaBitF.ops F m, EdaBitF.eval F m coin, (· = EdaBitF.model F m), Functionality.unique_eq _⟩
-/-- EdaBits in an MPC: free when precomputed. -/
-abbrev EdaBit.priced (F : Type) [NatCast F] (m : Nat) (coin : Nat := 0) (p : Price := ⟨0, 0⟩) : MPC.Entry :=
-  ⟨EdaBit F m coin, EdaBitF.timed F m p⟩
 
 @[simp, weft] theorem EdaBit.model_eq (F : Type) [NatCast F] (m coin : Nat) :
     (EdaBit F m coin).model = EdaBitF.model F m := Functionality.model_eq rfl
@@ -103,8 +91,6 @@ noncomputable def model (F : Type) [NatCast F] : Model (ops F) .ideal PMF :=
   ⟨fun _ => (uniform GF2).map fun (b : ZMod 2) => ((((b.val : ℕ) : F), (b : GF2)), ())⟩
 def eval (F : Type) [NatCast F] (coin : Nat) : Model (ops F) .ideal Id :=
   ⟨fun _ => let b := coin % 2; pure ((((b : ℕ) : F), (b : GF2)), ())⟩
-def timed (F : Type) [NatCast F] (p : Price) : Model (ops F) .timed Sched :=
-  ⟨fun _ s => let t := s.clock + p.delay; (((⟨(0 : ℕ), t⟩, ⟨0, t⟩), ()), s.pay p.comm)⟩
 end DaBitF
 
 /-- A daBit (Rotaru–Wood, ePrint 2019/207): one uniformly random bit `b`,
@@ -112,9 +98,6 @@ shared over `F` *and* over `𝔽₂`.  The simplest correlation across two
 fields, and the one behind Boolean ↔ arithmetic conversion. -/
 abbrev DaBit (F : Type) [NatCast F] (coin : Nat := 0) : Functionality :=
   ⟨DaBitF.ops F, DaBitF.eval F coin, (· = DaBitF.model F), Functionality.unique_eq _⟩
-/-- DaBits in an MPC: free when precomputed. -/
-abbrev DaBit.priced (F : Type) [NatCast F] (coin : Nat := 0) (p : Price := ⟨0, 0⟩) : MPC.Entry :=
-  ⟨DaBit F coin, DaBitF.timed F p⟩
 
 @[simp, weft] theorem DaBit.model_eq (F : Type) [NatCast F] (coin : Nat) :
     (DaBit F coin).model = DaBitF.model F := Functionality.model_eq rfl
@@ -153,18 +136,16 @@ instance : Fact (1 < 17) := ⟨by decide⟩
 
 /-- An MPC over `𝔽₇` and `ℤ/16`. -/
 abbrev twoField : MPC := [
-  Lin.priced (ZMod 7), Mult.priced (ZMod 7), Reveal.priced (ZMod 7),
-  Lin.priced (ZMod 16), Mult.priced (ZMod 16), Cmp.priced (ZMod 16) ⟨2, 6⟩,
-  Switch.priced (ZMod 7) (ZMod 16) ⟨3, 8⟩, Switch.priced (ZMod 16) (ZMod 7) ⟨2, 4⟩]
+  (Lin (ZMod 7)).priced ⟨0, 0⟩, (Mult (ZMod 7)).priced ⟨1, 2⟩, (Reveal (ZMod 7)).priced ⟨1, 1⟩,
+  (Lin (ZMod 16)).priced ⟨0, 0⟩, (Mult (ZMod 16)).priced ⟨1, 2⟩, (Cmp (ZMod 16)).priced ⟨2, 6⟩,
+  (Switch (ZMod 7) (ZMod 16)).priced ⟨3, 8⟩, (Switch (ZMod 16) (ZMod 7)).priced ⟨2, 4⟩]
 
 -- Nothing is revealed (every event is silent); communication adds; delay is the critical path:
 -- the switch of `c` overlaps the multiplication and the switch of `ab` (1 + 3 + 2 + 2 = 8).
-example (a b c : ZMod 7) :
-    commOn twoField.timed (mulThenCompare (ZMod 7) (ZMod 16) (fs := twoField.hybrid) (D := .timed) ⟪a⟫ ⟪b⟫ ⟪c⟫)
-      = 28 := rfl
-example (a b c : ZMod 7) :
-    delayOn twoField.timed (mulThenCompare (ZMod 7) (ZMod 16) (fs := twoField.hybrid) (D := .timed) ⟪a⟫ ⟪b⟫ ⟪c⟫)
-      = 8 := rfl
+example : commOn twoField.timed (mulThenCompare (ZMod 7) (ZMod 16) (fs := twoField.hybrid) (D := .timed) ⟪2⟫ ⟪3⟫ ⟪5⟫)
+    = 28 := by decide +kernel
+example : delayOn twoField.timed (mulThenCompare (ZMod 7) (ZMod 16) (fs := twoField.hybrid) (D := .timed) ⟪2⟫ ⟪3⟫ ⟪5⟫)
+    = 8 := by decide +kernel
 -- 2·3 = 6 in 𝔽₇, compared with 5 in ℤ/16: not less, so 0.
 example : (output twoField.eval (mulThenCompare (ZMod 7) (ZMod 16) (fs := twoField.hybrid) (D := .ideal) 2 3 5) : ZMod 7)
     = 0 := by decide
@@ -204,9 +185,9 @@ end A2B
 /-- A mixed `𝔽₁₇` / `𝔽₂` MPC with 4-bit edaBits from preprocessing, the mask fixed to `3`
 under evaluation. -/
 abbrev mixed : MPC := [
-  Lin.priced (ZMod 17), Mult.priced (ZMod 17), Reveal.priced (ZMod 17),
-  Lin.priced GF2, Mult.priced GF2 ⟨1, 1⟩,
-  EdaBit.priced (ZMod 17) 4 3]
+  (Lin (ZMod 17)).priced ⟨0, 0⟩, (Mult (ZMod 17)).priced ⟨1, 2⟩, (Reveal (ZMod 17)).priced ⟨1, 1⟩,
+  (Lin GF2).priced ⟨0, 0⟩, (Mult GF2).priced ⟨1, 1⟩,
+  (EdaBit (ZMod 17) 4 3).priced ⟨0, 0⟩]
 
 /-- The values opened by a run over `mixed`. -/
 def openedMixed : List (Event mixed.hybrid.ops) → List (ZMod 17) :=
@@ -261,9 +242,9 @@ end DaBits
 
 /-- An MPC over `𝔽₁₇` and `𝔽₂` with daBits from preprocessing (the bit fixed to `1` under evaluation). -/
 abbrev withDaBits : MPC := [
-  Lin.priced (ZMod 17), Mult.priced (ZMod 17), Reveal.priced (ZMod 17),
-  Lin.priced GF2, Reveal.priced GF2,
-  DaBit.priced (ZMod 17) 1]
+  (Lin (ZMod 17)).priced ⟨0, 0⟩, (Mult (ZMod 17)).priced ⟨1, 2⟩, (Reveal (ZMod 17)).priced ⟨1, 1⟩,
+  (Lin GF2).priced ⟨0, 0⟩, (Reveal GF2).priced ⟨1, 1⟩,
+  (DaBit (ZMod 17) 1).priced ⟨0, 0⟩]
 
 -- Correctness on instances, for the daBit `b = 1`.
 example : (output withDaBits.eval (b2a (ZMod 17) 1 (fs := withDaBits.hybrid) (D := .ideal) 1) : ZMod 17) = 1 := by

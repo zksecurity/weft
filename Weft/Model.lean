@@ -26,19 +26,19 @@ namespace Weft
 
 /-- A model: one joint step per request, in `m`. -/
 structure Model (ι : Interface) (D : Domain) (m : Type → Type) where
-  step : (r : Req ι D) → m (Resp ι D r.op × ι.disc r.op)
+  step : (r : Req ι D) → m (Resp ι D r.op × ι.leak r.op)
 
 namespace Model
 variable {ι : Interface} {D : Domain} {m : Type → Type}
 
 /-- A deterministic step, seen in any monad. -/
 def det [Monad m] (program : (r : Req ι D) → Resp ι D r.op)
-    (leak : (r : Req ι D) → ι.disc r.op) : Model ι D m :=
+    (leak : (r : Req ι D) → ι.leak r.op) : Model ι D m :=
   ⟨fun r => pure (program r, leak r)⟩
 
 /-- A deterministic and silent step (every disclosure type must be `Unit`). -/
 def silent [Monad m] (program : (r : Req ι D) → Resp ι D r.op)
-    (h : ∀ o, ι.disc o = Unit := by intro o; rfl) : Model ι D m :=
+    (h : ∀ o, ι.leak o = Unit := by intro o; rfl) : Model ι D m :=
   det program fun r => (h r.op).symm ▸ ()
 
 /-- An evaluation model, seen in any monad. -/
@@ -55,7 +55,7 @@ theorem ext {M N : Model ι D m} (h : ∀ r, M.step r = N.step r) : M = N := by
 @[simp] theorem lift_step [Monad m] (M : Model ι D Id) (r : Req ι D) :
     (M.lift m).step r = pure (M.step r).run := rfl
 @[simp] theorem det_step [Monad m] (program : (r : Req ι D) → Resp ι D r.op)
-    (leak : (r : Req ι D) → ι.disc r.op) (r : Req ι D) :
+    (leak : (r : Req ι D) → ι.leak r.op) (r : Req ι D) :
     (det (m := m) program leak).step r = pure (program r, leak r) := rfl
 
 end Model
