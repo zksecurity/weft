@@ -1,4 +1,4 @@
-# Review of the Glean privacy definitions
+# Review of the Weft (working name Glean) privacy definitions
 
 Date: 2026-09-05. Scope: the privacy definitions (`Hiding`, `Realizes`,
 `Gadget`, `Functionality`/`Realization`, the tagged view), how they compose,
@@ -1071,8 +1071,10 @@ the control time (known gap).
   (Beaver over `[Lin, Reveal, MulTriple]`) and one mixed-field program on
   the new core, with `Valid`, `handle_realizes_valid` and the statistical
   kernel lemma stated before the full rewrite of the sketch.
-- **Name.** "Glean" collides with Meta's code-index tool and Mozilla's
-  telemetry SDK; the repository is already `weft`. Left to the author.
+- **Name: Weft** (author, 2026-09-05). "Glean" collides with Meta's
+  code-index tool and Mozilla's telemetry SDK; the repository is already
+  `weft`. DESIGN.md §10, the README and the Lean namespace change with the
+  rewrite.
 
 - **Functionalities stay stateless for the foreseeable future** (author).
   The `PMF` realisation layer models fresh, per-request calls; hidden
