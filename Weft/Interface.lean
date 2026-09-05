@@ -16,18 +16,22 @@ adversary sees of a request, and a model cannot omit a public output.
 namespace Weft
 
 /-- An interface: operations with their operand types and response shapes.
-`disc` is the type of the declared disclosure of an operation (`Unit` when
-it declares nothing).  `pubArg` and `ctrl` are scheduling metadata for the
-timed domain (trusted, like the rest of the interface): an operation with a
-clear argument inherits the reveal clock, and a control barrier raises the
-control clock. -/
+`leak` is the *type* of the declared disclosure of an operation (`Unit`
+when it declares nothing); what is disclosed is the model's business.
+
+`clearArg` and `barrier` are scheduling metadata for the timed domain,
+trusted like the rest of the interface, and needed because clear values
+carry no time: an operation whose constructor carries a clear argument
+(`smul c`) may depend on any value opened before it, so it waits for the
+reveal clock; a barrier is the operation a program issues before
+branching on an opened value, so that what follows waits for it. -/
 structure Interface where
   Op : Type
   dom : Op → List Type
   cod : Op → Shape
-  disc : Op → Type := fun _ => Unit
-  pubArg : Op → Bool := fun _ => false
-  ctrl : Op → Bool := fun _ => false
+  leak : Op → Type := fun _ => Unit
+  clearArg : Op → Bool := fun _ => false
+  barrier : Op → Bool := fun _ => false
 
 /-- The response type of an operation in a domain. -/
 abbrev Resp (ι : Interface) (D : Domain) (o : ι.Op) : Type := (ι.cod o).interp D
@@ -42,10 +46,10 @@ the response, the declared disclosure. -/
 structure Event (ι : Interface) where
   op : ι.Op
   out : Resp ι .erased op
-  leak : ι.disc op
+  leak : ι.leak op
 
 /-- An event with nothing declared. -/
-abbrev Event.silent {ι : Interface} (o : ι.Op) (h : ι.disc o = Unit := by rfl)
+abbrev Event.silent {ι : Interface} (o : ι.Op) (h : ι.leak o = Unit := by rfl)
     (out : Resp ι .erased o) : Event ι :=
   ⟨o, out, h ▸ ()⟩
 

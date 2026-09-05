@@ -29,14 +29,14 @@ kept fast on purpose (see "Evaluating programs" below).
 | Module | What it defines |
 |---|---|
 | `Weft/Shape.lean` | `Domain ⟨sh⟩` (a share of a `T`, per domain: `ideal`, `erased`, `timed`); the closed `Shape` language of responses with `interp` and `blank`; `Operands`. |
-| `Weft/Interface.lean` | `Interface ⟨Op, dom, cod, disc, pubArg, ctrl⟩`: public operations with clear arguments, share operands, a response shape and a typed disclosure; `Req`, `Resp`, `Event ⟨op, out, leak⟩`. |
+| `Weft/Interface.lean` | `Interface ⟨Op, dom, cod, leak, clearArg, barrier⟩`: public operations with clear arguments, share operands, a response shape and a typed disclosure; `Req`, `Resp`, `Event ⟨op, out, leak⟩`. |
 | `Weft/Prog.lean` | `Prog ι D`, the free monad of programs, polymorphic in the domain; `handle` inlines a program for each request. |
 | `Weft/Model.lean` | `Model ι D m`: one joint `step` per request in a monad; `run`, `dist`, `output`, `view`, `cost`; the laws `run_bind`, `dist_bind`, `dist_call`. |
 | `Weft/Timed.lean` | The cost monad: shares carry a ready time, `Sched` threads the two clocks and a communication counter, `Price ⟨delay, comm⟩`; `delayOn` and `commOn` read delay and communication off one scheduled run. |
 | `Weft/Functionality.lean` | `Functionality ⟨ops, eval, IsModel, isModel_unique⟩`, behaviour only, with its semantics `model : Model ops .ideal PMF`; `Hybrid := List Functionality`; the certificate `Has F fs`; `Prog.op`. |
 | `Weft/MPC.lean` | An `MPC` is a hybrid instantiated in the cost model: a list of functionalities each paired with a timed model of its interface; `MPC.timed` dispatches by position. |
 | `Weft/PMF.lean` | The facts about `PMF` the proofs need: the mask lemma `uniform_map_equiv` and friends. |
-| `Weft/Std/Arith.lean` | `Lin`, `Mult`, `Reveal`, `Cmp`, `Inversion`, `Barrier`, each with an evaluation model and a `PMF` model, and beside each a hand-written timed model of its interface at a price (`Lin.priced F p`); the smart constructors `const`, `add`, `sub`, `smul`, `mul`, `reveal`, `lt`, `nativeInv`, `barrier`. |
+| `Weft/Std/Arith.lean` | `Lin`, `Mult`, `Reveal`, `Cmp`, `Inversion`, `Barrier`, each with an evaluation model and a `PMF` model; the smart constructors `const`, `add`, `sub`, `smul`, `mul`, `reveal`, `lt`, `nativeInv`, `barrier`. |
 | `Weft/Std/Random.lean` | `Rand`, `RandNZ`, `PubCoin`, and the preprocessing correlations `MulTriple`, `SquarePair`, `DoubleSharing` as functions of fresh coins. |
 | `Weft/Std/Hybrids.lean` | The black box `Std F := [Lin F, Mult F, Reveal F]`, the preprocessing box `Pre F := [Lin F, Reveal F, MulTriple F]`, and the `weft` simp set that unfolds a program's semantics to "draw the coins, then a point". |
 | `Weft/Realization.lean` | `Realization F fs ⟨impl, Pre, Sim, real⟩`; `Valid`, the discharge of preconditions on the support of the caller's run; `handle_realizes` (composition), `output_transport`, `Realization.comp`, `Realization.incl` (the trusted base). |
@@ -74,11 +74,11 @@ the cost model of an MPC (`delayOn`, `commOn`).  A functionality has no
 cost; an MPC instantiates it in the scheduling monad, where shares carry
 their ready time and the state carries a communication counter.  Small
 generic programs close by `rfl`.  For larger ones the examples state a
-closed instance over `Fin 7` or `ZMod 17` and use `decide +kernel`, which
-is an order of magnitude faster than `rfl` at that size.  The generic
-timed model `Model.timed` is the specification of the hand-written ones
-and is far too slow to evaluate; every standard interface has a
-hand-written model beside it, which is what keeps the examples fast.
+closed instance over `Fin 7` or `ZMod 7` and use `decide +kernel`, which
+is an order of magnitude faster than `rfl` at that size.  One generic
+timed model, `Model.timed`, instantiates every interface from its
+evaluation model and a price; it is written without `let` bindings,
+which is what keeps kernel evaluation linear in the number of requests.
 
 ## The examples (`Examples/`)
 

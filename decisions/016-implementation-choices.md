@@ -25,13 +25,13 @@ functionality a timed model; that was wrong, and is reversed by decision
 models live beside the functionalities, in the MPC.
 
 ## Disclosure is typed per operation
-`Interface.disc : Op → Type` replaces the report's `List Pub`
+`Interface.leak : Op → Type` replaces the report's `List Pub`
 (decision 014).  `Event ⟨op, out, leak⟩` is then a dependent record;
 `Event.shift` reindexes it along a hybrid.
 
 ## Scheduling metadata lives on the interface
-`Interface.pubArg` (the operation carries a clear argument, so it waits
-for the reveal clock) and `Interface.ctrl` (the operation is a barrier)
+`Interface.clearArg` (the operation carries a clear argument, so it waits
+for the reveal clock) and `Interface.barrier` (the operation is a barrier)
 are fields of the interface with defaults `false`, trusted like the rest
 of it.  The timed model of a functionality is what actually reads them.
 

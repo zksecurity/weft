@@ -110,12 +110,12 @@ structure Interface where
   dom    : Op → List Type                             -- operand types (shares)
   cod    : Op → Shape                                 -- response shape
   disc   : Op → Type := fun _ => Unit                 -- type of the declared disclosure
-  pubArg : Op → Bool := fun _ => false                -- scheduling metadata for the timed domain (§3.5)
-  ctrl   : Op → Bool := fun _ => false
+  clearArg : Op → Bool := fun _ => false              -- scheduling metadata for the timed domain (§3.5)
+  barrier  : Op → Bool := fun _ => false
 
 structure Req (ι : Interface) (D : Domain) where (op : ι.Op) (args : Operands D (ι.dom op))
 abbrev Resp (ι : Interface) (D : Domain) (o : ι.Op) : Type := (ι.cod o).interp D
-structure Event (ι : Interface) where (op : ι.Op) (out : Resp ι .erased op) (leak : ι.disc op)
+structure Event (ι : Interface) where (op : ι.Op) (out : Resp ι .erased op) (leak : ι.leak op)
 ```
 
 An `Event` is the adversary's record of one request: the operation, the
@@ -134,9 +134,9 @@ abbrev ops (F : Type) : Interface where
   Op := Op F
   dom | .const _ => [] | .add => [F, F] | .sub => [F, F] | .smul _ => [F]
   cod _ := .share F
-  pubArg | .const _ => true | .smul _ => true | _ => false
+  clearArg | .const _ => true | .smul _ => true | _ => false
 end Lin
-abbrev Lin (F : Type) [Add F] [Mul F] [Sub F] : Functionality := .ofEval (Lin.ops F) (Lin.eval F) (Lin.timed F)
+abbrev Lin (F : Type) [Add F] [Mul F] [Sub F] : Functionality := .ofEval (Lin.ops F) (Lin.eval F)
 
 abbrev Mult      (F) : Functionality      -- mult   : [F, F] → share F ; always silent
 abbrev Reveal    (F) : Functionality      -- reveal : [F] → clear F    ; the response is public by shape
@@ -144,7 +144,7 @@ abbrev Cmp       (F) : Functionality      -- lt     : [F, F] → share F
 abbrev Rand      (F) : Functionality      -- rand   : [] → share F, uniform            (Std/Random.lean)
 abbrev PubCoin   (F) : Functionality      -- coin   : [] → clear F, uniform: public by shape
 abbrev MulTriple (F) : Functionality      -- get    : [] → share F × share F × share F, (a, b, a·b)
-abbrev Barrier       : Functionality      -- barrier : [] → unit, `ctrl := true`     (§3.5)
+abbrev Barrier       : Functionality      -- barrier : [] → unit, `barrier := true`  (§3.5)
 
 abbrev Hybrid := List Functionality
 abbrev Std (F) : Hybrid := [Lin F, Mult F, Reveal F]          -- the arithmetic black box
@@ -327,8 +327,8 @@ def MPC.hybrid   (M : MPC) : Hybrid                              -- the function
 def MPC.timed    (M : MPC) : Model M.hybrid.ops .timed Sched     -- the cost instantiation: dispatch by position
 abbrev MPC.model (M : MPC) := M.hybrid.model                     -- the semantics: never the MPC's to choose
 
-abbrev abb : MPC := [Lin.priced F, Mult.priced F ⟨1, 2⟩, Reveal.priced F ⟨1, 1⟩]
--- `Mult.priced F p := ⟨Mult F, Mult.timed F p⟩`: the interface's hand-written timed model at price `p`;
+abbrev abb : MPC := [(Lin F).priced ⟨0, 0⟩, (Mult F).priced ⟨1, 2⟩, (Reveal F).priced ⟨1, 1⟩]
+-- `F.priced p := ⟨F, Model.timed F.eval fun _ => p⟩`: the generic timed model of `F`'s interface at price `p`;
 -- `MPC.entry F T` takes any timed model of `F.ops`; `MPC.derived M f` runs a realisation (§3.4)
 ```
 
@@ -462,8 +462,8 @@ def mulThenCompare (F G : Type) [CommRing F] [Encodable F] [CommRing G] [Encodab
   let bit ← lt ab' c'                           -- comparison is offered on G
   switch F bit                                  -- back in F
 
-abbrev twoField : MPC := [Mult.priced (ZMod 7), Cmp.priced (ZMod 16) ⟨2, 6⟩,
-                          Switch.priced (ZMod 7) (ZMod 16) ⟨3, 8⟩, Switch.priced (ZMod 16) (ZMod 7) ⟨2, 4⟩, …]
+abbrev twoField : MPC := [(Mult (ZMod 7)).priced ⟨1, 2⟩, (Cmp (ZMod 16)).priced ⟨2, 6⟩,
+                          (Switch (ZMod 7) (ZMod 16)).priced ⟨3, 8⟩, (Switch (ZMod 16) (ZMod 7)).priced ⟨2, 4⟩, …]
 -- instantiates at F := ZMod 7, G := ZMod 16; output, cost and delay by evaluation
 ```
 
@@ -697,9 +697,9 @@ about `BadMulTriple F`.
 
 ```lean
 structure Model (ι : Interface) (D : Domain) (m : Type → Type) where
-  step : (r : Req ι D) → m (Resp ι D r.op × ι.disc r.op)     -- the response *and* the disclosure, jointly
+  step : (r : Req ι D) → m (Resp ι D r.op × ι.leak r.op)     -- the response *and* the disclosure, jointly
 
-def Model.det     (program : (r : Req ι D) → Resp ι D r.op) (leak : (r : Req ι D) → ι.disc r.op) : Model ι D m
+def Model.det     (program : (r : Req ι D) → Resp ι D r.op) (leak : (r : Req ι D) → ι.leak r.op) : Model ι D m
 def Model.silent  (program : (r : Req ι D) → Resp ι D r.op) : Model ι D m      -- every disclosure type `Unit`
 def Model.lift    (m) (M : Model ι D Id) : Model ι D m                          -- an evaluation model, in any monad
 def Model.program (M : Model ι D m) (r : Req ι D) : m (Resp ι D r.op)          -- the response marginal
@@ -947,7 +947,7 @@ that needs the caller to be domain-generic, which Lean cannot know of a
 program at the timed domain; it is not attempted (§8). What is kept:
 `Barrier` and the control clock (the reveal-then-branch program
 undercounts, 1 round instead of 3, without it), and the interface's
-`pubArg`/`ctrl` flags as trusted scheduling metadata. Known gap: a
+`clearArg`/`barrier` flags as trusted scheduling metadata. Known gap: a
 revealed branch that selects an existing share with `pure` escapes the
 control time.
 
@@ -976,13 +976,11 @@ structure Clock where (clock revealed comm : Nat := 0)         -- control clock,
 abbrev Sched := StateT Clock Id                               -- the scheduling monad
 
 /-- One generic timed model for every interface, from the evaluation model and a price per operation:
-ready at `max (operand times, clock) + delay`; a `pubArg` operation also waits for the reveal clock;
-a clear response raises the reveal clock; a `ctrl` operation raises the control clock; `comm` is paid.
-The specification of the hand-written ones; far too slow to evaluate. -/
+ready at `max (operand times, clock) + delay`; a `clearArg` operation also waits for the reveal clock;
+a clear response raises the reveal clock; a `barrier` operation raises the control clock; `comm` is paid.
+Written without `let`, so that kernel evaluation is linear in the number of requests. -/
 def Model.timed (E : Model ι .ideal Id) (p : ι.Op → Price) : Model ι .timed Sched
-def Mult.timed (F) (p : Price) : Model (Mult.ops F) .timed Sched   -- hand-written, beside the functionality
-  -- ⟨.mult, (a, b, ())⟩ ↦ ⟨a.val * b.val, max a.time (max b.time s.clock) + p.delay⟩, `s.pay p.comm`
-def Reveal.timed (F) (p) …                                     -- clear at `t`; `revealed := max s.revealed t`
+abbrev Functionality.priced (F : Functionality) (p : Price) : MPC.Entry := ⟨F, Model.timed F.eval fun _ => p⟩
 
 def delayOn    (M : Model ι .timed Sched) (c : Prog ι .timed (Timed T)) : Nat := (Sched.output M c).time
 def delayClear (M : Model ι .timed Sched) (c : Prog ι .timed α) : Nat := (Sched.run M c).2.revealed
@@ -1004,12 +1002,12 @@ Clear values stay plain, so generic programs branch on them as usual; what
 the dependency graph cannot see about them, two clocks in the scheduling
 state cover. The *reveal clock* is the latest time at which anything
 became clear, and any operation with a clear argument (`const`, `smul`;
-`pubArg := true`) inherits it, since clear computation is opaque: a value
+`clearArg := true`) inherits it, since clear computation is opaque: a value
 revealed at round 2, multiplied in the clear and inserted back with
 `const`, carries round 2 into whatever uses it (`revealThenUse`, 3 rounds
 by `rfl`). The *control clock* handles a branch on a revealed value whose
 arms do not data-depend on it: the program says `barrier` (the `Barrier`
-functionality, `ctrl := true`, semantically a no-op), which raises the
+functionality, `barrier := true`, semantically a no-op), which raises the
 control clock to the reveal clock, so everything issued afterwards is
 scheduled after the values it branched on (`binarySearch`: 3 levels × 4
 rounds, 12 by kernel `decide`; 4 without the barrier). Reveal itself does
@@ -1623,8 +1621,8 @@ def a2b (F : Type) [CommRing F] [Encodable F] (m : Nat) (coin : Nat := 0)
   let zero ← const (0 : GF2)
   addPublic m (bitsOf m (Encodable.encode c)) rbits zero
 
-abbrev mixed : MPC := [Lin.priced (ZMod 17), Mult.priced (ZMod 17), Reveal.priced (ZMod 17),
-                       Lin.priced GF2, Mult.priced GF2 ⟨1, 1⟩, EdaBit.priced (ZMod 17) 4 3]
+abbrev mixed : MPC := [(Lin (ZMod 17)).priced ⟨0, 0⟩, (Mult (ZMod 17)).priced ⟨1, 2⟩, (Reveal (ZMod 17)).priced ⟨1, 1⟩,
+                       (Lin GF2).priced ⟨0, 0⟩, (Mult GF2).priced ⟨1, 1⟩, (EdaBit (ZMod 17) 4 3).priced ⟨0, 0⟩]
 ```
 
 Checked by evaluation (the evaluation model with the mask fixed to `3`):
@@ -1840,5 +1838,5 @@ explicitly protocol-agnostic.
   policy for list hybrids and price lists; the response shapes still to
   be added (`Option`, sums, clear-indexed dependent pairs); how the
   `program` check binds to a certificate obtained through `comp`; the
-  timing contract (trusted `pubArg`/`ctrl`, random public control flow,
+  timing contract (trusted `clearArg`/`barrier`, random public control flow,
   the `pure`-selection gap).

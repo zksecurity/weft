@@ -1,5 +1,7 @@
 import Weft
 import Mathlib.Algebra.Field.Basic
+import Mathlib.Data.ZMod.Basic
+import Mathlib.Algebra.Field.ZMod
 import Mathlib.Tactic.FieldSimp
 
 /-!
@@ -51,17 +53,24 @@ variable (F : Type) [Field F] [Fintype F] [DecidableEq F]
 /-- The hybrid with a nonzero random share. -/
 abbrev InvHyb : Hybrid := [Lin F, Mult F, Reveal F, RandNZ F]
 /-- ...priced: multiplication and reveal one round each, random shares free (PRSS). -/
-abbrev invMPC : MPC := [Lin.priced F, Mult.priced F, Reveal.priced F, RandNZ.priced F ⟨0, 0⟩]
+abbrev invMPC : MPC := [(Lin F).priced ⟨0, 0⟩, (Mult F).priced ⟨1, 2⟩, (Reveal F).priced ⟨1, 1⟩, (RandNZ F).priced ⟨0, 0⟩]
 /-- ...and an MPC where a random share costs a round. -/
-abbrev invMPC' : MPC := [Lin.priced F, Mult.priced F, Reveal.priced F, RandNZ.priced F ⟨1, 0⟩]
+abbrev invMPC' : MPC := [(Lin F).priced ⟨0, 0⟩, (Mult F).priced ⟨1, 2⟩, (Reveal F).priced ⟨1, 1⟩, (RandNZ F).priced ⟨1, 0⟩]
 
+-- Closed instances over `𝔽₇`, evaluated by the kernel.
+instance : Fact (Nat.Prime 7) := ⟨by decide⟩
 -- **Communication**: one multiplication and one reveal.
-example (x : F) : commOn (invMPC F).timed (invert (fs := (invMPC F).hybrid) (D := .timed) ⟪x⟫) = 3 := rfl
-example (a b : F) : commOn (invMPC F).timed (divide (fs := (invMPC F).hybrid) (D := .timed) ⟪a⟫ ⟪b⟫) = 5 := rfl
+example : commOn (invMPC (ZMod 7)).timed (invert (F := ZMod 7) (fs := (invMPC (ZMod 7)).hybrid) (D := .timed) ⟪3⟫) = 3 := by
+  decide +kernel
+example : commOn (invMPC (ZMod 7)).timed (divide (F := ZMod 7) (fs := (invMPC (ZMod 7)).hybrid) (D := .timed) ⟪3⟫ ⟪4⟫)
+    = 5 := by decide +kernel
 -- **Rounds**: two where random shares are free, three where they cost a round; division adds one.
-example (x : F) : delayOn (invMPC F).timed (invert (fs := (invMPC F).hybrid) (D := .timed) ⟪x⟫) = 2 := rfl
-example (x : F) : delayOn (invMPC' F).timed (invert (fs := (invMPC' F).hybrid) (D := .timed) ⟪x⟫) = 3 := rfl
-example (a b : F) : delayOn (invMPC F).timed (divide (fs := (invMPC F).hybrid) (D := .timed) ⟪a⟫ ⟪b⟫) = 3 := rfl
+example : delayOn (invMPC (ZMod 7)).timed (invert (F := ZMod 7) (fs := (invMPC (ZMod 7)).hybrid) (D := .timed) ⟪3⟫) = 2 := by
+  decide +kernel
+example : delayOn (invMPC' (ZMod 7)).timed (invert (F := ZMod 7) (fs := (invMPC' (ZMod 7)).hybrid) (D := .timed) ⟪3⟫) = 3 := by
+  decide +kernel
+example : delayOn (invMPC (ZMod 7)).timed (divide (F := ZMod 7) (fs := (invMPC (ZMod 7)).hybrid) (D := .timed) ⟪3⟫ ⟪4⟫)
+    = 3 := by decide +kernel
 
 /-- The view of one inversion, as a function of the opened value. -/
 def invView (m : F) : List (Event (InvHyb F).ops) :=

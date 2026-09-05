@@ -22,7 +22,7 @@ abbrev reveal : (Std F).ops.Op := ⟨2, .reveal⟩
 /-- The black box as an MPC: linear operations free, multiplication one
 round and two units, reveal one round and one unit, by default. -/
 abbrev mpc (pMult : Price := ⟨1, 2⟩) (pReveal : Price := ⟨1, 1⟩) : MPC :=
-  [Lin.priced F, Mult.priced F pMult, Reveal.priced F pReveal]
+  [(Lin F).priced ⟨0, 0⟩, (Mult F).priced pMult, (Reveal F).priced pReveal]
 /-- The cost instantiation of the black box, at those prices. -/
 def timed (pMult : Price := ⟨1, 2⟩) (pReveal : Price := ⟨1, 1⟩) : Model (Std F).ops .timed Sched :=
   (mpc F pMult pReveal).timed
@@ -39,7 +39,7 @@ abbrev reveal : (Pre F).ops.Op := ⟨1, .reveal⟩
 abbrev triple : (Pre F).ops.Op := ⟨2, .get⟩
 /-- The preprocessing model as an MPC: triples free when precomputed. -/
 abbrev mpc (pReveal : Price := ⟨1, 1⟩) (pTriple : Price := ⟨0, 0⟩) : MPC :=
-  [Lin.priced F, Reveal.priced F pReveal, MulTriple.priced F pTriple]
+  [(Lin F).priced ⟨0, 0⟩, (Reveal F).priced pReveal, (MulTriple F).priced pTriple]
 /-- The cost instantiation of the preprocessing model, at those prices. -/
 def timed (pReveal : Price := ⟨1, 1⟩) (pTriple : Price := ⟨0, 0⟩) : Model (Pre F).ops .timed Sched :=
   (mpc F pReveal pTriple).timed

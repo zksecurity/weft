@@ -24,7 +24,7 @@ nothing about a run is public unless it is in that record.
   shape, whatever its model says.
 * A functionality's model is one **joint step**,
   `step : Req → m (Resp × disc op)`, whose second component is the
-  declared disclosure, typed per operation (`Interface.disc`).  It may
+  declared disclosure, typed per operation (`Interface.leak`).  It may
   depend on the operands ("returns `[a·b]`, discloses `a − b`") and may
   be random and not a function of the response (the public coin of a
   random combination, `Examples/RandomCombination.lean`).

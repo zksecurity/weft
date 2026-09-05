@@ -23,14 +23,15 @@ zero whose source the interpreter cannot see.
 
 A timed model is a model of an *interface*, chosen by the cost model that
 instantiates the hybrid (`Weft.MPC`), never a property of a
-functionality.  The standard interfaces have hand-written ones
-(`Lin.timed`, `Mult.timed`, ...), at a price per operation; the generic
-`Model.timed` builds one from any evaluation model and the interface's
-scheduling metadata (`Interface.pubArg`, `Interface.ctrl`), but it is far
-too slow to evaluate and serves as the specification of what a
-hand-written one computes.  The exact instantiation of an abstract
-operation under a realisation is to run the implementation
-(`Realization.timed`, `Weft.Cost`).
+functionality.  One generic timed model serves every interface
+(`Model.timed`): from an evaluation model and a price per operation it
+reads the operand times, the response shape and the interface's
+scheduling metadata (`Interface.clearArg`, `Interface.barrier`); a
+functionality at a price is then an MPC entry (`Functionality.priced`).
+Any other model of the interface may be used instead, a per-input
+profile for instance.  The exact instantiation of an abstract operation
+under a realisation is to run the implementation (`Realization.timed`,
+`Weft.Cost`).
 -/
 namespace Weft
 
@@ -118,27 +119,32 @@ def Clock.pay (c : Nat) (s : Clock) : Clock :=
 /-- Advance the clocks after a request: the control clock if the operation
 is a barrier, the reveal clock if its response has a clear component.  The
 flags are matched at the head, for the reason given at `Clock.pay`. -/
-def Clock.after (ctrl clear : Bool) (t : Nat) (s : Clock) : Clock :=
-  match ctrl, clear with
+def Clock.after (barrier clear : Bool) (t : Nat) (s : Clock) : Clock :=
+  match barrier, clear with
   | false, false => s
   | true, false => { s with clock := max s.clock s.revealed }
   | false, true => { s with revealed := max s.revealed t }
   | true, true => { s with clock := max s.clock s.revealed, revealed := max s.revealed t }
 
+/-- When a request's response is ready, before its latency: the latest of
+the operand times and the control clock, and the reveal clock too for an
+operation with a clear argument. -/
+def Req.base {ι : Interface} (r : Req ι .timed) (s : Clock) : Nat :=
+  if ι.clearArg r.op then max (r.args.times.foldr max s.clock) s.revealed else r.args.times.foldr max s.clock
+
 /-- **The generic timed model.**  From an evaluation model and a price per
 operation: the response is ready `delay` after the operands and the
 control clock (and the reveal clock, for an operation with a clear
 argument); a clear response raises the reveal clock; a barrier raises the
-control clock; the communication is paid.  This is the specification of
-every hand-written timed model; it is too slow to evaluate. -/
+control clock; the communication is paid.  Written without `let`: a bound
+term is substituted at each use under call-by-name evaluation, and a
+response computed twice per request is exponential in the run. -/
 def Model.timed {ι : Interface} (E : Model ι .ideal Id) (p : ι.Op → Price) : Model ι .timed Sched where
   step r := fun s =>
-    let base := r.args.times.foldr max s.clock
-    let base := if ι.pubArg r.op then max base s.revealed else base
-    let t := base + (p r.op).delay
-    let q := (E.step ⟨r.op, r.args.untime⟩).run
-    Shape.withTimed t (ι.cod r.op) q.1 fun y =>
-      ((y, q.2), (Clock.after (ι.ctrl r.op) (ι.cod r.op).hasClear t s).pay (p r.op).comm)
+    match (E.step ⟨r.op, r.args.untime⟩).run with
+    | (y, d) =>
+      Shape.withTimed (r.base s + (p r.op).delay) (ι.cod r.op) y fun y' =>
+        ((y', d), (Clock.after (ι.barrier r.op) (ι.cod r.op).hasClear (r.base s + (p r.op).delay) s).pay (p r.op).comm)
 
 section Delay
 variable {ι : Interface} {α : Type}

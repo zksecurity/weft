@@ -1,6 +1,8 @@
 import Weft
 import Examples.Basic
 import Examples.Privacy
+import Mathlib.Data.ZMod.Basic
+import Mathlib.Algebra.Field.ZMod
 
 /-!
 # From the AES-hybrid to a plain program
@@ -33,16 +35,10 @@ abbrev ops (F : Type) : Interface where
   dom _ := [F, F]
   cod _ := .share F
 def eval (F : Type) (aes : F → F → F) : Model (ops F) .ideal Id := .silent fun ⟨.enc, (k, m, ())⟩ => aes k m
-/-- The timed model: one operation, ready when both operands are, plus the latency of `enc`. -/
-def timed (F : Type) (aes : F → F → F) (p : Price) : Model (ops F) .timed Sched :=
-  ⟨fun r s => match r with
-    | ⟨.enc, (k, m, ())⟩ => ((⟨aes k.val m.val, max k.time (max m.time s.clock) + p.delay⟩, ()), s.pay p.comm)⟩
 end AesF
 
 /-- The AES functionality for a block function `aes`: computes `aes k m`, leaks nothing. -/
 abbrev AES (F : Type) (aes : F → F → F) : Functionality := .ofEval (AesF.ops F) (AesF.eval F aes)
-/-- AES in an MPC that offers it natively, at a price. -/
-abbrev AES.priced (F : Type) (aes : F → F → F) (p : Price) : MPC.Entry := ⟨AES F aes, AesF.timed F aes p⟩
 
 section
 variable {F : Type} [Add F] [Mul F] [Sub F] {fs : Hybrid} {D : Domain}
@@ -124,29 +120,33 @@ example (k iv m₁ m₂ : F) :
 -- Delay, in the timed domain: in the hybrid `enc` is one operation of latency 1 (CBC of two
 -- blocks is 2); after instantiation `enc` costs what the program costs, two dependent
 -- multiplications (so 4).
-abbrev aesMPC : MPC := [AES.priced F toyAes ⟨1, 10⟩, Lin.priced F, Mult.priced F, Reveal.priced F]
+abbrev aesMPC : MPC := [(AES F toyAes).priced ⟨1, 10⟩, (Lin F).priced ⟨0, 0⟩, (Mult F).priced ⟨1, 2⟩, (Reveal F).priced ⟨1, 1⟩]
 abbrev stdMPC : MPC := Std.mpc F
-example (k iv m₁ m₂ : F) :
-    (Sched.output (aesMPC F).timed (cbc2 (fs := (aesMPC F).hybrid) (D := .timed) toyAes ⟪k⟫ ⟪iv⟫ ⟪m₁⟫ ⟪m₂⟫)).2.time
-      = 2 := rfl
-example (k iv m₁ m₂ : F) :
-    (Sched.output (stdMPC F).timed (Prog.handle ((hybridOverStd F).impl .timed)
-      (cbc2 (fs := AesHybrid F) (D := .timed) toyAes ⟪k⟫ ⟪iv⟫ ⟪m₁⟫ ⟪m₂⟫))).2.time = 4 := rfl
--- Communication: ten units per AES call in the hybrid; four per AES call once inlined.
-example (k iv m₁ m₂ : F) :
-    commOn (aesMPC F).timed (cbc2 (fs := (aesMPC F).hybrid) (D := .timed) toyAes ⟪k⟫ ⟪iv⟫ ⟪m₁⟫ ⟪m₂⟫) = 20 := rfl
-example (k iv m₁ m₂ : F) :
-    commOn (stdMPC F).timed (Prog.handle ((hybridOverStd F).impl .timed)
-      (cbc2 (fs := AesHybrid F) (D := .timed) toyAes ⟪k⟫ ⟪iv⟫ ⟪m₁⟫ ⟪m₂⟫)) = 8 := rfl
+/-- The exact instantiation of `enc`: run the program. -/
+noncomputable abbrev aesDerived : MPC :=
+  [MPC.derived (stdMPC F) (aesByProgram F), (Lin F).priced ⟨0, 0⟩, (Mult F).priced ⟨1, 2⟩, (Reveal F).priced ⟨1, 1⟩]
+end
 
--- The exact instantiation of `enc`: run the program.  The hybrid then costs what the
--- inlined program costs, by definition; the numbers above are the inlined ones.
-noncomputable abbrev aesDerived : MPC := [MPC.derived (stdMPC F) (aesByProgram F), Lin.priced F, Mult.priced F, Reveal.priced F]
-example (k iv m₁ m₂ : F) :
-    (Sched.output (aesDerived F).timed (cbc2 (fs := (aesDerived F).hybrid) (D := .timed) toyAes ⟪k⟫ ⟪iv⟫ ⟪m₁⟫ ⟪m₂⟫)).2.time
-      = 4 := rfl
-example (k iv m₁ m₂ : F) :
-    commOn (aesDerived F).timed (cbc2 (fs := (aesDerived F).hybrid) (D := .timed) toyAes ⟪k⟫ ⟪iv⟫ ⟪m₁⟫ ⟪m₂⟫) = 8 := rfl
+-- Closed instances over `𝔽₇`, evaluated by the kernel.
+instance : Fact (Nat.Prime 7) := ⟨by decide⟩
+/-- CBC on the instance, against an MPC. -/
+abbrev cbcAt (M : MPC) [Has (AES (ZMod 7) toyAes) M.hybrid] [Has (Lin (ZMod 7)) M.hybrid] :
+    Prog M.hybrid.ops .timed (Timed (ZMod 7) × Timed (ZMod 7)) :=
+  cbc2 (F := ZMod 7) (fs := M.hybrid) (D := .timed) toyAes ⟪3⟫ ⟪1⟫ ⟪4⟫ ⟪5⟫
+-- Rounds: 2 with `enc` priced at one round; 4 with `enc` run as its program, or inlined.
+example : (Sched.output (aesMPC (ZMod 7)).timed (cbcAt (aesMPC (ZMod 7)))).2.time = 2 := by decide +kernel
+example : (Sched.output (aesDerived (ZMod 7)).timed (cbcAt (aesDerived (ZMod 7)))).2.time = 4 := by decide +kernel
+example : (Sched.output (stdMPC (ZMod 7)).timed (Prog.handle ((hybridOverStd (ZMod 7)).impl .timed)
+    (cbc2 (F := ZMod 7) (fs := AesHybrid (ZMod 7)) (D := .timed) toyAes ⟪3⟫ ⟪1⟫ ⟪4⟫ ⟪5⟫))).2.time = 4 := by
+  decide +kernel
+-- Communication: ten units per AES call at that price; four per AES call derived or inlined.
+example : commOn (aesMPC (ZMod 7)).timed (cbcAt (aesMPC (ZMod 7))) = 20 := by decide +kernel
+example : commOn (aesDerived (ZMod 7)).timed (cbcAt (aesDerived (ZMod 7))) = 8 := by decide +kernel
+example : commOn (stdMPC (ZMod 7)).timed (Prog.handle ((hybridOverStd (ZMod 7)).impl .timed)
+    (cbc2 (F := ZMod 7) (fs := AesHybrid (ZMod 7)) (D := .timed) toyAes ⟪3⟫ ⟪1⟫ ⟪4⟫ ⟪5⟫)) = 8 := by decide +kernel
+
+section
+variable (F : Type) [Field F] [Inhabited F]
 -- ...and that is a theorem, for every caller, not an observation.
 example (k iv m₁ m₂ : F) :
     commOn ((hybridOverStd F).timed (Std.timed F)) (cbc2 (fs := AesHybrid F) (D := .timed) toyAes ⟪k⟫ ⟪iv⟫ ⟪m₁⟫ ⟪m₂⟫)

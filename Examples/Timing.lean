@@ -72,12 +72,8 @@ abbrev ops (F : Type) : Interface where
   cod _ := .share F
 def eval (F : Type) [Add F] [Mul F] : Model (ops F) .ideal Id :=
   .silent fun ⟨.mulAdd, (a, b, c, ())⟩ => a * b + c
-/-- The *atomic* instantiation: one latency, wait for all inputs. -/
-def atomic (F : Type) [Add F] [Mul F] (p : Price) : Model (ops F) .timed Sched :=
-  ⟨fun r s => match r with
-    | ⟨.mulAdd, (a, b, c, ())⟩ =>
-      ((⟨a.val * b.val + c.val, max a.time (max b.time (max c.time s.clock)) + p.delay⟩, ()), s.pay p.comm)⟩
-/-- The *profiled* instantiation: `d_a = d_b = delay`, `d_c = 0`. -/
+/-- The *profiled* instantiation, a hand-written timed model of the interface:
+`d_a = d_b = delay`, `d_c = 0`.  (The atomic one is the generic model at a price.) -/
 def profiled (F : Type) [Add F] [Mul F] (p : Price) : Model (ops F) .timed Sched :=
   ⟨fun r s => match r with
     | ⟨.mulAdd, (a, b, c, ())⟩ =>
@@ -121,11 +117,12 @@ def callerInlined {fs : Hybrid} {D : Domain} [Has (Lin F) fs] [Has (Mult F) fs] 
 /-- The hybrid the caller is written in. -/
 abbrev Hyb : Hybrid := [MulAdd F, Lin F, Mult F]
 
-/-- Three cost models for the one hybrid: `mulAdd` atomic, profiled, and
-instantiated by running its implementation over the black box. -/
-abbrev atomicMPC : MPC := [MPC.entry (MulAdd F) (MulAdd.atomic F ⟨1, 2⟩), Lin.priced F, Mult.priced F]
-abbrev profiledMPC : MPC := [MPC.entry (MulAdd F) (MulAdd.profiled F ⟨1, 2⟩), Lin.priced F, Mult.priced F]
-noncomputable abbrev derivedMPC : MPC := [MPC.derived (Std.mpc F) (mulAddReal F), Lin.priced F, Mult.priced F]
+/-- Three cost models for the one hybrid: `mulAdd` atomic (a price), profiled
+(a hand-written timed model), and instantiated by running its
+implementation over the black box. -/
+abbrev atomicMPC : MPC := [(MulAdd F).priced ⟨1, 2⟩, (Lin F).priced ⟨0, 0⟩, (Mult F).priced ⟨1, 2⟩]
+abbrev profiledMPC : MPC := [MPC.entry (MulAdd F) (MulAdd.profiled F ⟨1, 2⟩), (Lin F).priced ⟨0, 0⟩, (Mult F).priced ⟨1, 2⟩]
+noncomputable abbrev derivedMPC : MPC := [MPC.derived (Std.mpc F) (mulAddReal F), (Lin F).priced ⟨0, 0⟩, (Mult F).priced ⟨1, 2⟩]
 
 -- Atomic: mulAdd waits for c (round 1), then 1 round: 2.  Inlined: p = a·b at round 1
 -- in parallel with c, then a free add: 1.  The atomic model over-approximates...
