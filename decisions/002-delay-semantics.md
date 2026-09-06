@@ -62,7 +62,7 @@ the unused carry-out). Both are what a real scheduler would report.
 
 ## Revisited (2026-09-05, decision 018)
 Both rules above are superseded.  Clear values are timed after all
-(`Domain.timed.cl := Timed`, an applicative that takes the latest input),
+(`Domain.timed.clear := Timed`, an applicative that takes the latest input),
 so a scalar computed from an opened value is a data edge and the reveal
 clock is gone; and a program branches on an opened value only through
 `Prog.look`, which is the one thing that advances the program's clock, so

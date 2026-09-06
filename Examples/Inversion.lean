@@ -33,16 +33,16 @@ variable {F : Type} [Field F] [Fintype F] [DecidableEq F] {fs : Hybrid} {D : Dom
 /-- Inversion by masking, polymorphic in the domain: the same definition is
 run at the ideal domain for the certificate and at the timed domain for its
 delay. -/
-def invert [Has (Lin F) fs] [Has (Mult F) fs] [Has (Reveal F) fs] [Has (RandNZ F) fs] (x : D.sh F) :
-    Prog fs.ops D (D.sh F) := do
+def invert [Has (Lin F) fs] [Has (Mult F) fs] [Has (Reveal F) fs] [Has (RandNZ F) fs] (x : D.share F) :
+    Prog fs.ops D (D.share F) := do
   let s ← randNZ F
   let v ← mul x s
   let m ← reveal v
   smul m⁻¹ s
 
 /-- Division `a / b = a · (1/b)`: one more round. -/
-def divide [Has (Lin F) fs] [Has (Mult F) fs] [Has (Reveal F) fs] [Has (RandNZ F) fs] (a b : D.sh F) :
-    Prog fs.ops D (D.sh F) := do
+def divide [Has (Lin F) fs] [Has (Mult F) fs] [Has (Reveal F) fs] [Has (RandNZ F) fs] (a b : D.share F) :
+    Prog fs.ops D (D.share F) := do
   let bInv ← invert b
   mul a bInv
 end Programs
@@ -149,7 +149,7 @@ program invertTotalReal : Realization (InvertTotal F) (InvHyb F) where
       rfl
 
 /-- A caller that inverts a fresh nonzero share: `randNZ`, then `invert`. -/
-def invertFresh {fs : Hybrid} {D : Domain} [Has (Invert F) fs] [Has (RandNZ F) fs] : Prog fs.ops D (D.sh F) := do
+def invertFresh {fs : Hybrid} {D : Domain} [Has (Invert F) fs] [Has (RandNZ F) fs] : Prog fs.ops D (D.share F) := do
   let r ← randNZ F
   Prog.op (F := Invert F) ⟨(), (r, ())⟩
 

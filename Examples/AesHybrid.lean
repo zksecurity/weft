@@ -47,15 +47,15 @@ variable {F : Type} [Add F] [Mul F] [Sub F] {fs : Hybrid} {D : Domain}
 def toyAes (k m : F) : F := (m + k) * (m + k) * (m + k)
 
 /-- Call the AES functionality. -/
-def enc (aes : F → F → F) [Has (AES F aes) fs] (k m : D.sh F) : Prog fs.ops D (D.sh F) :=
+def enc (aes : F → F → F) [Has (AES F aes) fs] (k m : D.share F) : Prog fs.ops D (D.share F) :=
   Prog.op (F := AES F aes) ⟨.enc, (k, m, ())⟩
 
 /-! ### Step 1: the protocol, in the AES-hybrid -/
 
 /-- CBC encryption of two blocks, written against AES *and* the black box.
 It knows nothing about how AES is realised. -/
-def cbc2 (aes : F → F → F) [Has (AES F aes) fs] [Has (Lin F) fs] (k iv m₁ m₂ : D.sh F) :
-    Prog fs.ops D (D.sh F × D.sh F) := do
+def cbc2 (aes : F → F → F) [Has (AES F aes) fs] [Has (Lin F) fs] (k iv m₁ m₂ : D.share F) :
+    Prog fs.ops D (D.share F × D.share F) := do
   let x₁ ← add iv m₁
   let c₁ ← enc aes k x₁
   let x₂ ← add c₁ m₂
@@ -66,7 +66,7 @@ def cbc2 (aes : F → F → F) [Has (AES F aes) fs] [Has (Lin F) fs] (k iv m₁ 
 
 /-- The toy cipher with the arithmetic black box only (polymorphic in the
 domain, so the same definition is timed below). -/
-def toyAesProg [Has (Lin F) fs] [Has (Mult F) fs] (k m : D.sh F) : Prog fs.ops D (D.sh F) := do
+def toyAesProg [Has (Lin F) fs] [Has (Mult F) fs] (k m : D.share F) : Prog fs.ops D (D.share F) := do
   let t ← add m k
   let t2 ← mul t t
   mul t2 t

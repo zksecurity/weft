@@ -24,11 +24,11 @@ is.  Programs are polymorphic in it.  Clear values form an applicative
 functor, so that a program computes on them (`e * d`) without seeing
 inside; the only way to look at one is `Prog.look`. -/
 structure Domain where
-  sh : Type → Type
-  cl : Type → Type
-  app : Applicative cl
+  share : Type → Type
+  clear : Type → Type
+  apply : Applicative clear
 
-instance (D : Domain) : Applicative D.cl := D.app
+instance (D : Domain) : Applicative D.clear := D.apply
 
 /-- Plain values, as an applicative. -/
 abbrev Domain.plain : Applicative (fun T : Type => T) where
@@ -40,13 +40,13 @@ abbrev Domain.plain : Applicative (fun T : Type => T) where
 Semantics and privacy live here. -/
 abbrev Domain.ideal : Domain := ⟨fun T => T, fun T => T, Domain.plain⟩
 
-/-- `Domain.ideal.cl` unfolds to `fun T => T`, which the generic instance
+/-- `Domain.ideal.clear` unfolds to `fun T => T`, which the generic instance
 does not match; name the instance at that type. -/
-instance : Applicative Domain.ideal.cl := Domain.plain
+instance : Applicative Domain.ideal.clear := Domain.plain
 
 /-- The erasure of a domain: shares become `()`, clear values stay what
 they are.  What the adversary sees of a request in that domain. -/
-abbrev Domain.erase (D : Domain) : Domain := ⟨fun _ => Unit, D.cl, D.app⟩
+abbrev Domain.erase (D : Domain) : Domain := ⟨fun _ => Unit, D.clear, D.apply⟩
 
 /-- The erased ideal domain: shares are `()`, clear values are plain. -/
 abbrev Domain.erased : Domain := Domain.ideal.erase
@@ -54,21 +54,21 @@ abbrev Domain.erased : Domain := Domain.ideal.erase
 namespace Domain
 variable {D : Domain} {T A B : Type}
 
-@[simp] theorem ideal_map (f : A → B) (x : Domain.ideal.cl A) : (f <$> x : Domain.ideal.cl B) = f x := rfl
-@[simp] theorem ideal_pure (a : A) : (pure a : Domain.ideal.cl A) = a := rfl
-@[simp] theorem ideal_seq (f : Domain.ideal.cl (A → B)) (x : Unit → Domain.ideal.cl A) :
-    (Seq.seq f x : Domain.ideal.cl B) = f (x ()) := rfl
+@[simp] theorem ideal_map (f : A → B) (x : Domain.ideal.clear A) : (f <$> x : Domain.ideal.clear B) = f x := rfl
+@[simp] theorem ideal_pure (a : A) : (pure a : Domain.ideal.clear A) = a := rfl
+@[simp] theorem ideal_seq (f : Domain.ideal.clear (A → B)) (x : Unit → Domain.ideal.clear A) :
+    (Seq.seq f x : Domain.ideal.clear B) = f (x ()) := rfl
 
 /-! Arithmetic on clear values, in any domain: pointwise through the applicative. -/
-instance [Add T] : Add (D.cl T) := ⟨fun a b => (· + ·) <$> a <*> b⟩
-instance [Sub T] : Sub (D.cl T) := ⟨fun a b => (· - ·) <$> a <*> b⟩
-instance [Mul T] : Mul (D.cl T) := ⟨fun a b => (· * ·) <$> a <*> b⟩
-instance [Div T] : Div (D.cl T) := ⟨fun a b => (· / ·) <$> a <*> b⟩
-instance [Neg T] : Neg (D.cl T) := ⟨fun a => Neg.neg <$> a⟩
-instance [Inv T] : Inv (D.cl T) := ⟨fun a => Inv.inv <$> a⟩
-instance {n : Nat} [OfNat T n] : OfNat (D.cl T) n := ⟨pure (OfNat.ofNat n)⟩
+instance [Add T] : Add (D.clear T) := ⟨fun a b => (· + ·) <$> a <*> b⟩
+instance [Sub T] : Sub (D.clear T) := ⟨fun a b => (· - ·) <$> a <*> b⟩
+instance [Mul T] : Mul (D.clear T) := ⟨fun a b => (· * ·) <$> a <*> b⟩
+instance [Div T] : Div (D.clear T) := ⟨fun a b => (· / ·) <$> a <*> b⟩
+instance [Neg T] : Neg (D.clear T) := ⟨fun a => Neg.neg <$> a⟩
+instance [Inv T] : Inv (D.clear T) := ⟨fun a => Inv.inv <$> a⟩
+instance {n : Nat} [OfNat T n] : OfNat (D.clear T) n := ⟨pure (OfNat.ofNat n)⟩
 /-- A program-time value is a clear value available at once. -/
-instance : Coe T (D.cl T) := ⟨pure⟩
+instance : Coe T (D.clear T) := ⟨pure⟩
 
 end Domain
 
@@ -84,12 +84,12 @@ inductive Shape where
 
 namespace Shape
 
-/-- A shape, interpreted in a domain.  Reducible, so that `D.sh F` and
+/-- A shape, interpreted in a domain.  Reducible, so that `D.share F` and
 `Resp ι D o` unify wherever they are the same type. -/
 @[reducible] def interp (D : Domain) : Shape → Type
   | unit => Unit
-  | clear T => D.cl T
-  | share T => D.sh T
+  | clear T => D.clear T
+  | share T => D.share T
   | prod a b => a.interp D × b.interp D
   | vec n a => Fin n → a.interp D
   | list a => List (a.interp D)
@@ -122,8 +122,8 @@ def Hidden : Shape → Prop
   | vec _ a => a.Hidden
   | list a => a.Hidden
 
-@[simp] theorem blank_share {D : Domain} {T : Type} (x : D.sh T) : (share T).blank x = () := rfl
-@[simp] theorem blank_clear {D : Domain} {T : Type} (x : D.cl T) : (clear T).blank x = x := rfl
+@[simp] theorem blank_share {D : Domain} {T : Type} (x : D.share T) : (share T).blank x = () := rfl
+@[simp] theorem blank_clear {D : Domain} {T : Type} (x : D.clear T) : (clear T).blank x = x := rfl
 @[simp] theorem blank_unit {D : Domain} (x : unit.interp D) : unit.blank x = () := rfl
 @[simp] theorem blank_prod {D : Domain} {a b : Shape} (p : a.interp D × b.interp D) :
     (prod a b).blank p = (a.blank p.1, b.blank p.2) := rfl

@@ -28,7 +28,7 @@ kept fast on purpose (see "Evaluating programs" below).
 
 | Module | What it defines |
 |---|---|
-| `Weft/Shape.lean` | `Domain ⟨sh, cl⟩` (a share of a `T` and a clear `T`, per domain: `ideal`, `erase`, `timed`); clear values as an applicative; the closed `Shape` language with `interp` and `blank`; `Operands`. |
+| `Weft/Shape.lean` | `Domain ⟨share, clear⟩` (a share of a `T` and a clear `T`, per domain: `ideal`, `erase`, `timed`); clear values as an applicative; the closed `Shape` language with `interp` and `blank`; `Operands`. |
 | `Weft/Interface.lean` | `Interface ⟨Op, dom, cod, leak⟩`: public operations, operand shapes (clear or share), a response shape and a typed disclosure; `Req`, `Resp`, `Event ⟨op, args, out, leak⟩`. |
 | `Weft/Prog.lean` | `Prog ι D`, the free monad of programs, polymorphic in the domain: `pure`, `call`, and `look`, the one way to branch on a clear value; `handle` inlines a program for each request. |
 | `Weft/Model.lean` | `Model ι D m`: one joint `step` per request in a monad; `run`, `dist`, `output`, `view`, `cost`; the laws `run_bind`, `dist_bind`, `dist_call`. |

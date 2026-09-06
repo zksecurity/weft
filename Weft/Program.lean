@@ -6,7 +6,7 @@ import Weft.Realization
 
 A realisation's `impl` is a program for every domain, so it can do nothing
 with a share except pass it to an operation.  Lean enforces that for a
-computable `def`: comparing two shares needs a `DecidableEq (D.sh T)`
+computable `def`: comparing two shares needs a `DecidableEq (D.share T)`
 instance that does not exist, and a classical one makes the definition
 noncomputable.  Not enforced by Lean: `noncomputable def`, `unsafe`,
 `implemented_by`, `partial`, and a parameter of the certificate that

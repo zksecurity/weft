@@ -64,11 +64,11 @@ end Model
 domain a clear value is plain and a look is `pure`; in the timed domain a
 look advances the program's clock to the value's time (`Weft.Timed`). -/
 class Look (D : Domain) (m : Type → Type) where
-  look : {T : Type} → D.cl T → m T
+  look : {T : Type} → D.clear T → m T
 
 instance {m : Type → Type} [Monad m] : Look .ideal m := ⟨fun c => pure c⟩
 
-@[simp] theorem Look.ideal_look {m : Type → Type} [Monad m] {T : Type} (c : Domain.ideal.cl T) :
+@[simp] theorem Look.ideal_look {m : Type → Type} [Monad m] {T : Type} (c : Domain.ideal.clear T) :
     (Look.look c : m T) = pure c := rfl
 
 /-- A cost model: a price for each operation, in an additive monoid.
@@ -149,7 +149,7 @@ theorem run_call (M : Model ι D m) (K : CostModel ι C) (r : Req ι D) (k : Res
       pure (res.1, Trace.seq ⟨K.op r.op, [⟨r.op, r.args.blank, (ι.cod r.op).blank p.1, p.2⟩]⟩ res.2)) := rfl
 
 omit [Look D PMF] in
-theorem run_look (M : Model ι D m) (K : CostModel ι C) {T : Type} (c : D.cl T) (k : T → Prog ι D α) :
+theorem run_look (M : Model ι D m) (K : CostModel ι C) {T : Type} (c : D.clear T) (k : T → Prog ι D α) :
     run M K (.look c k) = (do let v ← Look.look c; run M K (k v)) := rfl
 
 /-- `>>=`, `pure` and `<$>` on `PMF` are Mathlib's `PMF.bind`, `PMF.pure`, `PMF.map`. -/
@@ -171,7 +171,7 @@ theorem run_bind (M : Model ι D m) (K : CostModel ι C) (c : Prog ι D α) (k :
   | look c k' ih => simp only [Prog.bind_look, run_look, ih, bind_assoc]
 
 /-- At the ideal domain a look is invisible to the interpreter. -/
-theorem run_look_ideal (M : Model ι .ideal m) (K : CostModel ι C) {T : Type} (c : Domain.ideal.cl T)
+theorem run_look_ideal (M : Model ι .ideal m) (K : CostModel ι C) {T : Type} (c : Domain.ideal.clear T)
     (k : T → Prog ι .ideal α) : run M K (.look c k) = run M K (k c) := by
   simp [run_look]
 
@@ -188,7 +188,7 @@ theorem dist_lift (M : Model ι .ideal Id) (c : Prog ι .ideal α) :
     dist (M.lift PMF) c = pure (output M c, view M c) := by
   simp [dist, run_lift, output, view]
 
-theorem dist_look (M : Model ι .ideal PMF) {T : Type} (c : Domain.ideal.cl T) (k : T → Prog ι .ideal α) :
+theorem dist_look (M : Model ι .ideal PMF) {T : Type} (c : Domain.ideal.clear T) (k : T → Prog ι .ideal α) :
     dist M (.look c k) = dist M (k c) := by
   simp [dist, run_look_ideal]
 

@@ -9,7 +9,7 @@ import Mathlib.Data.Fintype.Pi
 /-!
 # Generic over the field: shares as a type constructor
 
-Shares are a type constructor: `D.sh F` is "a share of an `F`".  Every
+Shares are a type constructor: `D.share F` is "a share of an `F`".  Every
 functionality is instantiated at a concrete field, a hybrid lists the
 fields it offers each on, and switching between two fields is one more
 functionality.  A program is generic over the fields it touches; which
@@ -104,12 +104,12 @@ abbrev DaBit (F : Type) [NatCast F] (coin : Nat := 0) : Functionality :=
 
 section Ops
 variable {fs : Hybrid} {D : Domain}
-def switch {F : Type} (G : Type) [Encodable F] [NatCast G] [Has (Switch F G) fs] (a : D.sh F) : Prog fs.ops D (D.sh G) :=
+def switch {F : Type} (G : Type) [Encodable F] [NatCast G] [Has (Switch F G) fs] (a : D.share F) : Prog fs.ops D (D.share G) :=
   Prog.op (F := Switch F G) ⟨.switch, (a, ())⟩
 def edabit (F : Type) [NatCast F] (m : Nat) (coin : Nat := 0) [Has (EdaBit F m coin) fs] :
-    Prog fs.ops D (D.sh F × (Fin m → D.sh GF2)) :=
+    Prog fs.ops D (D.share F × (Fin m → D.share GF2)) :=
   Prog.op (F := EdaBit F m coin) ⟨.get, ()⟩
-def dabit (F : Type) [NatCast F] (coin : Nat := 0) [Has (DaBit F coin) fs] : Prog fs.ops D (D.sh F × D.sh GF2) :=
+def dabit (F : Type) [NatCast F] (coin : Nat := 0) [Has (DaBit F coin) fs] : Prog fs.ops D (D.share F × D.share GF2) :=
   Prog.op (F := DaBit F coin) ⟨.get, ()⟩
 end Ops
 
@@ -122,7 +122,7 @@ variable {fs : Hybrid} {D : Domain}
 def mulThenCompare (F G : Type) [CommRing F] [Encodable F] [CommRing G] [Encodable G]
     [LT G] [DecidableRel (α := G) (· < ·)]
     [Has (Mult F) fs] [Has (Switch F G) fs] [Has (Cmp G) fs] [Has (Switch G F) fs]
-    (a b c : D.sh F) : Prog fs.ops D (D.sh F) := do
+    (a b c : D.share F) : Prog fs.ops D (D.share F) := do
   let ab ← mul a b                              -- in F
   let ab' ← switch G ab                         -- conversions: independent, so one round
   let c' ← switch G c
@@ -158,7 +158,7 @@ variable {fs : Hybrid} {D : Domain}
 /-- Ripple-carry addition of a *public* `c` (as bits) to shared bits, over
 `𝔽₂` shares: xor is free (`Lin`), and is a round (`Mult`).  `m` rounds. -/
 def addPublic [Has (Lin GF2) fs] [Has (Mult GF2) fs] :
-    (m : Nat) → D.cl (Fin m → GF2) → (Fin m → D.sh GF2) → D.sh GF2 → Prog fs.ops D (Fin m → D.sh GF2)
+    (m : Nat) → D.clear (Fin m → GF2) → (Fin m → D.share GF2) → D.share GF2 → Prog fs.ops D (Fin m → D.share GF2)
   | 0, _, _, _ => pure fun i => i.elim0
   | m + 1, c, r, carry => do
     let t ← add (r 0) carry                   -- r₀ ⊕ carry
@@ -174,7 +174,7 @@ def addPublic [Has (Lin GF2) fs] [Has (Mult GF2) fs] :
 already shared over `𝔽₂`.  One reveal round, then `m` rounds of the adder. -/
 def a2b (F : Type) [CommRing F] [Encodable F] (m : Nat) (coin : Nat := 0)
     [Has (EdaBit F m coin) fs] [Has (Lin F) fs] [Has (Reveal F) fs] [Has (Lin GF2) fs] [Has (Mult GF2) fs]
-    (x : D.sh F) : Prog fs.ops D (Fin m → D.sh GF2) := do
+    (x : D.share F) : Prog fs.ops D (Fin m → D.share GF2) := do
   let (r, rbits) ← edabit F m coin
   let d ← sub x r
   let c ← reveal d                             -- the only revealed value: x − r
@@ -224,7 +224,7 @@ variable {fs : Hybrid} {D : Domain} (F : Type) [CommRing F]
 
 /-- Boolean → arithmetic with one daBit. -/
 def b2a (coin : Nat := 0) [Has (DaBit F coin) fs] [Has (Lin GF2) fs] [Has (Reveal GF2) fs] [Has (Lin F) fs]
-    (x : D.sh GF2) : Prog fs.ops D (D.sh F) := do
+    (x : D.share GF2) : Prog fs.ops D (D.share F) := do
   let (bF, b₂) ← dabit F coin
   let m ← add x b₂                    -- x ⊕ b, over 𝔽₂
   let c ← reveal m                    -- the one revealed value: a uniform bit
@@ -236,7 +236,7 @@ def b2a (coin : Nat := 0) [Has (DaBit F coin) fs] [Has (Lin GF2) fs] [Has (Revea
 /-- Hamming weight: bits in, arithmetic share out.  All conversions in one
 round, then a free sum. -/
 def hammingWeight (coin : Nat := 0) [Has (DaBit F coin) fs] [Has (Lin GF2) fs] [Has (Reveal GF2) fs] [Has (Lin F) fs]
-    (xs : List (D.sh GF2)) : Prog fs.ops D (D.sh F) := do
+    (xs : List (D.share GF2)) : Prog fs.ops D (D.share F) := do
   let ys ← xs.mapM (b2a F coin)
   sumAll ys
 end DaBits

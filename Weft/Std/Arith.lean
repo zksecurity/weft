@@ -119,22 +119,22 @@ abbrev Inversion (F : Type) [Inv F] : Functionality := .ofEval (Inversion.ops F)
 section Ops
 variable {F : Type} {fs : Hybrid} {D : Domain}
 
-def const [Add F] [Mul F] [Sub F] [Has (Lin F) fs] (c : D.cl F) : Prog fs.ops D (D.sh F) :=
+def const [Add F] [Mul F] [Sub F] [Has (Lin F) fs] (c : D.clear F) : Prog fs.ops D (D.share F) :=
   Prog.op (F := Lin F) ⟨.const, (c, ())⟩
-def add [Add F] [Mul F] [Sub F] [Has (Lin F) fs] (a b : D.sh F) : Prog fs.ops D (D.sh F) :=
+def add [Add F] [Mul F] [Sub F] [Has (Lin F) fs] (a b : D.share F) : Prog fs.ops D (D.share F) :=
   Prog.op (F := Lin F) ⟨.add, (a, b, ())⟩
-def sub [Add F] [Mul F] [Sub F] [Has (Lin F) fs] (a b : D.sh F) : Prog fs.ops D (D.sh F) :=
+def sub [Add F] [Mul F] [Sub F] [Has (Lin F) fs] (a b : D.share F) : Prog fs.ops D (D.share F) :=
   Prog.op (F := Lin F) ⟨.sub, (a, b, ())⟩
-def smul [Add F] [Mul F] [Sub F] [Has (Lin F) fs] (c : D.cl F) (a : D.sh F) : Prog fs.ops D (D.sh F) :=
+def smul [Add F] [Mul F] [Sub F] [Has (Lin F) fs] (c : D.clear F) (a : D.share F) : Prog fs.ops D (D.share F) :=
   Prog.op (F := Lin F) ⟨.smul, (c, a, ())⟩
-def mul [Mul F] [Has (Mult F) fs] (a b : D.sh F) : Prog fs.ops D (D.sh F) :=
+def mul [Mul F] [Has (Mult F) fs] (a b : D.share F) : Prog fs.ops D (D.share F) :=
   Prog.op (F := Mult F) ⟨.mult, (a, b, ())⟩
-def reveal [Has (Reveal F) fs] (x : D.sh F) : Prog fs.ops D (D.cl F) :=
+def reveal [Has (Reveal F) fs] (x : D.share F) : Prog fs.ops D (D.clear F) :=
   Prog.op (F := Reveal F) ⟨.reveal, (x, ())⟩
-def lt [LT F] [DecidableRel (α := F) (· < ·)] [Zero F] [One F] [Has (Cmp F) fs] (a b : D.sh F) :
-    Prog fs.ops D (D.sh F) :=
+def lt [LT F] [DecidableRel (α := F) (· < ·)] [Zero F] [One F] [Has (Cmp F) fs] (a b : D.share F) :
+    Prog fs.ops D (D.share F) :=
   Prog.op (F := Cmp F) ⟨.lt, (a, b, ())⟩
-def nativeInv [Inv F] [Has (Inversion F) fs] (x : D.sh F) : Prog fs.ops D (D.sh F) :=
+def nativeInv [Inv F] [Has (Inversion F) fs] (x : D.share F) : Prog fs.ops D (D.share F) :=
   Prog.op (F := Inversion F) ⟨.inv, (x, ())⟩
 
 end Ops

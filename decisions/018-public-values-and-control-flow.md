@@ -96,16 +96,16 @@ global clock.  Not an upper bound.
 
 ### O2. Opened values are timed; inspecting one is a program primitive
 
-A domain interprets clear values as well as shares: `Domain ⟨sh, cl⟩`,
+A domain interprets clear values as well as shares: `Domain ⟨share, clear⟩`,
 with `cl T = T` in the ideal and erased domains and `cl T = Timed T` in
-the timed one.  `reveal` returns `D.cl F`; a clear operand carries its
+the timed one.  `reveal` returns `D.clear F`; a clear operand carries its
 own time, so `smul e b` is ready at `max e.time b.time`, a plain data
 edge, and the reveal clock disappears.  Clear computation goes through
-`Applicative D.cl` (`Timed` combines by max), with `Mul (D.cl F)` and
+`Applicative D.clear` (`Timed` combines by max), with `Mul (D.clear F)` and
 friends derived so that `const (e * d)` reads as today.  The one way to
-turn a `D.cl T` into a `T` is a constructor of the program,
+turn a `D.clear T` into a `T` is a constructor of the program,
 
-    look : D.cl T → (T → Prog ι D α) → Prog ι D α
+    look : D.clear T → (T → Prog ι D α) → Prog ι D α
 
 which the ideal semantics interprets as application and the timed model
 as "advance *now* to `c.time`".  There is then a single piece of
@@ -115,7 +115,7 @@ times; `delayOn` is the max of `now` and the output's time, which also
 closes the report's `pure`-selection gap.  Nothing can be forgotten: a
 program cannot branch on an opened value without `look`, and the
 events of the timed run record timed clear operands (`Event ι D`, with
-`D.erase := ⟨fun _ => Unit, D.cl⟩`), so no extraction from `D.cl`
+`D.erase := ⟨fun _ => Unit, D.clear⟩`), so no extraction from `D.clear`
 exists outside `look`.  This is MP-SPDZ's basic block, MPyC's `await`
 and Haxl's round boundary, in the free monad.
 
@@ -205,7 +205,7 @@ constructor and one field, and can be chosen later by deleting them.
   *Viaduct*.
 
 ## Consequences
-`Domain` is `⟨sh, cl, app⟩`; `Domain.timed.cl := Timed`, whose applicative
+`Domain` is `⟨share, clear, apply⟩`; `Domain.timed.clear := Timed`, whose applicative
 takes the latest input; `Prog` has a third constructor, `look`, with a
 case in every induction (`run_bind`, `handle_realizes`, `cost_handle`,
 `Valid`, `runOut_timed`, `budget`) and a `Look D m` instance saying what
@@ -215,7 +215,7 @@ the scheduling state is `now` and the communication counter.  `delayOn`
 is the max of the output's time and `now`, which closes the report's
 `pure`-selection gap.  `Event` is indexed by the domain of the run, with
 the ideal domain as default, so a timed run records timed clear operands
-and nothing extracts a value from a `D.cl T` except `look`.  The
+and nothing extracts a value from a `D.clear T` except `look`.  The
 examples that used the barrier use `look`; the adder in the conversions
 lost a round it never needed (its carry chain starts from a program-time
 zero, which the reveal clock used to hold back).  `Prog` lives in
