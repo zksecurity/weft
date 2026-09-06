@@ -221,4 +221,25 @@ theorem run_fst (M : Model ι D m) {C' : Type} [AddMonoid C'] (K : CostModel ι 
   | look c k ih => simp [run_look, ih]
 end Laws
 
+/-! ### Evaluation of a sequential composition -/
+
+section Eval
+variable {ι : Interface} {D : Domain} {α β : Type} [Look D Id]
+
+/-- Run the first part, then the continuation on its output. -/
+theorem output_bind (M : Model ι D Id) (c : Prog ι D α) (k : α → Prog ι D β) :
+    output M (Prog.bind c k) = output M (k (output M c)) := by
+  simp only [output, run_bind]
+  rfl
+
+/-- The first part's view, then the continuation's on its output. -/
+theorem view_bind (M : Model ι D Id) (c : Prog ι D α) (k : α → Prog ι D β) :
+    view M (Prog.bind c k) = view M c ++ view M (k (output M c)) := by
+  simp only [view, output, run_bind]
+  rfl
+
+@[simp] theorem output_pure (M : Model ι D Id) (a : α) : output M (.pure a) = a := rfl
+@[simp] theorem view_pure (M : Model ι D Id) (a : α) : view M (.pure a) = [] := rfl
+end Eval
+
 end Weft

@@ -46,6 +46,13 @@ def timed : (M : MPC) → Model M.hybrid.ops .timed Sched
       | ⟨⟨⟨0, _⟩, o⟩, a⟩ => T.step ⟨o, a⟩
       | ⟨⟨⟨n + 1, h⟩, o⟩, a⟩ => (timed M).step ⟨⟨⟨n, Nat.lt_of_succ_lt_succ h⟩, o⟩, a⟩⟩
 
+@[simp] theorem timed_cons_zero (F : Functionality) (T : Model F.ops .timed Sched) (M : MPC) (o : F.ops.Op)
+    (a : Operands .timed (F.ops.dom o)) :
+    (timed (⟨F, T⟩ :: M)).step ⟨⟨Hybrid.head F M.hybrid, o⟩, a⟩ = T.step ⟨o, a⟩ := rfl
+@[simp] theorem timed_cons_succ (F : Functionality) (T : Model F.ops .timed Sched) (M : MPC) (i : Fin M.hybrid.length)
+    (o : (M.hybrid.get i).ops.Op) (a : Operands .timed ((M.hybrid.get i).ops.dom o)) :
+    (timed (⟨F, T⟩ :: M)).step ⟨⟨Hybrid.next F M.hybrid i, o⟩, a⟩ = (timed M).step ⟨⟨i, o⟩, a⟩ := rfl
+
 /-- An entry from any timed model of the functionality's interface. -/
 abbrev entry (F : Functionality) (T : Model F.ops .timed Sched) : Entry := ⟨F, T⟩
 

@@ -80,6 +80,11 @@ theorem Realizations.delayOn_timed {fs gs : Hybrid} (g : Realizations fs gs) (T 
     delayOn (g.timed T) c = delayOn T (Prog.handle (g.impl .timed) c) := by
   simp [delayOn, g.sched_timed T c]
 
+theorem Realizations.readyOn_timed {fs gs : Hybrid} (g : Realizations fs gs) (T : Model gs.ops .timed Sched)
+    (s : Shape) (c : Prog fs.ops .timed (s.interp .timed)) :
+    readyOn (g.timed T) s c = readyOn T s (Prog.handle (g.impl .timed) c) := by
+  simp [readyOn, g.sched_timed T c]
+
 theorem Realizations.commOn_timed {fs gs : Hybrid} (g : Realizations fs gs) (T : Model gs.ops .timed Sched)
     {α : Type} (c : Prog fs.ops .timed α) :
     commOn (g.timed T) c = commOn T (Prog.handle (g.impl .timed) c) := by

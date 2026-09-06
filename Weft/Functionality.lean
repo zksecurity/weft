@@ -104,6 +104,16 @@ theorem eval_step (fs : Hybrid) (i : Fin fs.length) (o : (fs.get i).ops.Op)
     (a : Operands .ideal ((fs.get i).ops.dom o)) :
     fs.eval.step ⟨⟨i, o⟩, a⟩ = (fs.get i).eval.step ⟨o, a⟩ := rfl
 
+/-- A hybrid of deterministic functionalities: its semantics is its
+evaluation model, lifted. -/
+theorem model_lift (fs : Hybrid) (h : ∀ i, (fs.get i).model = (fs.get i).eval.lift PMF) :
+    fs.model = fs.eval.lift PMF := by
+  apply Model.ext
+  intro r
+  show (fs.get r.op.1).model.step ⟨r.op.2, r.args⟩ = _
+  rw [h r.op.1]
+  rfl
+
 /-- The first position of a non-empty hybrid. -/
 abbrev head (F : Functionality) (fs : Hybrid) : Fin (F :: fs).length := ⟨0, Nat.zero_lt_succ _⟩
 /-- The next position. -/
@@ -241,6 +251,14 @@ variable {fs : Hybrid} {F : Functionality} [h : Has F fs]
 /-- The output of one request is the component's program, wherever it sits in the hybrid. -/
 theorem output_op (r : Req F.ops .ideal) :
     output fs.eval (Prog.op r) = (F.eval.step r).run.1 := by
+  obtain ⟨i, e⟩ := h
+  subst e
+  rfl
+
+/-- The view of one request: the component's event, at its position. -/
+theorem view_op (r : Req F.ops .ideal) :
+    view fs.eval (Prog.op r)
+      = [Has.event ⟨r.op, r.args.blank, (F.ops.cod r.op).blank (F.eval.step r).run.1, (F.eval.step r).run.2⟩] := by
   obtain ⟨i, e⟩ := h
   subst e
   rfl

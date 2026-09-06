@@ -115,6 +115,11 @@ def withTimed {β : Type} (t : Nat) : (s : Shape) → s.interp .ideal → (s.int
   | vec _ a, f, k => k fun i => a.retime t (f i)
   | list a, xs, k => k (xs.map (a.retime t))
 
+/-- `withTimed` is `retime`, continued. -/
+theorem withTimed_eq {β : Type} (t : Nat) (s : Shape) (x : s.interp .ideal) (k : s.interp .timed → β) :
+    withTimed t s x k = k (retime t s x) := by
+  cases s <;> rfl
+
 end Shape
 
 /-- When a timed value is ready: the latest of its components. -/
@@ -142,6 +147,12 @@ def Clock.pay (c : Nat) (s : Clock) : Clock :=
   | 0 => s
   | c => { s with comm := s.comm + c }
 
+@[simp] theorem Clock.pay_clock (c : Nat) (s : Clock) : (s.pay c).clock = s.clock := by
+  cases c <;> rfl
+
+theorem Clock.pay_comm (c : Nat) (s : Clock) : (s.pay c).comm = s.comm + c := by
+  cases c <;> rfl
+
 /-- When a request can be issued: the latest of its operands and `now`. -/
 def Req.base {ι : Interface} (r : Req ι .timed) (s : Clock) : Nat := max r.args.ready s.clock
 
@@ -154,6 +165,19 @@ def Model.timed {ι : Interface} (E : Model ι .ideal Id) (p : ι.Op → Price) 
   step r := fun s =>
     match (E.step ⟨r.op, r.args.untime⟩).run with
     | (y, d) => Shape.withTimed (r.base s + (p r.op).delay) (ι.cod r.op) y fun y' => ((y', d), s.pay (p r.op).comm)
+
+/-- The generic timed model, as one equation. -/
+theorem Model.timed_step {ι : Interface} (E : Model ι .ideal Id) (p : ι.Op → Price) (r : Req ι .timed) (s : Clock) :
+    (Model.timed E p).step r s =
+      ((Shape.retime (r.base s + (p r.op).delay) (ι.cod r.op) (E.step ⟨r.op, r.args.untime⟩).run.1,
+        (E.step ⟨r.op, r.args.untime⟩).run.2), s.pay (p r.op).comm) := by
+  simp only [Model.timed, Shape.withTimed_eq]
+  rfl
+
+/-- A priced step never moves the clock. -/
+theorem Model.timed_clock {ι : Interface} (E : Model ι .ideal Id) (p : ι.Op → Price) (r : Req ι .timed) (s : Clock) :
+    ((Model.timed E p).step r s).2.clock = s.clock := by
+  rw [Model.timed_step, Clock.pay_clock]
 
 section Delay
 variable {ι : Interface} {α : Type}
@@ -174,6 +198,14 @@ def Sched.done {T : Type} (p : Timed T × Clock) : Nat := max p.1.time p.2.clock
 and the program is done. -/
 def delayOn {T : Type} (M : Model ι .timed Sched) (c : Prog ι .timed (Timed T)) : Nat :=
   Sched.done (Sched.run M c)
+
+/-- The delay of a program with a structured response: when every
+component is available and the program is done. -/
+def readyOn (M : Model ι .timed Sched) (s : Shape) (c : Prog ι .timed (s.interp .timed)) : Nat :=
+  max (s.ready (Sched.run M c).1) (Sched.run M c).2.clock
+
+theorem readyOn_share {T : Type} (M : Model ι .timed Sched) (c : Prog ι .timed (Timed T)) :
+    readyOn M (.share T) c = delayOn M c := rfl
 
 /-- `now` at the end of a run: when the program has issued everything.  The
 delay of a program whose output is not a timed value (a plain result
