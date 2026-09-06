@@ -28,7 +28,9 @@ open Lean Elab Command Meta
 /-- Constants that are the checked package: traverse into these, stop at the rest. -/
 private def isLocalConst (n : Name) : Bool :=
   !([`Lean, `Init, `Std, `Mathlib, `Nat, `List, `Fin, `Prod, `Option, `Sum, `Sigma, `PUnit, `Unit, `Bool, `Eq,
-    `Function, `id, `ite, `dite, `Decidable, `instDecidableEqNat, `Int] : List Name).any fun p => Name.isPrefixOf p n
+    `Function, `id, `ite, `dite, `Decidable, `instDecidableEqNat, `Int,
+    `Array, `Vector, `Subarray, `ByteArray, `String, `Char, `UInt8, `UInt16, `UInt32, `UInt64, `USize, `BitVec]
+    : List Name).any fun p => Name.isPrefixOf p n
 
 /-- Why a constant is unacceptable in an implementation, if it is.  In
 `strict` mode (the certificate's own term) noncomputable constants and
