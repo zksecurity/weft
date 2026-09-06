@@ -6,8 +6,8 @@ import Weft.MPC
 
 Each functionality is an interface (an inductive of operations, an operand
 shape and a response shape for each) and a model.  Deterministic ones are
-given at `Id` and lifted.  The name is the promise: `Mult.eval` says that `mult` multiplies, and every hybrid that
-lists `Mult F` means that.
+given at `Id` and lifted.  The name is the promise: `Mult.eval` says that
+`mult` multiplies, and every hybrid that lists `Mult F` means that.
 
 A functionality has no cost: an MPC prices it (`(Mult F).priced ⟨1, 2⟩`,
 `Weft.MPC`).
