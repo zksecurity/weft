@@ -22,15 +22,15 @@ namespace RC
 inductive Op where | rc
 abbrev ops (F : Type) : Interface where
   Op := Op
-  dom _ := [.share F, .share F]
+  dom _ := .share F ⊗ .share F
   cod _ := .share F
   leak _ := F
 /-- The joint step: draw `r`, return `x₀ + r·x₁`, disclose `r`. -/
 noncomputable def model (F : Type) [Add F] [Mul F] [Fintype F] [Inhabited F] : Model (ops F) .ideal PMF :=
-  ⟨fun r => (uniform F).map fun c => (r.args.1 + c * r.args.2.1, c)⟩
+  ⟨fun r => (uniform F).map fun c => (r.args.1 + c * r.args.2, c)⟩
 /-- With the coin fixed to the dummy. -/
 def eval (F : Type) [Add F] [Mul F] [Inhabited F] : Model (ops F) .ideal Id :=
-  ⟨fun r => pure (r.args.1 + default * r.args.2.1, default)⟩
+  ⟨fun r => pure (r.args.1 + default * r.args.2, default)⟩
 end RC
 
 /-- The random-combination functionality of two shares. -/
@@ -57,10 +57,10 @@ abbrev CoinHyb : Hybrid := [Lin F, PubCoin F]
 disclosed coin, and the simulator replays it: the coin record, the scalar
 multiplication by it, the addition. -/
 program randComb2Real : Realization (RandComb F) (CoinHyb F) where
-  impl D r := randComb2 F r.args.1 r.args.2.1
-  Sim e := pure [⟨⟨1, .coin⟩, (), e.leak, ()⟩, ⟨⟨0, .smul⟩, (e.leak, (), ()), (), ()⟩, ⟨⟨0, .add⟩, ((), (), ()), (), ()⟩]
+  impl D r := randComb2 F r.args.1 r.args.2
+  Sim e := pure [⟨⟨1, .coin⟩, (), e.leak, ()⟩, ⟨⟨0, .smul⟩, (e.leak, ()), (), ()⟩, ⟨⟨0, .add⟩, ((), ()), (), ()⟩]
   real r _ := by
-    obtain ⟨⟨⟩, x₀, x₁, ⟨⟩⟩ := r
+    obtain ⟨⟨⟩, x₀, x₁⟩ := r
     simp only [randComb2, coin, smul, add, weft, RC.model]
     rfl
 end

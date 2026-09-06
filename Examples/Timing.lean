@@ -96,15 +96,15 @@ namespace MulAdd
 inductive Op where | mulAdd
 abbrev ops (F : Type) : Interface where
   Op := Op
-  dom _ := [.share F, .share F, .share F]
+  dom _ := .share F ⊗ .share F ⊗ .share F
   cod _ := .share F
 def eval (F : Type) [Add F] [Mul F] : Model (ops F) .ideal Id :=
-  .silent fun ⟨.mulAdd, (a, b, c, ())⟩ => a * b + c
+  .silent fun ⟨.mulAdd, (a, b, c)⟩ => a * b + c
 /-- The *profiled* instantiation, a hand-written timed model of the interface:
 `d_a = d_b = delay`, `d_c = 0`.  (The atomic one is the generic model at a price.) -/
 def profiled (F : Type) [Add F] [Mul F] (p : Price) : Model (ops F) .timed Sched :=
   ⟨fun r s => match r with
-    | ⟨.mulAdd, (a, b, c, ())⟩ =>
+    | ⟨.mulAdd, (a, b, c)⟩ =>
       ((⟨a.val * b.val + c.val, max (a.time + p.delay) (max (b.time + p.delay) (max c.time s.clock))⟩, ()),
         s.pay p.comm)⟩
 end MulAdd
@@ -124,10 +124,10 @@ def mulAddImpl {fs : Hybrid} {D : Domain} [Has (Lin F) fs] [Has (Mult F) fs] (a 
 
 /-- ...and the certificate that it realises `MulAdd`. -/
 program mulAddReal : Realization (MulAdd F) (Std F) where
-  impl D r := mulAddImpl F r.args.1 r.args.2.1 r.args.2.2.1
-  Sim _ := pure [⟨Std.mult F, ((), (), ()), (), ()⟩, ⟨Std.lin F .add, ((), (), ()), (), ()⟩]
+  impl D r := mulAddImpl F r.args.1 r.args.2.1 r.args.2.2
+  Sim _ := pure [⟨Std.mult F, ((), ()), (), ()⟩, ⟨Std.lin F .add, ((), ()), (), ()⟩]
   real r _ := by
-    obtain ⟨⟨⟩, a, b, c, ⟨⟩⟩ := r
+    obtain ⟨⟨⟩, a, b, c⟩ := r
     simp only [mulAddImpl, mul, add, weft, Functionality.ofEval_model, MulAdd.eval]
     rfl
 
@@ -135,7 +135,7 @@ program mulAddReal : Realization (MulAdd F) (Std F) where
 def caller {fs : Hybrid} {D : Domain} [Has (MulAdd F) fs] [Has (Mult F) fs] (a b x y : D.share F) :
     Prog fs.ops D (D.share F) := do
   let c ← mul x y
-  Prog.op (F := MulAdd F) ⟨.mulAdd, (a, b, c, ())⟩
+  Prog.op (F := MulAdd F) ⟨.mulAdd, (a, b, c)⟩
 /-- The same caller with the operation inlined. -/
 def callerInlined {fs : Hybrid} {D : Domain} [Has (Lin F) fs] [Has (Mult F) fs] (a b x y : D.share F) :
     Prog fs.ops D (D.share F) := do

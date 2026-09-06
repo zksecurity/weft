@@ -107,7 +107,7 @@ def run {ι : Interface} {D : Domain} {C α : Type} [AddMonoid C] {m : Type → 
   | .call r k => do
     let p ← M.step r
     let res ← run M K (k p.1)
-    pure (res.1, Trace.seq ⟨K.op r.op, [⟨r.op, r.args.blank, (ι.cod r.op).blank p.1, p.2⟩]⟩ res.2)
+    pure (res.1, Trace.seq ⟨K.op r.op, [⟨r.op, (ι.dom r.op).blank r.args, (ι.cod r.op).blank p.1, p.2⟩]⟩ res.2)
   | .look c k => do
     let v ← Look.look c
     run M K (k v)
@@ -146,7 +146,7 @@ theorem run_call (M : Model ι D m) (K : CostModel ι C) (r : Req ι D) (k : Res
     run M K (.call r k) = (do
       let p ← M.step r
       let res ← run M K (k p.1)
-      pure (res.1, Trace.seq ⟨K.op r.op, [⟨r.op, r.args.blank, (ι.cod r.op).blank p.1, p.2⟩]⟩ res.2)) := rfl
+      pure (res.1, Trace.seq ⟨K.op r.op, [⟨r.op, (ι.dom r.op).blank r.args, (ι.cod r.op).blank p.1, p.2⟩]⟩ res.2)) := rfl
 
 omit [Look D PMF] in
 theorem run_look (M : Model ι D m) (K : CostModel ι C) {T : Type} (c : D.clear T) (k : T → Prog ι D α) :
@@ -201,7 +201,7 @@ theorem dist_call (M : Model ι D PMF) (r : Req ι D) (k : Resp ι D r.op → Pr
     dist M (.call r k) = (do
       let p ← M.step r
       let res ← dist M (k p.1)
-      pure (res.1, ⟨r.op, r.args.blank, (ι.cod r.op).blank p.1, p.2⟩ :: res.2)) := by
+      pure (res.1, ⟨r.op, (ι.dom r.op).blank r.args, (ι.cod r.op).blank p.1, p.2⟩ :: res.2)) := by
   simp [dist, run_call, Trace.seq]
 
 theorem dist_bind (M : Model ι D PMF) (c : Prog ι D α) (k : α → Prog ι D β) :

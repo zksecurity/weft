@@ -12,9 +12,9 @@ operation; the semantics instantiates the domain.
 * `timed` (`Weft.Timed`) — shares and clear values carry the round at
   which they are available.
 
-The operands and the response of an operation are described by `Shape`s,
-a closed language over types, so that their public part (`blank`) is
-structural: a clear operand or a clear response is in the adversary's
+The operands and the response of an operation are each described by a
+`Shape`, a closed language over types, so that their public part (`blank`)
+is structural: a clear operand or a clear response is in the adversary's
 record by shape, and a model cannot omit it.
 -/
 namespace Weft
@@ -72,8 +72,9 @@ instance : Coe T (D.clear T) := ⟨pure⟩
 
 end Domain
 
-/-- The shape of a response: a closed language over types, so that the
-public part of a response is structural. -/
+/-- The shape of the operands or of the response of an operation: a closed
+language over types, so that its public part is structural.  Several
+operands are a product (`⊗`); no operand is `unit`. -/
 inductive Shape where
   | unit
   | clear (T : Type)
@@ -94,7 +95,11 @@ namespace Shape
   | vec n a => Fin n → a.interp D
   | list a => List (a.interp D)
 
-/-- The public part of a response: clear components are kept, shares become `()`. -/
+/-! Pairs are taken apart by projections throughout, not by patterns: a
+pattern here makes evaluation by `rfl` exponential in the number of
+requests. -/
+
+/-- The public part of a value: clear components are kept, shares become `()`. -/
 def blank {D : Domain} : (s : Shape) → s.interp D → s.interp D.erase
   | unit, _ => ()
   | clear _, x => x
@@ -134,34 +139,9 @@ def Hidden : Shape → Prop
 
 end Shape
 
-/-- The operands of a request: a value of each shape in the operand list.
-Clear operands are public by shape, like clear responses; a share is a
-share. -/
-@[reducible] def Operands (D : Domain) : List Shape → Type
-  | [] => Unit
-  | s :: ss => s.interp D × Operands D ss
-
-namespace Operands
-
-/-! Pairs are taken apart by projections throughout, not by patterns: a
-pattern here makes evaluation by `rfl` exponential in the number of
-requests. -/
-
-/-- Map a shape-indexed transformation over the operands. -/
-def map {D E : Domain} (f : (s : Shape) → s.interp D → s.interp E) :
-    {ss : List Shape} → Operands D ss → Operands E ss
-  | [], _ => ()
-  | s :: _, p => (f s p.1, map f p.2)
-
-/-- The public part of the operands: clear operands are kept, shares become `()`. -/
-def blank {D : Domain} : {ss : List Shape} → Operands D ss → Operands D.erase ss
-  | [], _ => ()
-  | s :: _, p => (s.blank p.1, blank p.2)
-
-@[simp] theorem blank_nil {D : Domain} (a : Operands D []) : blank a = () := rfl
-@[simp] theorem blank_cons {D : Domain} {s : Shape} {ss : List Shape} (a : Operands D (s :: ss)) :
-    blank a = (s.blank a.1, blank a.2) := rfl
-
-end Operands
+/-- The product of two shapes, right-associative: `.share F ⊗ .share F ⊗ .clear F`
+is `.prod (.share F) (.prod (.share F) (.clear F))`.  The operands of an
+operation are one shape, so a binary operation takes a pair. -/
+infixr:35 " ⊗ " => Shape.prod
 
 end Weft

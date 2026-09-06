@@ -48,7 +48,7 @@ theorem arith_private {I α : Type} (c : I → Prog (Arith F).ops .ideal α) (op
 example (a b c : F) : output (Arith F).eval (mul3 (fs := Arith F) (D := .ideal) a b c) = a * b * c := rfl
 -- `mul3` is straight-line: its view is two multiplication records, whatever the inputs.
 example (a b c : F) : view (Arith F).eval (mul3 (fs := Arith F) (D := .ideal) a b c)
-    = [⟨⟨1, .mult⟩, ((), (), ()), (), ()⟩, ⟨⟨1, .mult⟩, ((), (), ()), (), ()⟩] := rfl
+    = [⟨⟨1, .mult⟩, ((), ()), (), ()⟩, ⟨⟨1, .mult⟩, ((), ()), (), ()⟩] := rfl
 end
 
 end Weft.Examples.Silent

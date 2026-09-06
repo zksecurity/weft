@@ -61,7 +61,6 @@ attribute [weft] Prog.bind_eq Prog.pure_eq Prog.bind_pure' Prog.bind_call Prog.b
   PMF.map_bind PMF.pure_map PMF.bind_map PMF.bind_bind PMF.pure_bind PMF.bind_pure
   PMF.bind_const Function.comp_def
   Shape.blank_share Shape.blank_clear Shape.blank_unit Shape.blank_prod Shape.blank_vec Shape.blank_list
-  Operands.blank_nil Operands.blank_cons
   Correlation.sample
   Lin.eval Mult.eval Reveal.eval Cmp.eval Inversion.eval
   Rand.model RandNZ.model PubCoin.model MulTriple.model SquarePair.model DoubleSharing.model

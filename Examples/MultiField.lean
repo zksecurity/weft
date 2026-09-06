@@ -44,11 +44,11 @@ namespace SwitchF
 inductive Op where | switch
 abbrev ops (F G : Type) : Interface where
   Op := Op
-  dom _ := [.share F]
+  dom _ := .share F
   cod _ := .share G
 /-- The canonical representative, re-read in the target (the integer value if in range). -/
 def eval (F G : Type) [Encodable F] [NatCast G] : Model (ops F G) .ideal Id :=
-  .silent fun ⟨.switch, (x, ())⟩ => ((Encodable.encode x : ℕ) : G)
+  .silent fun ⟨.switch, x⟩ => ((Encodable.encode x : ℕ) : G)
 end SwitchF
 
 /-- Share conversion from `F` to `G`. -/
@@ -61,7 +61,7 @@ namespace EdaBitF
 inductive Op where | get
 abbrev ops (F : Type) (m : Nat) : Interface where
   Op := Op
-  dom _ := []
+  dom _ := .unit
   cod _ := .prod (.share F) (.vec m (.share GF2))
 /-- A uniform `r < 2^m`, together with its bits. -/
 noncomputable def model (F : Type) [NatCast F] (m : Nat) : Model (ops F m) .ideal PMF :=
@@ -84,7 +84,7 @@ namespace DaBitF
 inductive Op where | get
 abbrev ops (F : Type) : Interface where
   Op := Op
-  dom _ := []
+  dom _ := .unit
   cod _ := .prod (.share F) (.share GF2)
 /-- One uniform bit, seen in both fields. -/
 noncomputable def model (F : Type) [NatCast F] : Model (ops F) .ideal PMF :=
@@ -105,7 +105,7 @@ abbrev DaBit (F : Type) [NatCast F] (coin : Nat := 0) : Functionality :=
 section Ops
 variable {fs : Hybrid} {D : Domain}
 def switch {F : Type} (G : Type) [Encodable F] [NatCast G] [Has (Switch F G) fs] (a : D.share F) : Prog fs.ops D (D.share G) :=
-  Prog.op (F := Switch F G) ⟨.switch, (a, ())⟩
+  Prog.op (F := Switch F G) ⟨.switch, a⟩
 def edabit (F : Type) [NatCast F] (m : Nat) (coin : Nat := 0) [Has (EdaBit F m coin) fs] :
     Prog fs.ops D (D.share F × (Fin m → D.share GF2)) :=
   Prog.op (F := EdaBit F m coin) ⟨.get, ()⟩
@@ -268,8 +268,8 @@ abbrev DaHyb : Hybrid := [Lin (ZMod 17), Lin GF2, Reveal GF2, DaBit (ZMod 17) 1]
 
 /-- The view of one conversion, as a function of the opened bit. -/
 def b2aView (c : GF2) : List (Event DaHyb.ops) :=
-  [⟨⟨3, .get⟩, (), ((), ()), ()⟩, ⟨⟨1, .add⟩, ((), (), ()), (), ()⟩, ⟨⟨2, .reveal⟩, ((), ()), c, ()⟩, ⟨⟨0, .const⟩, ((c.toNat : ZMod 17), ()), (), ()⟩,
-   ⟨⟨0, .add⟩, ((), (), ()), (), ()⟩, ⟨⟨0, .smul⟩, (2 * (c.toNat : ZMod 17), (), ()), (), ()⟩, ⟨⟨0, .sub⟩, ((), (), ()), (), ()⟩]
+  [⟨⟨3, .get⟩, (), ((), ()), ()⟩, ⟨⟨1, .add⟩, ((), ()), (), ()⟩, ⟨⟨2, .reveal⟩, (), c, ()⟩, ⟨⟨0, .const⟩, (c.toNat : ZMod 17), (), ()⟩,
+   ⟨⟨0, .add⟩, ((), ()), (), ()⟩, ⟨⟨0, .smul⟩, (2 * (c.toNat : ZMod 17), ()), (), ()⟩, ⟨⟨0, .sub⟩, ((), ()), (), ()⟩]
 
 /-- **The semantics of `b2a`**: draw a uniform bit `b`, reveal `x + b`, output `x` in `F`. -/
 theorem b2a_dist (x : GF2) :
@@ -287,16 +287,16 @@ theorem b2a_dist (x : GF2) :
 
 /-- The Boolean-to-arithmetic functionality: one `𝔽₂` operand, a share of `F`, nothing declared. -/
 abbrev B2A : Functionality :=
-  .ofEval ⟨Unit, fun _ => [.share GF2], fun _ => .share (ZMod 17), fun _ => Unit⟩
-    ⟨fun r => pure ((GF2.toNat r.args.1 : ZMod 17), ())⟩
+  .ofEval ⟨Unit, fun _ => .share GF2, fun _ => .share (ZMod 17), fun _ => Unit⟩
+    ⟨fun r => pure ((GF2.toNat r.args : ZMod 17), ())⟩
 
 /-- **Privacy.**  The revealed bit `x + b` is uniform for either `x`: `b ↦ x + b`
 is a bijection of `𝔽₂`; the simulator flips a coin. -/
 program b2aReal : Realization B2A DaHyb where
-  impl D r := b2a (ZMod 17) 1 r.args.1
+  impl D r := b2a (ZMod 17) 1 r.args
   Sim _ := (uniform GF2).map b2aView
   real r _ := by
-    obtain ⟨⟨⟩, x, ⟨⟩⟩ := r
+    obtain ⟨⟨⟩, x⟩ := r
     show dist DaHyb.model (b2a (ZMod 17) 1 x) = _
     rw [b2a_dist]
     simp only [weft, Functionality.ofEval_model]

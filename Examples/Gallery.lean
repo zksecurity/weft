@@ -214,8 +214,8 @@ example (x : F) : output M (expPublic (fs := Std F) (D := .ideal) x 5) = x * x *
 -- 7. records: one round, silent.
 example (a b c d : F) : delayOn T (dist2 (fs := Std F) (D := .timed) ⟨⟪a⟫, ⟪b⟫⟩ ⟨⟪c⟫, ⟪d⟫⟩) = 1 := rfl
 example (p q : Point .ideal F) : view M (dist2 (fs := Std F) p q)
-    = [⟨Std.lin F .sub, ((), (), ()), (), ()⟩, ⟨Std.lin F .sub, ((), (), ()), (), ()⟩, ⟨Std.mult F, ((), (), ()), (), ()⟩, ⟨Std.mult F, ((), (), ()), (), ()⟩,
-       ⟨Std.lin F .add, ((), (), ()), (), ()⟩] := rfl
+    = [⟨Std.lin F .sub, ((), ()), (), ()⟩, ⟨Std.lin F .sub, ((), ()), (), ()⟩, ⟨Std.mult F, ((), ()), (), ()⟩, ⟨Std.mult F, ((), ()), (), ()⟩,
+       ⟨Std.lin F .add, ((), ()), (), ()⟩] := rfl
 end Theorems
 
 /-! ### Programs that use comparison: a hybrid with `Cmp` -/
@@ -272,8 +272,8 @@ abbrev ZHyb : Hybrid := [Lin F, Mult F, Reveal F, Rand F]
 theorem isZero_dist (x : F) :
     dist (ZHyb F).model (isZero (fs := ZHyb F) (D := .ideal) x)
       = (uniform F).bind fun r => pure ((if x * r = 0 then 1 else 0),
-          [⟨⟨3, .rand⟩, (), (), ()⟩, ⟨⟨1, .mult⟩, ((), (), ()), (), ()⟩, ⟨⟨2, .reveal⟩, ((), ()), x * r, ()⟩,
-           ⟨⟨0, .const⟩, (if x * r = 0 then 1 else 0, ()), (), ()⟩]) := by
+          [⟨⟨3, .rand⟩, (), (), ()⟩, ⟨⟨1, .mult⟩, ((), ()), (), ()⟩, ⟨⟨2, .reveal⟩, (), x * r, ()⟩,
+           ⟨⟨0, .const⟩, (if x * r = 0 then 1 else 0 : F), (), ()⟩]) := by
   simp only [isZero, rand, mul, reveal, const, weft]
   rfl
 end
@@ -289,10 +289,10 @@ theorem mulOpen_dist (x y : F) :
     dist (Pre F).model (mulOpen (fs := Pre F) (D := .ideal) x y)
       = (uniform (Fin 2 → F)).bind fun v =>
           pure (x * y,
-            [⟨Pre.triple F, (), ((), (), ()), ()⟩, ⟨Pre.lin F .sub, ((), (), ()), (), ()⟩, ⟨Pre.reveal F, ((), ()), x - v 0, ()⟩,
-             ⟨Pre.lin F .sub, ((), (), ()), (), ()⟩, ⟨Pre.reveal F, ((), ()), y - v 1, ()⟩, ⟨Pre.lin F .smul, (x - v 0, (), ()), (), ()⟩,
-             ⟨Pre.lin F .smul, (y - v 1, (), ()), (), ()⟩, ⟨Pre.lin F .add, ((), (), ()), (), ()⟩, ⟨Pre.lin F .add, ((), (), ()), (), ()⟩,
-             ⟨Pre.reveal F, ((), ()), v 0 * v 1 + (x - v 0) * v 1 + (y - v 1) * v 0, ()⟩]) := by
+            [⟨Pre.triple F, (), ((), (), ()), ()⟩, ⟨Pre.lin F .sub, ((), ()), (), ()⟩, ⟨Pre.reveal F, (), x - v 0, ()⟩,
+             ⟨Pre.lin F .sub, ((), ()), (), ()⟩, ⟨Pre.reveal F, (), y - v 1, ()⟩, ⟨Pre.lin F .smul, (x - v 0, ()), (), ()⟩,
+             ⟨Pre.lin F .smul, (y - v 1, ()), (), ()⟩, ⟨Pre.lin F .add, ((), ()), (), ()⟩, ⟨Pre.lin F .add, ((), ()), (), ()⟩,
+             ⟨Pre.reveal F, (), v 0 * v 1 + (x - v 0) * v 1 + (y - v 1) * v 0, ()⟩]) := by
   simp only [mulOpen, mulTriple, sub, reveal, smul, add, weft]
   congr 1
   funext v

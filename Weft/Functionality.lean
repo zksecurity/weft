@@ -98,10 +98,10 @@ def eval (fs : Hybrid) : Model fs.ops .ideal Id where
   step r := (fs.get r.op.1).eval.step ⟨r.op.2, r.args⟩
 
 theorem model_step (fs : Hybrid) (i : Fin fs.length) (o : (fs.get i).ops.Op)
-    (a : Operands .ideal ((fs.get i).ops.dom o)) :
+    (a : ((fs.get i).ops.dom o).interp .ideal) :
     fs.model.step ⟨⟨i, o⟩, a⟩ = (fs.get i).model.step ⟨o, a⟩ := rfl
 theorem eval_step (fs : Hybrid) (i : Fin fs.length) (o : (fs.get i).ops.Op)
-    (a : Operands .ideal ((fs.get i).ops.dom o)) :
+    (a : ((fs.get i).ops.dom o).interp .ideal) :
     fs.eval.step ⟨⟨i, o⟩, a⟩ = (fs.get i).eval.step ⟨o, a⟩ := rfl
 
 /-- The first position of a non-empty hybrid. -/
@@ -113,16 +113,16 @@ abbrev next (F : Functionality) (fs : Hybrid) (i : Fin fs.length) : Fin (F :: fs
 /-! The step of a literal hybrid, by position: these are what `simp` uses. -/
 
 @[simp] theorem model_cons_zero (F : Functionality) (fs : Hybrid) (o : F.ops.Op)
-    (a : Operands .ideal (F.ops.dom o)) :
+    (a : (F.ops.dom o).interp .ideal) :
     (Hybrid.model (F :: fs)).step ⟨⟨head F fs, o⟩, a⟩ = F.model.step ⟨o, a⟩ := rfl
 @[simp] theorem model_cons_succ (F : Functionality) (fs : Hybrid) (i : Fin fs.length) (o : (fs.get i).ops.Op)
-    (a : Operands .ideal ((fs.get i).ops.dom o)) :
+    (a : ((fs.get i).ops.dom o).interp .ideal) :
     (Hybrid.model (F :: fs)).step ⟨⟨next F fs i, o⟩, a⟩ = fs.model.step ⟨⟨i, o⟩, a⟩ := rfl
 @[simp] theorem eval_cons_zero (F : Functionality) (fs : Hybrid) (o : F.ops.Op)
-    (a : Operands .ideal (F.ops.dom o)) :
+    (a : (F.ops.dom o).interp .ideal) :
     (Hybrid.eval (F :: fs)).step ⟨⟨head F fs, o⟩, a⟩ = F.eval.step ⟨o, a⟩ := rfl
 @[simp] theorem eval_cons_succ (F : Functionality) (fs : Hybrid) (i : Fin fs.length) (o : (fs.get i).ops.Op)
-    (a : Operands .ideal ((fs.get i).ops.dom o)) :
+    (a : ((fs.get i).ops.dom o).interp .ideal) :
     (Hybrid.eval (F :: fs)).step ⟨⟨next F fs i, o⟩, a⟩ = fs.eval.step ⟨⟨i, o⟩, a⟩ := rfl
 
 end Hybrid
@@ -249,7 +249,7 @@ theorem output_op (r : Req F.ops .ideal) :
 theorem dist_op (r : Req F.ops .ideal) :
     dist fs.model (Prog.op r) = (do
       let (y, d) ← F.model.step r
-      pure (y, [Has.event ⟨r.op, r.args.blank, (F.ops.cod r.op).blank y, d⟩])) := by
+      pure (y, [Has.event ⟨r.op, (F.ops.dom r.op).blank r.args, (F.ops.cod r.op).blank y, d⟩])) := by
   obtain ⟨i, e⟩ := h
   subst e
   simp [dist, Prog.op, Prog.opAt, Has.event, run, Trace.seq]

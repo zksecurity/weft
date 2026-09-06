@@ -69,7 +69,7 @@ theorem mem_support_dist_call {ι : Interface} (M : Model ι .ideal PMF) {α : T
     (k : Resp ι .ideal r.op → Prog ι .ideal α) (p : α × List (Event ι)) :
     p ∈ (dist M (.call r k)).support ↔
       ∃ z ∈ (M.step r).support, ∃ q ∈ (dist M (k z.1)).support,
-        p = (q.1, ⟨r.op, r.args.blank, (ι.cod r.op).blank z.1, z.2⟩ :: q.2) := by
+        p = (q.1, ⟨r.op, (ι.dom r.op).blank r.args, (ι.cod r.op).blank z.1, z.2⟩ :: q.2) := by
   rw [dist_call]
   simp only [PMF.monad_bind_eq_bind, PMF.monad_pure_eq_pure, PMF.support_bind, PMF.support_pure,
     Set.mem_iUnion, Set.mem_singleton_iff, exists_prop]
@@ -86,7 +86,7 @@ theorem Valid.bind {ι : Interface} {M : Model ι .ideal PMF} {P : Req ι .ideal
     cases hc with
     | call _ _ hr hk' =>
       exact .call r _ hr fun z hz => ih z.1 (hk' z hz) fun q hq =>
-        hk (q.1, ⟨r.op, r.args.blank, (ι.cod r.op).blank z.1, z.2⟩ :: q.2) ((mem_support_dist_call M r k' _).2 ⟨z, hz, q, hq, rfl⟩)
+        hk (q.1, ⟨r.op, (ι.dom r.op).blank r.args, (ι.cod r.op).blank z.1, z.2⟩ :: q.2) ((mem_support_dist_call M r k' _).2 ⟨z, hz, q, hq, rfl⟩)
   | look c k' ih =>
     cases hc with
     | look _ _ hk' => exact .look c _ (ih c hk' fun q hq => hk q (by rw [dist_look]; exact hq))
@@ -100,7 +100,7 @@ structure Realization (F : Functionality) (fs : Hybrid) where
   Sim : Event F.ops → PMF (List (Event fs.ops))
   real : ∀ r, Pre r → dist fs.model (impl .ideal r) = (do
     let (y, d) ← F.model.step r
-    let s ← Sim ⟨r.op, r.args.blank, (F.ops.cod r.op).blank y, d⟩
+    let s ← Sim ⟨r.op, (F.ops.dom r.op).blank r.args, (F.ops.cod r.op).blank y, d⟩
     pure (y, s))
 
 /-- Realisations of every component of a hybrid over another. -/
@@ -131,7 +131,7 @@ noncomputable def Sim (g : Realizations fs gs) (e : Event fs.ops) : PMF (List (E
 theorem real (g : Realizations fs gs) (r : Req fs.ops .ideal) (h : g.Pre r) :
     dist gs.model (g.impl .ideal r) = (do
       let (y, d) ← fs.model.step r
-      let s ← g.Sim ⟨r.op, r.args.blank, (fs.ops.cod r.op).blank y, d⟩
+      let s ← g.Sim ⟨r.op, (fs.ops.dom r.op).blank r.args, (fs.ops.cod r.op).blank y, d⟩
       pure (y, s)) := by
   obtain ⟨⟨i, o⟩, a⟩ := r
   exact (g.get i).real ⟨o, a⟩ h

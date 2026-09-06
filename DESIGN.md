@@ -107,15 +107,15 @@ def Shape.blank : (s : Shape) → s.interp D → s.interp .erased   -- clear par
 
 structure Interface where
   Op   : Type                                         -- operations
-  dom  : Op → List Shape                              -- operand shapes: `clear F` public, `share F` secret
+  dom  : Op → Shape                                   -- operand shape: `clear F` public, `share F` secret, `⊗` for several
   cod  : Op → Shape                                   -- response shape
   leak : Op → Type := fun _ => Unit                   -- type of the declared disclosure
 
-def Operands (D : Domain) : List Shape → Type        -- a value of each operand shape
-structure Req (ι : Interface) (D : Domain) where (op : ι.Op) (args : Operands D (ι.dom op))
+abbrev Args (ι : Interface) (D : Domain) (o : ι.Op) : Type := (ι.dom o).interp D
 abbrev Resp (ι : Interface) (D : Domain) (o : ι.Op) : Type := (ι.cod o).interp D
+structure Req (ι : Interface) (D : Domain) where (op : ι.Op) (args : Args ι D op)
 structure Event (ι : Interface) where
-  (op : ι.Op) (args : Operands .erased (ι.dom op)) (out : Resp ι .erased op) (leak : ι.leak op)
+  (op : ι.Op) (args : Args ι .erased op) (out : Resp ι .erased op) (leak : ι.leak op)
 ```
 
 An `Event` is the adversary's record of one request: the operation, the
@@ -133,17 +133,17 @@ namespace Lin
 inductive Op | const | add | sub | smul
 abbrev ops (F : Type) : Interface where
   Op := Op
-  dom | .const => [.clear F] | .add => [.share F, .share F] | .sub => [.share F, .share F] | .smul => [.clear F, .share F]
+  dom | .const => .clear F | .add => .share F ⊗ .share F | .sub => .share F ⊗ .share F | .smul => .clear F ⊗ .share F
   cod _ := .share F
 end Lin
 abbrev Lin (F : Type) [Add F] [Mul F] [Sub F] : Functionality := .ofEval (Lin.ops F) (Lin.eval F)
 
-abbrev Mult      (F) : Functionality      -- mult   : [share F, share F] → share F ; always silent
-abbrev Reveal    (F) : Functionality      -- reveal : [share F] → clear F ; the response is public by shape
-abbrev Cmp       (F) : Functionality      -- lt     : [share F, share F] → share F
-abbrev Rand      (F) : Functionality      -- rand   : [] → share F, uniform            (Std/Random.lean)
-abbrev PubCoin   (F) : Functionality      -- coin   : [] → clear F, uniform: public by shape
-abbrev MulTriple (F) : Functionality      -- get    : [] → share F × share F × share F, (a, b, a·b)
+abbrev Mult      (F) : Functionality      -- mult   : share F ⊗ share F → share F ; always silent
+abbrev Reveal    (F) : Functionality      -- reveal : share F → clear F ; the response is public by shape
+abbrev Cmp       (F) : Functionality      -- lt     : share F ⊗ share F → share F
+abbrev Rand      (F) : Functionality      -- rand   : unit → share F, uniform          (Std/Random.lean)
+abbrev PubCoin   (F) : Functionality      -- coin   : unit → clear F, uniform: public by shape
+abbrev MulTriple (F) : Functionality      -- get    : unit → share F ⊗ share F ⊗ share F, (a, b, a·b)
 
 abbrev Hybrid := List Functionality
 abbrev Std (F) : Hybrid := [Lin F, Mult F, Reveal F]          -- the arithmetic black box
@@ -572,7 +572,7 @@ program cbcOverHybrid : Realization (CBC F) (AesHybrid F) where      -- once, ag
 noncomputable def hybridOverStd : Realizations (AesHybrid F) (Std F) :=
   .cons (aesByProgram F) (Realizations.incl [Lin F, Mult F, Reveal F] (Std F))
 noncomputable def cbcOverStd : Realization (CBC F) (Std F) := (cbcOverHybrid F).comp (hybridOverStd F)
-example : (cbcOverStd F).impl .ideal ⟨(), (k, iv, m₁, m₂, ())⟩ = cbc2Plain F k iv m₁ m₂ := rfl   -- literally the inlined program
+example : (cbcOverStd F).impl .ideal ⟨(), (k, iv, m₁, m₂)⟩ = cbc2Plain F k iv m₁ m₂ := rfl   -- literally the inlined program
 ```
 
 So "the basic functionalities from which everything else is derived" is
@@ -1362,7 +1362,7 @@ def mulBeaverFrom [Has (Lin F) fs] [Has (Reveal F) fs] (triple : Prog fs.ops D (
   … -- x·y = c + e·b + d·a + e·d, linear from here
 
 program beaverMult : Realization (Mult F) (Pre F) where            -- the certificate
-  impl D r := match r with | ⟨.mult, (x, y, ())⟩ => mulBeaver x y
+  impl D r := match r with | ⟨.mult, (x, y)⟩ => mulBeaver x y
   Sim _ := (uniform (F × F)).map (beaverView F)
   real r _ := by …                                                  -- unfold the run, then the mask lemma
 
@@ -1414,8 +1414,8 @@ namespace MulTriple
 inductive Op where | get
 abbrev ops (F : Type) : Interface where            -- the interface
   Op := Op
-  dom _ := []
-  cod _ := .prod (.share F) (.prod (.share F) (.share F))
+  dom _ := .unit
+  cod _ := .share F ⊗ .share F ⊗ .share F
 def corr (F : Type) [Mul F] : Correlation F (F × F × F) := ⟨2, fun x => (x 0, x 1, x 0 * x 1)⟩
 noncomputable def model (F : Type) : Model (ops F) .ideal PMF :=            -- sample the correlation, declare nothing
   ⟨fun _ => (corr F).sample.map fun t => (t, ())⟩
@@ -1525,7 +1525,7 @@ declared:
 namespace PubCoin
 abbrev ops (F : Type) : Interface where
   Op := Op                                  -- coin
-  dom _ := []
+  dom _ := .unit
   cod _ := .clear F                         -- public by shape
 noncomputable def model (F : Type) : Model (ops F) .ideal PMF := ⟨fun _ => (uniform F).map fun x => (x, ())⟩
 end PubCoin
@@ -1575,8 +1575,8 @@ programs are ordinary `Lin`/`Mult` programs over `GF2`
 namespace EdaBitF
 abbrev ops (F : Type) (m : Nat) : Interface where
   Op := Op                                                 -- get
-  dom _ := []
-  cod _ := .prod (.share F) (.vec m (.share GF2))          -- r, and its m bits (LSB first)
+  dom _ := .unit
+  cod _ := .share F ⊗ .vec m (.share GF2)          -- r, and its m bits (LSB first)
 noncomputable def model (F : Type) [NatCast F] (m : Nat) : Model (ops F m) .ideal PMF :=   -- a uniform r < 2^m, its bits
   ⟨fun _ => (uniform (Fin (2 ^ m))).map fun r => ((((r.val : ℕ) : F), bitsOf m r.val), ())⟩
 end EdaBitF
@@ -1661,8 +1661,8 @@ so is `Hiding`, which handed the simulator the output.
 ```lean
 /-- Inversion, silent: returns `⟦x⁻¹⟧`, declares nothing. -/
 abbrev Invert : Functionality :=
-  .ofEval ⟨Unit, fun _ => [F], fun _ => .share F, fun _ => Unit, fun _ => false, fun _ => false⟩
-    ⟨fun r => pure (r.args.1⁻¹, ())⟩
+  .ofEval ⟨Unit, fun _ => .share F, fun _ => .share F, fun _ => Unit⟩
+    ⟨fun r => pure (r.args⁻¹, ())⟩
 
 /-- Inversion by masking realises silent inversion for `x ≠ 0`: the simulator draws a fresh uniform
 nonzero element and presents it as the opened value (`s ↦ x·s` is a bijection of the nonzero elements). -/

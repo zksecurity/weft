@@ -16,8 +16,8 @@ variable (F : Type) [Field F] [DecidableEq F]
 
 /-- The identity functionality on a share. -/
 abbrev Keep : Functionality :=
-  .ofEval ⟨Unit, fun _ => [.share F], fun _ => .share F, fun _ => Unit⟩
-    ⟨fun r => pure (r.args.1, ())⟩
+  .ofEval ⟨Unit, fun _ => .share F, fun _ => .share F, fun _ => Unit⟩
+    ⟨fun r => pure (r.args, ())⟩
 
 /-- A program that branches on a share, at the ideal domain, where a share
 is its value.  Lean accepts the definition, since `F` has decidable
@@ -40,7 +40,7 @@ warning: declaration uses `sorry`
 -/
 #guard_msgs in
 program peekReal : Realization (Keep F) (Std F) where
-  impl D r := peek F r.args.1
+  impl D r := peek F r.args
   Sim _ := pure []
   real := sorry
 
@@ -53,7 +53,7 @@ warning: declaration uses `sorry`
 -/
 #guard_msgs in
 program peekParam (peekAt : (D : Domain) → D.share F → Bool) : Realization (Keep F) (Std F) where
-  impl D r := if peekAt D r.args.1 then pure r.args.1 else pure r.args.1
+  impl D r := if peekAt D r.args then pure r.args else pure r.args
   Sim _ := pure []
   real := sorry
 
@@ -61,10 +61,10 @@ program peekParam (peekAt : (D : Domain) → D.share F → Bool) : Realization (
 /-- info: program: `Weft.Examples.Checked.keepReal` certified; its implementation is a computable, domain-generic program. -/
 #guard_msgs in
 program keepReal : Realization (Keep F) (Std F) where
-  impl D r := pure r.args.1
+  impl D r := pure r.args
   Sim _ := pure []
   real r _ := by
-    obtain ⟨⟨⟩, x, ⟨⟩⟩ := r
+    obtain ⟨⟨⟩, x⟩ := r
     simp [weft]
 end
 

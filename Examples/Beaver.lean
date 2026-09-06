@@ -71,10 +71,10 @@ variable (F : Type) [Add F] [Mul F] [Sub F] [Fintype F] [Inhabited F]
 
 /-- The view of one Beaver multiplication, as a function of the two opened values. -/
 def beaverView (q : F × F) : List (Event (Pre F).ops) :=
-  [⟨Pre.triple F, (), ((), (), ()), ()⟩, ⟨Pre.lin F .sub, ((), (), ()), (), ()⟩, ⟨Pre.reveal F, ((), ()), q.1, ()⟩, ⟨Pre.lin F .sub, ((), (), ()), (), ()⟩,
-   ⟨Pre.reveal F, ((), ()), q.2, ()⟩, ⟨Pre.lin F .smul, (q.1, (), ()), (), ()⟩, ⟨Pre.lin F .smul, (q.2, (), ()), (), ()⟩,
-   ⟨Pre.lin F .add, ((), (), ()), (), ()⟩, ⟨Pre.lin F .add, ((), (), ()), (), ()⟩, ⟨Pre.lin F .const, (q.1 * q.2, ()), (), ()⟩,
-   ⟨Pre.lin F .add, ((), (), ()), (), ()⟩]
+  [⟨Pre.triple F, (), ((), (), ()), ()⟩, ⟨Pre.lin F .sub, ((), ()), (), ()⟩, ⟨Pre.reveal F, (), q.1, ()⟩, ⟨Pre.lin F .sub, ((), ()), (), ()⟩,
+   ⟨Pre.reveal F, (), q.2, ()⟩, ⟨Pre.lin F .smul, (q.1, ()), (), ()⟩, ⟨Pre.lin F .smul, (q.2, ()), (), ()⟩,
+   ⟨Pre.lin F .add, ((), ()), (), ()⟩, ⟨Pre.lin F .add, ((), ()), (), ()⟩, ⟨Pre.lin F .const, q.1 * q.2, (), ()⟩,
+   ⟨Pre.lin F .add, ((), ()), (), ()⟩]
 
 -- The view (the two opened values and the operations around them) is what `mulBeaver_dist`
 -- below computes exactly, as a distribution, under the real model.
@@ -142,10 +142,10 @@ event `(mult, (), ())`, draws a fresh uniform pair and presents the Beaver
 view of it.  The proof: unfold the run, then the mask lemma. -/
 program beaverMult : Realization (Mult F) (Pre F) where
   impl D r := match r with
-    | ⟨.mult, (x, y, ())⟩ => mulBeaver x y
+    | ⟨.mult, (x, y)⟩ => mulBeaver x y
   Sim _ := (uniform (F × F)).map (beaverView F)
   real r _ := by
-    obtain ⟨⟨⟩, x, y, ⟨⟩⟩ := r
+    obtain ⟨⟨⟩, x, y⟩ := r
     show dist (Pre F).model (mulBeaver x y) = _
     rw [mulBeaver_dist]
     simp only [weft, Mult.model_eq]
@@ -186,10 +186,10 @@ def mulBeaverBad (x y : F) : Prog (BadPre F).ops .ideal F :=
 
 /-- The view of a Beaver multiplication over the wrong box, as a function of the two opened values. -/
 def badView (q : F × F) : List (Event (BadPre F).ops) :=
-  [⟨⟨⟨2, by simp⟩, .get⟩, (), ((), (), ()), ()⟩, ⟨⟨⟨0, by simp⟩, .sub⟩, ((), (), ()), (), ()⟩, ⟨⟨⟨1, by simp⟩, .reveal⟩, ((), ()), q.1, ()⟩,
-   ⟨⟨⟨0, by simp⟩, .sub⟩, ((), (), ()), (), ()⟩, ⟨⟨⟨1, by simp⟩, .reveal⟩, ((), ()), q.2, ()⟩, ⟨⟨⟨0, by simp⟩, .smul⟩, (q.1, (), ()), (), ()⟩,
-   ⟨⟨⟨0, by simp⟩, .smul⟩, (q.2, (), ()), (), ()⟩, ⟨⟨⟨0, by simp⟩, .add⟩, ((), (), ()), (), ()⟩, ⟨⟨⟨0, by simp⟩, .add⟩, ((), (), ()), (), ()⟩,
-   ⟨⟨⟨0, by simp⟩, .const⟩, (q.1 * q.2, ()), (), ()⟩, ⟨⟨⟨0, by simp⟩, .add⟩, ((), (), ()), (), ()⟩]
+  [⟨⟨⟨2, by simp⟩, .get⟩, (), ((), (), ()), ()⟩, ⟨⟨⟨0, by simp⟩, .sub⟩, ((), ()), (), ()⟩, ⟨⟨⟨1, by simp⟩, .reveal⟩, (), q.1, ()⟩,
+   ⟨⟨⟨0, by simp⟩, .sub⟩, ((), ()), (), ()⟩, ⟨⟨⟨1, by simp⟩, .reveal⟩, (), q.2, ()⟩, ⟨⟨⟨0, by simp⟩, .smul⟩, (q.1, ()), (), ()⟩,
+   ⟨⟨⟨0, by simp⟩, .smul⟩, (q.2, ()), (), ()⟩, ⟨⟨⟨0, by simp⟩, .add⟩, ((), ()), (), ()⟩, ⟨⟨⟨0, by simp⟩, .add⟩, ((), ()), (), ()⟩,
+   ⟨⟨⟨0, by simp⟩, .const⟩, q.1 * q.2, (), ()⟩, ⟨⟨⟨0, by simp⟩, .add⟩, ((), ()), (), ()⟩]
 
 omit [Fintype F] [Inhabited F] in
 theorem badBeaver_correct (x y a : F) :
@@ -219,8 +219,8 @@ the same distribution; but `[1, 0]` is a possible pair of openings for
 theorem mulBeaver_bad_not_realizes :
     ¬ ∃ Sim : Event (Mult F).ops → PMF (List (Event (BadPre F).ops)),
       ∀ x y : F, dist (BadPre F).model (mulBeaverBad F x y) = (do
-        let p ← (Mult F).model.step ⟨.mult, (x, y, ())⟩
-        let s ← Sim ⟨.mult, ((), (), ()), (), p.2⟩
+        let p ← (Mult F).model.step ⟨.mult, (x, y)⟩
+        let s ← Sim ⟨.mult, ((), ()), (), p.2⟩
         pure (p.1, s)) := by
   rintro ⟨Sim, h⟩
   have h₀ := h 0 0

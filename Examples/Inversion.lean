@@ -74,7 +74,7 @@ example : delayOn (invMPC (ZMod 7)).timed (divide (F := ZMod 7) (fs := (invMPC (
 
 /-- The view of one inversion, as a function of the opened value. -/
 def invView (m : F) : List (Event (InvHyb F).ops) :=
-  [⟨⟨3, .randNZ⟩, (), (), ()⟩, ⟨⟨1, .mult⟩, ((), (), ()), (), ()⟩, ⟨⟨2, .reveal⟩, ((), ()), m, ()⟩, ⟨⟨0, .smul⟩, (m⁻¹, (), ()), (), ()⟩]
+  [⟨⟨3, .randNZ⟩, (), (), ()⟩, ⟨⟨1, .mult⟩, ((), ()), (), ()⟩, ⟨⟨2, .reveal⟩, (), m, ()⟩, ⟨⟨0, .smul⟩, (m⁻¹, ()), (), ()⟩]
 
 /-- **The semantics of `invert`**: a uniform nonzero mask `s`, the opened
 value `x·s`, and the output `s / (x·s)`. -/
@@ -96,18 +96,18 @@ theorem invert_correct (x : F) (hx : x ≠ 0) :
 
 /-- Inversion, silent: returns `⟦x⁻¹⟧`, declares nothing. -/
 abbrev Invert : Functionality :=
-  .ofEval ⟨Unit, fun _ => [.share F], fun _ => .share F, fun _ => Unit⟩
-    ⟨fun r => pure (r.args.1⁻¹, ())⟩
+  .ofEval ⟨Unit, fun _ => .share F, fun _ => .share F, fun _ => Unit⟩
+    ⟨fun r => pure (r.args⁻¹, ())⟩
 
 /-- **Inversion by masking realises silent inversion for `x ≠ 0`.**  The
 simulator draws a fresh uniform nonzero element and presents it as the
 opened value: `s ↦ x·s` is a bijection of the nonzero elements. -/
 program invertReal : Realization (Invert F) (InvHyb F) where
-  impl D r := invert r.args.1
-  Pre r := r.args.1 ≠ 0
+  impl D r := invert r.args
+  Pre r := r.args ≠ 0
   Sim _ := (uniform {t : F // t ≠ 0}).map fun t => invView F t.1
   real r hx := by
-    obtain ⟨⟨⟩, x, ⟨⟩⟩ := r
+    obtain ⟨⟨⟩, x⟩ := r
     show dist (InvHyb F).model (invert x) = _
     rw [invert_dist]
     -- the output is a point: `s / (x·s) = x⁻¹` on the whole support
@@ -124,17 +124,17 @@ program invertReal : Realization (Invert F) (InvHyb F) where
 
 /-- Inversion, total: returns `⟦x⁻¹⟧` (with `0⁻¹ = 0`) and discloses whether `x = 0`. -/
 abbrev InvertTotal : Functionality :=
-  .ofEval ⟨Unit, fun _ => [.share F], fun _ => .share F, fun _ => Bool⟩
-    ⟨fun r => pure (r.args.1⁻¹, decide (r.args.1 = 0))⟩
+  .ofEval ⟨Unit, fun _ => .share F, fun _ => .share F, fun _ => Bool⟩
+    ⟨fun r => pure (r.args⁻¹, decide (r.args = 0))⟩
 
 /-- **The same program realises total inversion with no precondition.**  The
 simulator reads the zero test off the event: on `x = 0` the opened value is
 `0`, otherwise it is a fresh uniform nonzero element, as before. -/
 program invertTotalReal : Realization (InvertTotal F) (InvHyb F) where
-  impl D r := invert r.args.1
+  impl D r := invert r.args
   Sim e := if e.leak then pure (invView F 0) else (uniform {t : F // t ≠ 0}).map fun t => invView F t.1
   real r _ := by
-    obtain ⟨⟨⟩, x, ⟨⟩⟩ := r
+    obtain ⟨⟨⟩, x⟩ := r
     show dist (InvHyb F).model (invert x) = _
     rw [invert_dist]
     by_cases hx : x = 0
@@ -151,7 +151,7 @@ program invertTotalReal : Realization (InvertTotal F) (InvHyb F) where
 /-- A caller that inverts a fresh nonzero share: `randNZ`, then `invert`. -/
 def invertFresh {fs : Hybrid} {D : Domain} [Has (Invert F) fs] [Has (RandNZ F) fs] : Prog fs.ops D (D.share F) := do
   let r ← randNZ F
-  Prog.op (F := Invert F) ⟨(), (r, ())⟩
+  Prog.op (F := Invert F) ⟨(), r⟩
 
 /-- The hybrid the caller is written in: silent inversion as a black box. -/
 abbrev CallerHyb : Hybrid := [Invert F, RandNZ F]
@@ -161,7 +161,7 @@ abbrev CallerHyb : Hybrid := [Invert F, RandNZ F]
 the support of `RandNZ` is the nonzero elements. -/
 theorem invertFresh_valid :
     Valid (CallerHyb F).model (fun r => match r with
-        | ⟨⟨⟨0, _⟩, _⟩, a⟩ => a.1 ≠ 0
+        | ⟨⟨⟨0, _⟩, _⟩, a⟩ => a ≠ 0
         | _ => True)
       (invertFresh F (fs := CallerHyb F) (D := .ideal)) := by
   refine .call _ _ trivial fun z hz => ?_

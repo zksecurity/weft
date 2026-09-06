@@ -32,7 +32,7 @@ def Realization.timed {F : Functionality} {fs : Hybrid} (f : Realization F fs) (
     Model F.ops .timed Sched where
   step r := do
     let p ← run T CostModel.unit (f.impl .timed r)
-    pure (p.1, (F.eval.step ⟨r.op, r.args.untime⟩).run.2)
+    pure (p.1, (F.eval.step ⟨r.op, (F.ops.dom r.op).untime r.args⟩).run.2)
 
 /-- The MPC entry for `F` instantiated by `f` over the MPC `M`. -/
 abbrev MPC.derived (M : MPC) {F : Functionality} (f : Realization F M.hybrid) : MPC.Entry :=
@@ -43,7 +43,7 @@ def Realizations.timed {fs gs : Hybrid} (g : Realizations fs gs) (T : Model gs.o
     Model fs.ops .timed Sched where
   step r := do
     let p ← run T CostModel.unit (g.impl .timed r)
-    pure (p.1, (fs.eval.step ⟨r.op, r.args.untime⟩).run.2)
+    pure (p.1, (fs.eval.step ⟨r.op, (fs.ops.dom r.op).untime r.args⟩).run.2)
 
 /-- The output of a run, in the monad, with the trace dropped. -/
 def runOut {ι : Interface} {D : Domain} {α : Type} {m : Type → Type} [Monad m] [Look D m] (M : Model ι D m)

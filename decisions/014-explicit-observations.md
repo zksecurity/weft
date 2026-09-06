@@ -73,3 +73,7 @@ clear shape, the event records the blanked operands, and the flag is
 gone: whether an operation consumes a clear value is
 `Operands.hasClear (dom o)`.  Nothing else changed; the record of a
 request is still structural and still the only public thing about it.
+
+## Revisited (2026-09-06)
+The operands of an operation are one shape rather than a list of shapes
+(decision 019): `dom : Op → Shape`, several operands are a product.

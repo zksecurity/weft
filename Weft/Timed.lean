@@ -126,13 +126,6 @@ def Shape.ready : (s : Shape) → s.interp .timed → Nat
   | vec _ a, f => (List.finRange _).foldr (fun i m => max (a.ready (f i)) m) 0
   | list a, xs => xs.foldr (fun x m => max (a.ready x) m) 0
 
-/-- When the operands are ready, at the latest. -/
-def Operands.ready : {ss : List Shape} → Operands .timed ss → Nat
-  | [], _ => 0
-  | s :: _, p => max (s.ready p.1) (ready p.2)
-/-- The operands, with their times forgotten. -/
-def Operands.untime {ss : List Shape} (a : Operands .timed ss) : Operands .ideal ss := a.map Shape.untime
-
 /-- Pay for a request.  A free request returns the state object itself
 rather than a wrapper around it: the scheduling state is threaded through
 every request, and under call-by-name evaluation a wrapper per request is
@@ -143,7 +136,7 @@ def Clock.pay (c : Nat) (s : Clock) : Clock :=
   | c => { s with comm := s.comm + c }
 
 /-- When a request can be issued: the latest of its operands and `now`. -/
-def Req.base {ι : Interface} (r : Req ι .timed) (s : Clock) : Nat := max r.args.ready s.clock
+def Req.base {ι : Interface} (r : Req ι .timed) (s : Clock) : Nat := max ((ι.dom r.op).ready r.args) s.clock
 
 /-- **The generic timed model.**  From an evaluation model and a price per
 operation: the response is ready `delay` after the request can be issued,
@@ -152,7 +145,7 @@ substituted at each use under call-by-name evaluation, and a response
 computed twice per request is exponential in the run. -/
 def Model.timed {ι : Interface} (E : Model ι .ideal Id) (p : ι.Op → Price) : Model ι .timed Sched where
   step r := fun s =>
-    match (E.step ⟨r.op, r.args.untime⟩).run with
+    match (E.step ⟨r.op, (ι.dom r.op).untime r.args⟩).run with
     | (y, d) => Shape.withTimed (r.base s + (p r.op).delay) (ι.cod r.op) y fun y' => ((y', d), s.pay (p r.op).comm)
 
 section Delay

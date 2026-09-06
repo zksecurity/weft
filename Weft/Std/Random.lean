@@ -22,7 +22,7 @@ namespace Rand
 inductive Op where | rand
 abbrev ops (F : Type) : Interface where
   Op := Op
-  dom _ := []
+  dom _ := .unit
   cod _ := .share F
 noncomputable def model (F : Type) [Fintype F] [Nonempty F] : Model (ops F) .ideal PMF :=
   ⟨fun _ => (uniform F).map fun x => (x, ())⟩
@@ -45,7 +45,7 @@ namespace RandNZ
 inductive Op where | randNZ
 abbrev ops (F : Type) : Interface where
   Op := Op
-  dom _ := []
+  dom _ := .unit
   cod _ := .share F
 noncomputable def model (F : Type) [Zero F] [Nontrivial F] [Fintype F] [DecidableEq F] : Model (ops F) .ideal PMF :=
   ⟨fun _ => (uniform {x : F // x ≠ 0}).map fun x => (x.1, ())⟩
@@ -67,7 +67,7 @@ namespace PubCoin
 inductive Op where | coin
 abbrev ops (F : Type) : Interface where
   Op := Op
-  dom _ := []
+  dom _ := .unit
   cod _ := .clear F
 noncomputable def model (F : Type) [Fintype F] [Nonempty F] : Model (ops F) .ideal PMF :=
   ⟨fun _ => (uniform F).map fun x => (x, ())⟩
@@ -97,7 +97,7 @@ namespace MulTriple
 inductive Op where | get
 abbrev ops (F : Type) : Interface where
   Op := Op
-  dom _ := []
+  dom _ := .unit
   cod _ := .prod (.share F) (.prod (.share F) (.share F))
 def corr (F : Type) [Mul F] : Correlation F (F × F × F) := ⟨2, fun x => (x 0, x 1, x 0 * x 1)⟩
 noncomputable def model (F : Type) [Mul F] [Fintype F] [Nonempty F] : Model (ops F) .ideal PMF :=
@@ -118,7 +118,7 @@ namespace SquarePair
 inductive Op where | get
 abbrev ops (F : Type) : Interface where
   Op := Op
-  dom _ := []
+  dom _ := .unit
   cod _ := .prod (.share F) (.share F)
 def corr (F : Type) [Mul F] : Correlation F (F × F) := ⟨1, fun x => (x 0, x 0 * x 0)⟩
 noncomputable def model (F : Type) [Mul F] [Fintype F] [Nonempty F] : Model (ops F) .ideal PMF :=
@@ -142,7 +142,7 @@ namespace DoubleSharing
 inductive Op where | get
 abbrev ops (F : Type) : Interface where
   Op := Op
-  dom _ := []
+  dom _ := .unit
   cod _ := .prod (.share F) (.share F)
 def corr (F : Type) : Correlation F (F × F) := ⟨1, fun x => (x 0, x 0)⟩
 noncomputable def model (F : Type) [Fintype F] [Nonempty F] : Model (ops F) .ideal PMF :=

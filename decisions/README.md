@@ -25,3 +25,4 @@ is made or reversed; do not edit history, append a "Revisited" section.
 | 016 | [Implementation choices of the 2026-09 rewrite](016-implementation-choices.md) |
 | 017 | [Cost is an instantiation of the hybrid, never a property of a functionality](017-cost-is-an-instantiation.md) |
 | 018 | [Public values and control flow in the timed domain](018-public-values-and-control-flow.md) |
+| 019 | [The operands of an operation are one shape](019-operands-as-one-shape.md) |

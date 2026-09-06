@@ -62,17 +62,17 @@ theorem output_std_pre {α : Type} (c : Prog (Std F).ops .ideal α) :
 /-- The functionality "multiply and publish the product": one operation on
 two share operands, a clear response, nothing further declared. -/
 abbrev OpenMul : Functionality :=
-  .ofEval ⟨Unit, fun _ => [.share F, .share F], fun _ => .clear F, fun _ => Unit⟩
-    ⟨fun r => pure (r.args.1 * r.args.2.1, ())⟩
+  .ofEval ⟨Unit, fun _ => .share F ⊗ .share F, fun _ => .clear F, fun _ => Unit⟩
+    ⟨fun r => pure (r.args.1 * r.args.2, ())⟩
 
 /-- **`openMul` reveals nothing beyond its output.**  The simulator sees the
 event `((), a·b, ())` and replays the multiplication record and the reveal
 of `a·b`. -/
 program openMulReal : Realization (OpenMul F) (Std F) where
-  impl D r := openMul r.args.1 r.args.2.1
-  Sim e := pure [⟨Std.mult F, ((), (), ()), (), ()⟩, ⟨Std.reveal F, ((), ()), e.out, ()⟩]
+  impl D r := openMul r.args.1 r.args.2
+  Sim e := pure [⟨Std.mult F, ((), ()), (), ()⟩, ⟨Std.reveal F, (), e.out, ()⟩]
   real r _ := by
-    obtain ⟨⟨⟩, a, b, ⟨⟩⟩ := r
+    obtain ⟨⟨⟩, a, b⟩ := r
     simp only [openMul, mul, reveal, weft, Functionality.ofEval_model]
     rfl
 
@@ -83,8 +83,8 @@ would have to be both views. -/
 theorem leakyMul_not_realizes :
     ¬ ∃ Sim : Event (OpenMul F).ops → PMF (List (Event (Std F).ops)),
       ∀ a b : F, dist (Std F).model (leakyMul (fs := Std F) (D := .ideal) a b) = (do
-        let p ← (OpenMul F).model.step ⟨(), (a, b, ())⟩
-        let s ← Sim ⟨(), ((), (), ()), p.1, p.2⟩
+        let p ← (OpenMul F).model.step ⟨(), (a, b)⟩
+        let s ← Sim ⟨(), ((), ()), p.1, p.2⟩
         pure (p.1, s)) := by
   rintro ⟨Sim, h⟩
   have h₁ := h 0 1
@@ -99,8 +99,8 @@ theorem leakyMul_not_realizes :
 /-- The functionality "return the share you were given": one share operand,
 one share response, nothing declared. -/
 abbrev Keep : Functionality :=
-  .ofEval ⟨Unit, fun _ => [.share F], fun _ => .share F, fun _ => Unit⟩
-    ⟨fun r => pure (r.args.1, ())⟩
+  .ofEval ⟨Unit, fun _ => .share F, fun _ => .share F, fun _ => Unit⟩
+    ⟨fun r => pure (r.args, ())⟩
 
 /-- Open the secret, then return the same share.  With the old definition,
 which handed the simulator the output, this was "hiding" at the ideal
@@ -116,8 +116,8 @@ the value opened. -/
 theorem openKeep_not_realizes :
     ¬ ∃ Sim : Event (Keep F).ops → PMF (List (Event (Std F).ops)),
       ∀ x : F, dist (Std F).model (openKeep F (fs := Std F) (D := .ideal) x) = (do
-        let p ← (Keep F).model.step ⟨(), (x, ())⟩
-        let s ← Sim ⟨(), ((), ()), (), p.2⟩
+        let p ← (Keep F).model.step ⟨(), x⟩
+        let s ← Sim ⟨(), (), (), p.2⟩
         pure (p.1, s)) := by
   rintro ⟨Sim, h⟩
   have h₀ := h 0
@@ -140,7 +140,7 @@ noncomputable def openMulOverPre : Realization (OpenMul F) (Pre F) :=
 
 -- The composed implementation is Beaver multiplication then a reveal, literally.
 example (a b : F) :
-    (openMulOverPre F).impl .ideal ⟨(), (a, b, ())⟩
+    (openMulOverPre F).impl .ideal ⟨(), (a, b)⟩
       = Prog.handle ((stdOverPre F).impl .ideal) (openMul (fs := Std F) (D := .ideal) a b) := rfl
 end
 

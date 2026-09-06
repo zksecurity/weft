@@ -131,9 +131,9 @@ example (a b c : F) : commOn (abb F).timed (mul3 (fs := (abb F).hybrid) (D := .t
 
 -- The view is computed, not asserted: what the adversary sees of a run.
 example (a b : F) : view (Std F).eval (openMul (fs := Std F) (D := .ideal) a b)
-    = [⟨Std.mult F, ((), (), ()), (), ()⟩, ⟨Std.reveal F, ((), ()), a * b, ()⟩] := rfl
+    = [⟨Std.mult F, ((), ()), (), ()⟩, ⟨Std.reveal F, (), a * b, ()⟩] := rfl
 example (a b : F) : view (Std F).eval (leakyMul (fs := Std F) (D := .ideal) a b)
-    = [⟨Std.reveal F, ((), ()), a, ()⟩, ⟨Std.reveal F, ((), ()), b, ()⟩] := rfl
+    = [⟨Std.reveal F, (), a, ()⟩, ⟨Std.reveal F, (), b, ()⟩] := rfl
 
 -- Standard-functionality programs: correctness, delay, silence.
 section
@@ -147,8 +147,8 @@ example : delayOn (Std.timed (Fin 7)) (horner (F := Fin 7) (fs := Std (Fin 7)) (
   decide +kernel
 example (x a₀ a₁ a₂ : F) :
     view (Std F).eval (horner (fs := Std F) (D := .ideal) x [a₀, a₁, a₂])
-      = [⟨Std.lin F .const, (0, ()), (), ()⟩, ⟨Std.mult F, ((), (), ()), (), ()⟩, ⟨Std.lin F .add, ((), (), ()), (), ()⟩, ⟨Std.mult F, ((), (), ()), (), ()⟩,
-         ⟨Std.lin F .add, ((), (), ()), (), ()⟩, ⟨Std.mult F, ((), (), ()), (), ()⟩, ⟨Std.lin F .add, ((), (), ()), (), ()⟩] := rfl
+      = [⟨Std.lin F .const, (0 : F), (), ()⟩, ⟨Std.mult F, ((), ()), (), ()⟩, ⟨Std.lin F .add, ((), ()), (), ()⟩, ⟨Std.mult F, ((), ()), (), ()⟩,
+         ⟨Std.lin F .add, ((), ()), (), ()⟩, ⟨Std.mult F, ((), ()), (), ()⟩, ⟨Std.lin F .add, ((), ()), (), ()⟩] := rfl
 example : commOn (abb (Fin 7)).timed (horner (F := Fin 7) (fs := (abb (Fin 7)).hybrid) (D := .timed) ⟪3⟫ [⟪1⟫, ⟪2⟫, ⟪4⟫])
     = 6 := by decide +kernel
 end
