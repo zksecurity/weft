@@ -68,6 +68,27 @@ theorem Realizations.runOut_timed {fs gs : Hybrid} (g : Realizations fs gs) (T :
     have := ih a.1
     simpa only [map_eq_pure_bind, Function.comp_def] using this
 
+/-- One request of the hybrid, run under the realisations' timed model:
+its implementation runs, the response is its output, and the event
+records the request. -/
+theorem Realizations.run_opAt {fs gs : Hybrid} (g : Realizations fs gs) (T : Model gs.ops .timed Sched)
+    (i : Fin fs.length) (r : Req (fs.get i).ops .timed) (s : Clock) :
+    StateT.run (run (g.timed T) CostModel.unit (Prog.opAt fs i r)) s =
+      (((StateT.run (run T CostModel.unit ((g.get i).impl .timed r)) s).1.1,
+        ⟨(), [⟨⟨i, r.op⟩, r.args.blank,
+          ((fs.get i).ops.cod r.op).blank (StateT.run (run T CostModel.unit ((g.get i).impl .timed r)) s).1.1,
+          ((fs.get i).eval.step ⟨r.op, r.args.untime⟩).run.2⟩]⟩),
+       (StateT.run (run T CostModel.unit ((g.get i).impl .timed r)) s).2) := by
+  simp only [Prog.opAt, run_call, run_pure, Realizations.timed, Realizations.impl, StateT.run_bind, StateT.run_pure,
+    Trace.seq, Trace.zero]
+  rfl
+
+@[simp] theorem Realizations.get_cons_zero {F : Functionality} {fs gs : Hybrid} (r : Realization F gs)
+    (rs : Realizations fs gs) : Realizations.get (.cons r rs) ⟨0, Nat.zero_lt_succ _⟩ = r := rfl
+@[simp] theorem Realizations.get_cons_succ {F : Functionality} {fs gs : Hybrid} (r : Realization F gs)
+    (rs : Realizations fs gs) (n : Nat) (h : n + 1 < (F :: fs).length) :
+    Realizations.get (.cons r rs) ⟨n + 1, h⟩ = rs.get ⟨n, Nat.lt_of_succ_lt_succ h⟩ := rfl
+
 theorem Realizations.sched_timed {fs gs : Hybrid} (g : Realizations fs gs) (T : Model gs.ops .timed Sched)
     {α : Type} (c : Prog fs.ops .timed α) :
     Sched.run (g.timed T) c = Sched.run T (Prog.handle (g.impl .timed) c) := by
