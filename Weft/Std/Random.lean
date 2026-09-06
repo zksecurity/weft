@@ -163,21 +163,21 @@ section Ops
 variable {F : Type} {fs : Hybrid} {D : Domain}
 
 /-- A random share *of `F`*: nothing determines the field, so it is passed. -/
-def rand (F : Type) [Fintype F] [Inhabited F] [Has (Rand F) fs] : Prog fs.ops D (D.sh F) :=
+def rand (F : Type) [Fintype F] [Inhabited F] [Has (Rand F) fs] : Prog fs.ops D (D.share F) :=
   Prog.op (F := Rand F) ⟨.rand, ()⟩
 def randNZ (F : Type) [Zero F] [One F] [Nontrivial F] [Fintype F] [DecidableEq F] [Has (RandNZ F) fs] :
-    Prog fs.ops D (D.sh F) :=
+    Prog fs.ops D (D.share F) :=
   Prog.op (F := RandNZ F) ⟨.randNZ, ()⟩
-def coin (F : Type) [Fintype F] [Inhabited F] [Has (PubCoin F) fs] : Prog fs.ops D (D.cl F) :=
+def coin (F : Type) [Fintype F] [Inhabited F] [Has (PubCoin F) fs] : Prog fs.ops D (D.clear F) :=
   Prog.op (F := PubCoin F) ⟨.coin, ()⟩
 def mulTriple (F : Type) [Mul F] [Fintype F] [Inhabited F] [Has (MulTriple F) fs] :
-    Prog fs.ops D (D.sh F × D.sh F × D.sh F) :=
+    Prog fs.ops D (D.share F × D.share F × D.share F) :=
   Prog.op (F := MulTriple F) ⟨.get, ()⟩
 def squarePair (F : Type) [Mul F] [Fintype F] [Inhabited F] [Has (SquarePair F) fs] :
-    Prog fs.ops D (D.sh F × D.sh F) :=
+    Prog fs.ops D (D.share F × D.share F) :=
   Prog.op (F := SquarePair F) ⟨.get, ()⟩
 def doubleSharing (F : Type) [Fintype F] [Inhabited F] [Has (DoubleSharing F) fs] :
-    Prog fs.ops D (D.sh F × D.sh F) :=
+    Prog fs.ops D (D.share F × D.share F) :=
   Prog.op (F := DoubleSharing F) ⟨.get, ()⟩
 
 end Ops

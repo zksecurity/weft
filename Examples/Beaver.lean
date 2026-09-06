@@ -30,8 +30,8 @@ variable {F : Type} [Add F] [Mul F] [Sub F] [Fintype F] [Inhabited F] {fs : Hybr
 /-- `x · y` from a triple obtained by `triple`: open the masked inputs, then
 only linear operations.  Written once, for any domain, any hybrid offering
 linear operations and reveal, and any source of triples. -/
-def mulBeaverFrom [Has (Lin F) fs] [Has (Reveal F) fs] (triple : Prog fs.ops D (D.sh F × D.sh F × D.sh F))
-    (x y : D.sh F) : Prog fs.ops D (D.sh F) := do
+def mulBeaverFrom [Has (Lin F) fs] [Has (Reveal F) fs] (triple : Prog fs.ops D (D.share F × D.share F × D.share F))
+    (x y : D.share F) : Prog fs.ops D (D.share F) := do
   let (a, b, c) ← triple
   let u ← sub x a
   let e ← reveal u              -- e = x − a
@@ -46,12 +46,12 @@ def mulBeaverFrom [Has (Lin F) fs] [Has (Reveal F) fs] (triple : Prog fs.ops D (
   add s ed
 
 /-- Beaver multiplication with the triple from the `MulTriple` box. -/
-def mulBeaver [Has (Lin F) fs] [Has (Reveal F) fs] [Has (MulTriple F) fs] (x y : D.sh F) : Prog fs.ops D (D.sh F) :=
+def mulBeaver [Has (Lin F) fs] [Has (Reveal F) fs] [Has (MulTriple F) fs] (x y : D.share F) : Prog fs.ops D (D.share F) :=
   mulBeaverFrom (mulTriple F) x y
 
 /-- Two multiplications in sequence, two triples. -/
-def mul3Beaver [Has (Lin F) fs] [Has (Reveal F) fs] [Has (MulTriple F) fs] (x y z : D.sh F) :
-    Prog fs.ops D (D.sh F) := do
+def mul3Beaver [Has (Lin F) fs] [Has (Reveal F) fs] [Has (MulTriple F) fs] (x y z : D.share F) :
+    Prog fs.ops D (D.share F) := do
   let xy ← mulBeaver x y
   mulBeaver xy z
 end Programs

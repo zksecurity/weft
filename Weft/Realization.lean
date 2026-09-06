@@ -47,7 +47,7 @@ inductive Valid {ι : Interface} (M : Model ι .ideal PMF) (P : Req ι .ideal �
   | pure {α : Type} (a : α) : Valid M P (.pure a)
   | call {α : Type} (r : Req ι .ideal) (k : Resp ι .ideal r.op → Prog ι .ideal α)
       (hr : P r) (hk : ∀ z ∈ (M.step r).support, Valid M P (k z.1)) : Valid M P (.call r k)
-  | look {α T : Type} (c : Domain.ideal.cl T) (k : T → Prog ι .ideal α) (hk : Valid M P (k c)) :
+  | look {α T : Type} (c : Domain.ideal.clear T) (k : T → Prog ι .ideal α) (hk : Valid M P (k c)) :
       Valid M P (.look c k)
 
 attribute [simp] Valid.pure

@@ -15,19 +15,19 @@ section Programs
 variable {F : Type} [Add F] [Mul F] [Sub F] {fs : Hybrid} {D : Domain}
 
 /-- Sum of shares: only linear operations, hence free and silent. -/
-def sumAll [Has (Lin F) fs] [OfNat F 0] : List (D.sh F) → Prog fs.ops D (D.sh F)
+def sumAll [Has (Lin F) fs] [OfNat F 0] : List (D.share F) → Prog fs.ops D (D.share F)
   | [] => const 0
   | [x] => pure x
   | x :: xs => do let s ← sumAll xs; add x s
 
 /-- Inner product: the multiplications are independent, so one round, then
 a free sum.  Nothing says "parallel": the timed domain sees it. -/
-def inner [Has (Lin F) fs] [Has (Mult F) fs] [OfNat F 0] (xs ys : List (D.sh F)) : Prog fs.ops D (D.sh F) := do
+def inner [Has (Lin F) fs] [Has (Mult F) fs] [OfNat F 0] (xs ys : List (D.share F)) : Prog fs.ops D (D.share F) := do
   let ps ← (xs.zip ys).mapM fun p => mul p.1 p.2
   sumAll ps
 
 /-- Two dependent multiplications: two rounds. -/
-def mul3 [Has (Mult F) fs] (a b c : D.sh F) : Prog fs.ops D (D.sh F) := do
+def mul3 [Has (Mult F) fs] (a b c : D.share F) : Prog fs.ops D (D.share F) := do
   let ab ← mul a b
   mul ab c
 
@@ -36,7 +36,7 @@ inductive Tree (α : Type) where
   | leaf : α → Tree α
   | node : Tree α → Tree α → Tree α
 
-def prodTree [Has (Mult F) fs] : Tree (D.sh F) → Prog fs.ops D (D.sh F)
+def prodTree [Has (Mult F) fs] : Tree (D.share F) → Prog fs.ops D (D.share F)
   | .leaf x => pure x
   | .node l r => do
     let a ← prodTree l
@@ -44,32 +44,32 @@ def prodTree [Has (Mult F) fs] : Tree (D.sh F) → Prog fs.ops D (D.sh F)
     mul a b
 
 /-- Reveal the product: the view is the product, and nothing else. -/
-def openMul [Has (Mult F) fs] [Has (Reveal F) fs] (a b : D.sh F) : Prog fs.ops D (D.cl F) := do
+def openMul [Has (Mult F) fs] [Has (Reveal F) fs] (a b : D.share F) : Prog fs.ops D (D.clear F) := do
   let p ← mul a b
   reveal p
 
 /-- Reveal both inputs and multiply in the clear: correct, but not private. -/
-def leakyMul [Has (Reveal F) fs] (a b : D.sh F) : Prog fs.ops D (D.cl F) := do
+def leakyMul [Has (Reveal F) fs] (a b : D.share F) : Prog fs.ops D (D.clear F) := do
   let x ← reveal a
   let y ← reveal b
   pure (x * y)
 
 /-- The reactive pattern: open, compute in the clear, insert back. -/
-def divByOpened [Has (Lin F) fs] [Has (Reveal F) fs] [Div F] [OfNat F 1] (x d : D.sh F) : Prog fs.ops D (D.sh F) := do
+def divByOpened [Has (Lin F) fs] [Has (Reveal F) fs] [Div F] [OfNat F 1] (x d : D.share F) : Prog fs.ops D (D.share F) := do
   let dv ← reveal d          -- d is public information in this application
   smul (1 / dv) x            -- 1/d computed in the clear, multiplied back in
 
 /-- `max a b = a + [a < b] · (b - a)`: a comparison round plus one multiplication round. -/
 def maxOf [LT F] [DecidableRel (α := F) (· < ·)] [Zero F] [One F]
-    [Has (Lin F) fs] [Has (Mult F) fs] [Has (Cmp F) fs] (a b : D.sh F) : Prog fs.ops D (D.sh F) := do
+    [Has (Lin F) fs] [Has (Mult F) fs] [Has (Cmp F) fs] (a b : D.share F) : Prog fs.ops D (D.share F) := do
   let c ← lt a b
   let d ← sub b a
   let e ← mul c d
   add a e
 
 /-- `⟨xs, ys⟩ + c`.  One round: the products in parallel, then free linear operations. -/
-def dotPlus [Has (Lin F) fs] [Has (Mult F) fs] [OfNat F 0] (xs ys : List (D.sh F)) (c : F) :
-    Prog fs.ops D (D.sh F) := do
+def dotPlus [Has (Lin F) fs] [Has (Mult F) fs] [OfNat F 0] (xs ys : List (D.share F)) (c : F) :
+    Prog fs.ops D (D.share F) := do
   let ps ← (xs.zip ys).mapM fun p => mul p.1 p.2
   let s ← sumAll ps
   let k ← const c
@@ -78,7 +78,7 @@ def dotPlus [Has (Lin F) fs] [Has (Mult F) fs] [OfNat F 0] (xs ys : List (D.sh F
 /-- Horner evaluation of `Σ aᵢ xⁱ`: one multiplication per coefficient, each
 depending on the last, so `n` rounds.  The honest cost of the schedule you
 wrote; a parallel-prefix version would be `log n`. -/
-def horner [Has (Lin F) fs] [Has (Mult F) fs] [OfNat F 0] (x : D.sh F) : List (D.sh F) → Prog fs.ops D (D.sh F)
+def horner [Has (Lin F) fs] [Has (Mult F) fs] [OfNat F 0] (x : D.share F) : List (D.share F) → Prog fs.ops D (D.share F)
   | [] => const 0
   | a :: as => do
     let r ← horner x as
@@ -87,7 +87,7 @@ def horner [Has (Lin F) fs] [Has (Mult F) fs] [OfNat F 0] (x : D.sh F) : List (D
 
 /-- Triples from random shares and one secure multiplication: the offline phase as a program. -/
 def tripleFromRand [Fintype F] [Inhabited F] [Has (Rand F) fs] [Has (Mult F) fs] :
-    Prog fs.ops D (D.sh F × D.sh F × D.sh F) := do
+    Prog fs.ops D (D.share F × D.share F × D.share F) := do
   let a ← rand F
   let b ← rand F
   let c ← mul a b
@@ -95,9 +95,9 @@ def tripleFromRand [Fintype F] [Inhabited F] [Has (Rand F) fs] [Has (Mult F) fs]
 
 /-- A public coin used as a challenge: a random linear combination of shares. -/
 def randomCombination [Fintype F] [Inhabited F] [OfNat F 0] [Has (Lin F) fs] [Has (PubCoin F) fs]
-    (xs : List (D.sh F)) : Prog fs.ops D (D.sh F) := do
+    (xs : List (D.share F)) : Prog fs.ops D (D.share F) := do
   let r ← coin F
-  let rec go (p : D.cl F) : List (D.sh F) → Prog fs.ops D (D.sh F)
+  let rec go (p : D.clear F) : List (D.share F) → Prog fs.ops D (D.share F)
     | [] => const 0
     | x :: xs => do
       let t ← smul p x

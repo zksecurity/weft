@@ -94,7 +94,7 @@ noncomputable def costDist {ι : Interface} {D : Domain} {C α : Type} [AddMonoi
   (fun r => r.2.cost) <$> run M K c
 
 theorem costDist_look {ι : Interface} {C α T : Type} [AddMonoid C] (M : Model ι .ideal PMF) (K : CostModel ι C)
-    (c : Domain.ideal.cl T) (k : T → Prog ι .ideal α) : costDist M K (.look c k) = costDist M K (k c) := by
+    (c : Domain.ideal.clear T) (k : T → Prog ι .ideal α) : costDist M K (.look c k) = costDist M K (k c) := by
   simp [costDist, run_look_ideal]
 
 /-- A handler is *priced* under `K` if each request's program has a cost

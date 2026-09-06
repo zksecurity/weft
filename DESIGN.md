@@ -76,7 +76,7 @@ Clean (the Lean 4 ZK framework) gets several things right that we copy:
 | Clean                                             | Here                                                              |
 |---------------------------------------------------|-------------------------------------------------------------------|
 | Circuit is a monadic DSL; the monad records ops   | Same: `Prog ι D` is a free monad over an interface `ι`            |
-| `ProvableType` maps structured Lean types to vars | `Domain` with an abstract share constructor `D.sh`; response `Shape`s (§2.1, §3.3) |
+| `ProvableType` maps structured Lean types to vars | `Domain` with an abstract share constructor `D.share`; response `Shape`s (§2.1, §3.3) |
 | `FormalCircuit` bundles circuit + assumptions + spec + proofs | `Realization` bundles implementation + precondition + simulator + equation; the spec is a functionality (§7) |
 | Subcircuits with local proofs compose             | Realisations compose (`Realization.comp`); cost and privacy lemmas are compositional (§5) |
 
@@ -96,13 +96,13 @@ opened value) has a clear shape, a secret input is a share, so the
 public part of a request is structural (`Interface.lean`, `Shape.lean`):
 
 ```lean
-structure Domain where (sh cl : Type → Type) (app : Applicative cl)   -- a share of a `T`; a clear `T`
+structure Domain where (sh clear : Type → Type) (apply : Applicative clear)   -- a share of a `T`; a clear `T`
 abbrev Domain.ideal   : Domain := ⟨fun T => T, fun T => T, _⟩   -- a share is its value, a clear value is plain
-abbrev Domain.erase D : Domain := ⟨fun _ => Unit, D.cl, D.app⟩ -- what the adversary sees of a request in `D`
+abbrev Domain.erase D : Domain := ⟨fun _ => Unit, D.clear, D.apply⟩ -- what the adversary sees of a request in `D`
 abbrev Domain.timed   : Domain := ⟨Timed, Timed, _⟩            -- everything carries its ready time (§3.5)
 
 inductive Shape | unit | clear (T : Type) | share (T : Type) | prod (a b : Shape) | vec (n : Nat) (a : Shape) | list (a : Shape)
-def Shape.interp (D : Domain) : Shape → Type          -- `share T ↦ D.sh T`, `clear T ↦ D.cl T`, …
+def Shape.interp (D : Domain) : Shape → Type          -- `share T ↦ D.share T`, `clear T ↦ D.clear T`, …
 def Shape.blank : (s : Shape) → s.interp D → s.interp .erased   -- clear parts kept, shares become `()`
 
 structure Interface where
@@ -175,19 +175,19 @@ Which of them an MPC offers, and what they cost, is again a list (§2.6).
 inductive Prog (ι : Interface) (D : Domain) : Type → Type 1 where
   | pure : α → Prog ι D α
   | call (r : Req ι D) : (Resp ι D r.op → Prog ι D α) → Prog ι D α      -- ask, then continue
-  | look (c : D.cl T) : (T → Prog ι D α) → Prog ι D α                   -- look at a clear value, then continue
+  | look (c : D.clear T) : (T → Prog ι D α) → Prog ι D α                   -- look at a clear value, then continue
 ```
 
 `call r k` sends request `r` and continues with `k` on the response.
 The continuation is arbitrary Lean code: that is where the "compute in the
 clear and insert back" happens, with no special support.  A clear value is
-a `D.cl T`, an applicative the program computes on without seeing inside
+a `D.clear T`, an applicative the program computes on without seeing inside
 (`e * d`, `f <$> c`); to branch on one, the program says `look c fun v =>
 …`, the only way to obtain a `T`.  The ideal semantics ignores `look`; the
 timed domain is where it matters (§3.5, decision 018).
 
 ```lean
-def divByOpened [Has (Lin F) fs] [Has (Reveal F) fs] [Div F] [OfNat F 1] (x d : D.sh F) : Prog fs.ops D (D.sh F) := do
+def divByOpened [Has (Lin F) fs] [Has (Reveal F) fs] [Div F] [OfNat F 1] (x d : D.share F) : Prog fs.ops D (D.share F) := do
   let dv ← reveal d           -- functionality → environment
   smul (1 / dv) x            -- clear arithmetic, then environment → functionality
 ```
@@ -206,12 +206,12 @@ and it is what composition means (§5).
 
 ### 2.3 Why programs cannot cheat
 
-Programs are polymorphic in the domain `D`. Since `D.sh T` is an abstract
-type, the only functions from `D.sh T` to anything are the ones the
+Programs are polymorphic in the domain `D`. Since `D.share T` is an abstract
+type, the only functions from `D.share T` to anything are the ones the
 interface offers. A program cannot look at a share; it can only ask the
 functionality to open it, and opening is exactly what the trace records.
 Lean's typing enforces this for a computable `def`: comparing two shares
-would need a `DecidableEq (D.sh T)` instance that does not exist, and
+would need a `DecidableEq (D.share T)` instance that does not exist, and
 supplying one classically makes the definition noncomputable. What typing
 does not catch (`noncomputable`, `unsafe`, `implemented_by`, `partial`, or
 a parameter of the certificate that hands in a way to inspect shares) the
@@ -228,15 +228,15 @@ evaluation (`Examples/Basic.lean`):
 
 ```lean
 /-- ⟨xs, ys⟩ + c.  One round: the products in parallel, then free linear operations. -/
-def dotPlus [Has (Lin F) fs] [Has (Mult F) fs] [OfNat F 0] (xs ys : List (D.sh F)) (c : F) :
-    Prog fs.ops D (D.sh F) := do
+def dotPlus [Has (Lin F) fs] [Has (Mult F) fs] [OfNat F 0] (xs ys : List (D.share F)) (c : F) :
+    Prog fs.ops D (D.share F) := do
   let ps ← (xs.zip ys).mapM fun p => mul p.1 p.2
   let s ← sumAll ps
   let k ← const c
   add s k
 
 /-- Σ aᵢ xⁱ by Horner: each multiplication depends on the last, so n rounds. -/
-def horner [Has (Lin F) fs] [Has (Mult F) fs] [OfNat F 0] (x : D.sh F) : List (D.sh F) → Prog fs.ops D (D.sh F)
+def horner [Has (Lin F) fs] [Has (Mult F) fs] [OfNat F 0] (x : D.share F) : List (D.share F) → Prog fs.ops D (D.share F)
   | [] => const 0
   | a :: as => do
     let r ← horner x as
@@ -246,7 +246,7 @@ def horner [Has (Lin F) fs] [Has (Mult F) fs] [OfNat F 0] (x : D.sh F) : List (D
 
 Things to notice:
 
-* `D.sh F` is opaque, so `mul`, `add`, `const` are the only things that can
+* `D.share F` is opaque, so `mul`, `add`, `const` are the only things that can
   happen to a share; `c : F` is a clear value the environment supplies,
   and it travels in the operation (`Lin.Op.const c`), where the adversary
   sees it.
@@ -279,12 +279,12 @@ the strategies (`Examples/Gallery.lean`):
 abbrev Inversion (F : Type) [Inv F] : Functionality                 -- native inversion: inv : [F] → share F
 
 class HasInv (F : Type) (fs : Hybrid) (D : Domain) where            -- "some way to invert"
-  inv : D.sh F → Prog fs.ops D (D.sh F)
+  inv : D.share F → Prog fs.ops D (D.share F)
 
 instance (priority := high) [Inv F] [Has (Inversion F) fs] : HasInv F fs D := ⟨fun x => nativeInv x⟩
 instance [OfNat F 1] [Has (Lin F) fs] [Has (Mult F) fs] : HasInv F fs D := ⟨fun x => expPublic x 254⟩
 
-def sbox [HasInv F fs D] (affine : D.sh F → Prog fs.ops D (D.sh F)) (x : D.sh F) : Prog fs.ops D (D.sh F) := do
+def sbox [HasInv F fs D] (affine : D.share F → Prog fs.ops D (D.share F)) (x : D.share F) : Prog fs.ops D (D.share F) := do
   let y ← HasInv.inv x
   affine y
 ```
@@ -407,8 +407,8 @@ constraint next to its `Has` bounds; with Mathlib that is `Field F`
 
 ```lean
 /-- Inversion by masking: `1/x = s / open(x·s)`.  Division in the clear, and coins. -/
-def invert [Has (Lin F) fs] [Has (Mult F) fs] [Has (Reveal F) fs] [Has (RandNZ F) fs] (x : D.sh F) :
-    Prog fs.ops D (D.sh F) := do
+def invert [Has (Lin F) fs] [Has (Mult F) fs] [Has (Reveal F) fs] [Has (RandNZ F) fs] (x : D.share F) :
+    Prog fs.ops D (D.share F) := do
   let s ← randNZ F
   let v ← mul x s
   let m ← reveal v
@@ -435,7 +435,7 @@ functionality for what the proof needs (decision 011).
 
 ### 2.9 Several fields: generic over the field, switching as a functionality
 
-Fields are not named or numbered. Shares are a type constructor, `D.sh F`
+Fields are not named or numbered. Shares are a type constructor, `D.share F`
 is "a share of an `F`", every functionality is instantiated at a field
 type, the field's algebra is a typeclass on `F`, and switching is one more
 functionality over two field *types* (`Examples/MultiField.lean`,
@@ -446,9 +446,9 @@ abbrev Switch (F G : Type) [Encodable F] [NatCast G] : Functionality   -- switch
 abbrev EdaBit (F : Type) [NatCast F] (m : Nat) : Functionality         -- get : [] → share F × vec m (share GF2)
 abbrev DaBit  (F : Type) [NatCast F] : Functionality                   -- get : [] → share F × share GF2
 
-def mul    [Mul F] [Has (Mult F) fs] (a b : D.sh F) : Prog fs.ops D (D.sh F)
-def rand   (F) [Fintype F] [Inhabited F] [Has (Rand F) fs] : Prog fs.ops D (D.sh F)    -- nothing fixes the field: pass it
-def switch (G) [Encodable F] [NatCast G] [Has (Switch F G) fs] (a : D.sh F) : Prog fs.ops D (D.sh G)
+def mul    [Mul F] [Has (Mult F) fs] (a b : D.share F) : Prog fs.ops D (D.share F)
+def rand   (F) [Fintype F] [Inhabited F] [Has (Rand F) fs] : Prog fs.ops D (D.share F)    -- nothing fixes the field: pass it
+def switch (G) [Encodable F] [NatCast G] [Has (Switch F G) fs] (a : D.share F) : Prog fs.ops D (D.share G)
 ```
 
 A program is generic over the fields it touches; `let a ← switch G b`
@@ -457,7 +457,7 @@ elaborates only if the hybrid lists the switch from `b`'s field to `G`:
 ```lean
 def mulThenCompare (F G : Type) [CommRing F] [Encodable F] [CommRing G] [Encodable G] [LT G] [DecidableRel …]
     [Has (Mult F) fs] [Has (Switch F G) fs] [Has (Cmp G) fs] [Has (Switch G F) fs]
-    (a b c : D.sh F) : Prog fs.ops D (D.sh F) := do
+    (a b c : D.share F) : Prog fs.ops D (D.share F) := do
   let ab ← mul a b                              -- in F
   let ab' ← switch G ab                         -- both conversions independent: one round
   let c' ← switch G c
@@ -648,7 +648,7 @@ Since a hybrid is a list of functionalities and not of interfaces, the
 type of a program,
 
 ```lean
-def mulBeaver [Has (Lin F) fs] [Has (Reveal F) fs] [Has (MulTriple F) fs] (x y : D.sh F) : Prog fs.ops D (D.sh F)
+def mulBeaver [Has (Lin F) fs] [Has (Reveal F) fs] [Has (MulTriple F) fs] (x y : D.share F) : Prog fs.ops D (D.share F)
 ```
 
 reads "written using the linear, reveal and triple *functionalities*",
@@ -853,7 +853,7 @@ projections, not patterns, and the scheduling state is threaded by
 `StateT`'s own bind; either choice the other way makes evaluation by `rfl`
 exponential in the number of requests.)
 
-Structured share types (`Fin n → D.sh F`, records of shares such as
+Structured share types (`Fin n → D.share F`, records of shares such as
 `Point D F` in the gallery) need nothing new on the program side: they are
 Lean values holding handles. Responses of operations are described by a
 `Shape` (`unit`, `clear T`, `share T`, products, vectors, lists), so that
@@ -984,14 +984,14 @@ With this, sequential `do`-code gets the parallel count and no `∥` is
 needed anywhere:
 
 ```lean
-def mul4seq [Has (Mult F) fs] (a b c d : D.sh F) : Prog fs.ops D (D.sh F) := do
+def mul4seq [Has (Mult F) fs] (a b c d : D.share F) : Prog fs.ops D (D.share F) := do
   let ab ← mul a b
   let cd ← mul c d          -- independent of ab: the pass sees it
   mul ab cd
 -- delay 2 (rfl); the chain a·b·c·d is 3; the product tree with plain binds is its depth
 ```
 
-Clear values are timed like shares (`Domain.timed.cl := Timed`), and
+Clear values are timed like shares (`Domain.timed.clear := Timed`), and
 `Timed` is an applicative that takes the latest input, so a value revealed
 at round 2, multiplied in the clear and inserted back with `const`,
 carries round 2 into whatever uses it as an ordinary data edge
@@ -1352,8 +1352,8 @@ over `κ`. The library does this for multiplication
 (`Examples/Beaver.lean`, `Examples/Privacy.lean`):
 
 ```lean
-def mulBeaverFrom [Has (Lin F) fs] [Has (Reveal F) fs] (triple : Prog fs.ops D (D.sh F × D.sh F × D.sh F))
-    (x y : D.sh F) : Prog fs.ops D (D.sh F) := do
+def mulBeaverFrom [Has (Lin F) fs] [Has (Reveal F) fs] (triple : Prog fs.ops D (D.share F × D.share F × D.share F))
+    (x y : D.share F) : Prog fs.ops D (D.share F) := do
   let (a, b, c) ← triple
   let u ← sub x a
   let e ← reveal u              -- e = x − a
@@ -1446,7 +1446,7 @@ The double sharing row makes a general point: in the black box, `[r]_t` and
 observable there. If a program must respect degrees (it may only add
 same-degree shares, it needs a `reduce` operation to go from `2t` to `t`),
 index the share type by the degree (a phantom parameter on the clear type,
-so that `D.sh` tells them apart) and type the operations accordingly. The
+so that `D.share` tells them apart) and type the operations accordingly. The
 ideal model still identifies the values; the types stop the program from
 misusing them. The same move handles authenticated versus unauthenticated
 shares, or shares over different rings.
@@ -1459,7 +1459,7 @@ in the sense of §5:
 
 ```lean
 /-- Triples from random shares and one secure multiplication. -/
-def tripleFromRand [Has (Rand F) fs] [Has (Mult F) fs] : Prog fs.ops D (D.sh F × D.sh F × D.sh F) := do
+def tripleFromRand [Has (Rand F) fs] [Has (Mult F) fs] : Prog fs.ops D (D.share F × D.share F × D.share F) := do
   let a ← rand F
   let b ← rand F                  -- independent: one round
   let c ← mul a b
@@ -1482,7 +1482,7 @@ are described here and not in the examples):
 
 ```lean
 /-- Random bit (odd characteristic): open r², take a square root. -/
-def bitFromRand (sqrt : F → F) : Prog fs.ops D (D.sh F) := do
+def bitFromRand (sqrt : F → F) : Prog fs.ops D (D.share F) := do
   let r ← rand F
   let s ← mul r r
   let v ← reveal s                       -- opens r², uniform on squares, independent of r's sign
@@ -1492,7 +1492,7 @@ def bitFromRand (sqrt : F → F) : Prog fs.ops D (D.sh F) := do
   smul (1/2) u                          -- (±1 + 1)/2 ∈ {0, 1}
 
 /-- Random share with its inverse (Bar-Ilan–Beaver): open r·s for fresh r, s. -/
-def randInv : Prog fs.ops D (D.sh F × D.sh F) := do
+def randInv : Prog fs.ops D (D.share F × D.share F) := do
   let r ← randNZ F
   let s ← randNZ F
   let p ← mul r s
@@ -1531,7 +1531,7 @@ noncomputable def model (F : Type) : Model (ops F) .ideal PMF := ⟨fun _ => (un
 end PubCoin
 
 /-- A random linear combination of shares, challenge chosen after the shares exist. -/
-def randomCombination [Has (Lin F) fs] [Has (PubCoin F) fs] (xs : List (D.sh F)) : Prog fs.ops D (D.sh F) := do
+def randomCombination [Has (Lin F) fs] [Has (PubCoin F) fs] (xs : List (D.share F)) : Prog fs.ops D (D.share F) := do
   let r ← coin F
   …                                         -- Σ rⁱ · xᵢ, all linear
 ```
@@ -1591,7 +1591,7 @@ both the right program and what lets evaluation run on symbolic inputs:
 ```lean
 /-- Ripple-carry addition of a public `c` to shared bits: xor free, and one round; `m` rounds. -/
 def addPublic [Has (Lin GF2) fs] [Has (Mult GF2) fs] :
-    (m : Nat) → (Fin m → GF2) → (Fin m → D.sh GF2) → D.sh GF2 → Prog fs.ops D (Fin m → D.sh GF2)
+    (m : Nat) → (Fin m → GF2) → (Fin m → D.share GF2) → D.share GF2 → Prog fs.ops D (Fin m → D.share GF2)
   | 0, _, _, _ => pure fun i => i.elim0
   | m + 1, c, r, carry => do
     let t ← add (r 0) carry                   -- r₀ ⊕ carry
@@ -1606,7 +1606,7 @@ def addPublic [Has (Lin GF2) fs] [Has (Mult GF2) fs] :
 /-- A2B: reveal `x - r`, then `x = (x - r) + r` bit by bit. -/
 def a2b (F : Type) [CommRing F] [Encodable F] (m : Nat) (coin : Nat := 0)
     [Has (EdaBit F m coin) fs] [Has (Lin F) fs] [Has (Reveal F) fs] [Has (Lin GF2) fs] [Has (Mult GF2) fs]
-    (x : D.sh F) : Prog fs.ops D (Fin m → D.sh GF2) := do
+    (x : D.share F) : Prog fs.ops D (Fin m → D.share GF2) := do
   let (r, rbits) ← edabit F m coin
   let d ← sub x r
   let c ← reveal d                            -- the only revealed value

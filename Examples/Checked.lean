@@ -26,11 +26,11 @@ not generic in the domain (its type fixes `Domain.ideal`). -/
 def peekIdeal {fs : Hybrid} [Has (Lin F) fs] (x : F) : Prog fs.ops .ideal F :=
   if x = 0 then do let _ ← const (0 : F); pure x else pure x
 
--- A domain-generic version needs decidable equality on `D.sh F`, which no
+-- A domain-generic version needs decidable equality on `D.share F`, which no
 -- program has; supplying it classically makes the definition noncomputable.
-noncomputable def peek {fs : Hybrid} {D : Domain} [Has (Lin F) fs] (x : D.sh F) : Prog fs.ops D (D.sh F) := by
+noncomputable def peek {fs : Hybrid} {D : Domain} [Has (Lin F) fs] (x : D.share F) : Prog fs.ops D (D.share F) := by
   classical
-  exact if x = x then pure x else do let _ ← const (0 : D.cl F); pure x
+  exact if x = x then pure x else do let _ ← const (0 : D.clear F); pure x
 
 -- `program` refuses the classical implementation.
 /--
@@ -46,13 +46,13 @@ program peekReal : Realization (Keep F) (Std F) where
 
 -- ...and a certificate whose parameters hand it a way to inspect shares.
 /--
-error: program: parameter `peekAt` mentions a domain; its type is `(D : Domain) → D.sh F → Bool`.
+error: program: parameter `peekAt` mentions a domain; its type is `(D : Domain) → D.share F → Bool`.
 A certificate's implementation must be generic in the domain and may not receive anything that inspects shares.
 ---
 warning: declaration uses `sorry`
 -/
 #guard_msgs in
-program peekParam (peekAt : (D : Domain) → D.sh F → Bool) : Realization (Keep F) (Std F) where
+program peekParam (peekAt : (D : Domain) → D.share F → Bool) : Realization (Keep F) (Std F) where
   impl D r := if peekAt D r.args.1 then pure r.args.1 else pure r.args.1
   Sim _ := pure []
   real := sorry

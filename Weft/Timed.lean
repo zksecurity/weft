@@ -14,7 +14,7 @@ computed, not proved; and each operation adds its communication to the
 counter.  Delay and communication are read off one scheduled run
 (`delayOn`, `commOn`).
 
-Clear values are timed too (`Domain.timed.cl := Timed`): an opened value
+Clear values are timed too (`Domain.timed.clear := Timed`): an opened value
 carries the round at which it was opened, computation on clear values
 takes the latest of its inputs, and a scalar computed from an opened
 value is an ordinary data edge.  The one piece of state, `now`, is the
@@ -76,7 +76,7 @@ abbrev Domain.timed : Domain := ⟨Timed, Timed, Timed.applicative⟩
 
 /-- A value available at round 0. -/
 abbrev Timed.now {T : Type} (x : T) : Timed T := ⟨x, 0⟩
-/-- A program-time value is available at round 0 (`Domain.timed.cl T` unfolds
+/-- A program-time value is available at round 0 (`Domain.timed.clear T` unfolds
 to `Timed T`, which the generic coercion does not match). -/
 instance {T : Type} : Coe T (Timed T) := ⟨Timed.now⟩
 

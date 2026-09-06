@@ -27,21 +27,21 @@ section Programs
 variable {F : Type} [Add F] [Mul F] [Sub F] {fs : Hybrid} {D : Domain}
 
 /-- Written sequentially; `ab` and `cd` do not depend on each other. -/
-def mul4seq [Has (Mult F) fs] (a b c d : D.sh F) : Prog fs.ops D (D.sh F) := do
+def mul4seq [Has (Mult F) fs] (a b c d : D.share F) : Prog fs.ops D (D.share F) := do
   let ab ← mul a b
   let cd ← mul c d
   mul ab cd
 
 /-- A genuinely sequential chain. -/
-def chain3 [Has (Mult F) fs] (a b c d : D.sh F) : Prog fs.ops D (D.sh F) := do
+def chain3 [Has (Mult F) fs] (a b c d : D.share F) : Prog fs.ops D (D.share F) := do
   let x ← mul a b
   let y ← mul x c
   mul y d
 
 /-- Reveal, compute in the clear, insert back: the opened value carries its
 time through the clear computation and back in through `const`. -/
-def revealThenUse [Has (Lin F) fs] [Has (Mult F) fs] [Has (Reveal F) fs] (a b c : D.sh F) (k : D.cl F) :
-    Prog fs.ops D (D.sh F) := do
+def revealThenUse [Has (Lin F) fs] [Has (Mult F) fs] [Has (Reveal F) fs] (a b c : D.share F) (k : D.clear F) :
+    Prog fs.ops D (D.share F) := do
   let p ← mul a b
   let v ← reveal p
   let t ← const (v * k)
@@ -49,20 +49,20 @@ def revealThenUse [Has (Lin F) fs] [Has (Mult F) fs] [Has (Reveal F) fs] (a b c 
 
 /-- Two openings in sequence: one round.  Nothing waits for an opened value
 unless it uses it. -/
-def revealBoth [Has (Reveal F) fs] (v₁ v₂ : D.sh F) : Prog fs.ops D (D.cl F × D.cl F) := do
+def revealBoth [Has (Reveal F) fs] (v₁ v₂ : D.share F) : Prog fs.ops D (D.clear F × D.clear F) := do
   let a ← reveal v₁
   let b ← reveal v₂
   pure (a, b)
 /-- The same, but the program looks at the first value before issuing the
 second opening: the second is issued when the first is known, so two rounds. -/
-def revealBothLook [Has (Reveal F) fs] (v₁ v₂ : D.sh F) : Prog fs.ops D (D.cl F × D.cl F) := do
+def revealBothLook [Has (Reveal F) fs] (v₁ v₂ : D.share F) : Prog fs.ops D (D.clear F × D.clear F) := do
   let a ← reveal v₁
   Prog.look a fun _ => do
     let b ← reveal v₂
     pure (a, b)
 /-- Using the first opened value as a scalar while the second is still
 opening: still one round, a data dependency on the first only. -/
-def revealUseReveal [Has (Lin F) fs] [Has (Reveal F) fs] (v₁ v₂ x : D.sh F) : Prog fs.ops D (D.sh F × D.cl F) := do
+def revealUseReveal [Has (Lin F) fs] [Has (Reveal F) fs] (v₁ v₂ x : D.share F) : Prog fs.ops D (D.share F × D.clear F) := do
   let a ← reveal v₁
   let b ← reveal v₂
   let y ← smul a x
@@ -117,8 +117,8 @@ behaviour only.  What it costs is the cost model's business. -/
 abbrev MulAdd : Functionality := .ofEval (MulAdd.ops F) (MulAdd.eval F)
 
 /-- Its implementation over the black box: `c` is only needed after the multiplication. -/
-def mulAddImpl {fs : Hybrid} {D : Domain} [Has (Lin F) fs] [Has (Mult F) fs] (a b c : D.sh F) :
-    Prog fs.ops D (D.sh F) := do
+def mulAddImpl {fs : Hybrid} {D : Domain} [Has (Lin F) fs] [Has (Mult F) fs] (a b c : D.share F) :
+    Prog fs.ops D (D.share F) := do
   let p ← mul a b
   add p c
 
@@ -132,13 +132,13 @@ program mulAddReal : Realization (MulAdd F) (Std F) where
     rfl
 
 /-- A caller in which `c` arrives late: `c = x·y` is ready at round 1. -/
-def caller {fs : Hybrid} {D : Domain} [Has (MulAdd F) fs] [Has (Mult F) fs] (a b x y : D.sh F) :
-    Prog fs.ops D (D.sh F) := do
+def caller {fs : Hybrid} {D : Domain} [Has (MulAdd F) fs] [Has (Mult F) fs] (a b x y : D.share F) :
+    Prog fs.ops D (D.share F) := do
   let c ← mul x y
   Prog.op (F := MulAdd F) ⟨.mulAdd, (a, b, c, ())⟩
 /-- The same caller with the operation inlined. -/
-def callerInlined {fs : Hybrid} {D : Domain} [Has (Lin F) fs] [Has (Mult F) fs] (a b x y : D.sh F) :
-    Prog fs.ops D (D.sh F) := do
+def callerInlined {fs : Hybrid} {D : Domain} [Has (Lin F) fs] [Has (Mult F) fs] (a b x y : D.share F) :
+    Prog fs.ops D (D.share F) := do
   let c ← mul x y
   mulAddImpl F a b c
 

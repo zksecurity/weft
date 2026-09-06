@@ -44,8 +44,8 @@ section
 variable (F : Type) [Field F] [Fintype F] [Inhabited F]
 
 /-- The program: a public coin, then linear operations. -/
-def randComb2 {fs : Hybrid} {D : Domain} [Has (Lin F) fs] [Has (PubCoin F) fs] (x₀ x₁ : D.sh F) :
-    Prog fs.ops D (D.sh F) := do
+def randComb2 {fs : Hybrid} {D : Domain} [Has (Lin F) fs] [Has (PubCoin F) fs] (x₀ x₁ : D.share F) :
+    Prog fs.ops D (D.share F) := do
   let r ← coin F
   let t ← smul r x₁
   add x₀ t

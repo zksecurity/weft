@@ -105,7 +105,7 @@ abbrev Keep : Functionality :=
 /-- Open the secret, then return the same share.  With the old definition,
 which handed the simulator the output, this was "hiding" at the ideal
 domain (report, Issue 1). -/
-def openKeep {fs : Hybrid} {D : Domain} [Has (Reveal F) fs] (x : D.sh F) : Prog fs.ops D (D.sh F) := do
+def openKeep {fs : Hybrid} {D : Domain} [Has (Reveal F) fs] (x : D.share F) : Prog fs.ops D (D.share F) := do
   let _ ← reveal x
   pure x
 

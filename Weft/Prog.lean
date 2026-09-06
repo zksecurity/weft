@@ -14,13 +14,13 @@ namespace Weft
 /-- The free monad over an interface: `pure`; one request and a
 continuation on its response; or one look at a clear value and a
 continuation on what it holds.  `look` is the only way to turn a
-`D.cl T` into a `T`, so it is where a program's control flow depends on
+`D.clear T` into a `T`, so it is where a program's control flow depends on
 an opened value, and the timed domain sees it (`Weft.Timed`).  The ideal
 semantics ignores it. -/
 inductive Prog (ι : Interface) (D : Domain) : Type → Type 1 where
   | pure {α : Type} : α → Prog ι D α
   | call {α : Type} (r : Req ι D) : (Resp ι D r.op → Prog ι D α) → Prog ι D α
-  | look {α T : Type} (c : D.cl T) : (T → Prog ι D α) → Prog ι D α
+  | look {α T : Type} (c : D.clear T) : (T → Prog ι D α) → Prog ι D α
 
 namespace Prog
 variable {ι κ : Interface} {D : Domain} {α β : Type}
@@ -39,7 +39,7 @@ instance : Monad (Prog ι D) where
 @[simp] theorem bind_pure' (a : α) (f : α → Prog ι D β) : Prog.bind (.pure a) f = f a := rfl
 @[simp] theorem bind_call (r : Req ι D) (k : Resp ι D r.op → Prog ι D α) (f : α → Prog ι D β) :
     Prog.bind (.call r k) f = .call r fun y => Prog.bind (k y) f := rfl
-@[simp] theorem bind_look {T : Type} (c : D.cl T) (k : T → Prog ι D α) (f : α → Prog ι D β) :
+@[simp] theorem bind_look {T : Type} (c : D.clear T) (k : T → Prog ι D α) (f : α → Prog ι D β) :
     Prog.bind (.look c k) f = .look c fun v => Prog.bind (k v) f := rfl
 
 theorem bind_pure (c : Prog ι D α) : Prog.bind c .pure = c := by
@@ -72,7 +72,7 @@ def handle (h : (r : Req ι D) → Prog κ D (Resp ι D r.op)) : Prog ι D α �
 @[simp] theorem handle_call (h : (r : Req ι D) → Prog κ D (Resp ι D r.op)) (r : Req ι D)
     (k : Resp ι D r.op → Prog ι D α) :
     handle h (.call r k) = bind (h r) fun y => handle h (k y) := rfl
-@[simp] theorem handle_look (h : (r : Req ι D) → Prog κ D (Resp ι D r.op)) {T : Type} (c : D.cl T)
+@[simp] theorem handle_look (h : (r : Req ι D) → Prog κ D (Resp ι D r.op)) {T : Type} (c : D.clear T)
     (k : T → Prog ι D α) :
     handle h (.look c k) = .look c fun v => handle h (k v) := rfl
 
