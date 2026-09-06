@@ -33,11 +33,6 @@ instance {n : ℕ} [NeZero n] : Encodable (ZMod n) where
   decode k := some (k : ZMod n)
   encodek a := by simp
 
-/-- `𝔽₂` is `ZMod 2`: `+` is xor, `*` is and, literals `0` and `1`. -/
-abbrev GF2 := ZMod 2
-/-- A bit, as a natural number. -/
-def GF2.toNat (c : GF2) : ℕ := c.val
-
 /-! ### Switching, edaBits, daBits: functionalities across two fields -/
 
 namespace SwitchF
@@ -53,9 +48,6 @@ end SwitchF
 
 /-- Share conversion from `F` to `G`. -/
 abbrev Switch (F G : Type) [Encodable F] [NatCast G] : Functionality := .ofEval (SwitchF.ops F G) (SwitchF.eval F G)
-
-/-- The `m` low bits of `n` as elements of `𝔽₂`, least significant first. -/
-def bitsOf (m : Nat) (n : Nat) : Fin m → GF2 := fun i => if n.testBit i then 1 else 0
 
 namespace EdaBitF
 inductive Op where | get

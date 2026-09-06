@@ -10,6 +10,7 @@ import Weft.PMF
 import Weft.Std.Arith
 import Weft.Std.Random
 import Weft.Std.Hybrids
+import Weft.Std.Boolean
 import Weft.Realization
 import Weft.Cost
 import Weft.Statistical
