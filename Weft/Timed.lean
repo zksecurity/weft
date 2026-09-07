@@ -1,42 +1,26 @@
 import Weft.Model
 
 /-!
-# Cost: the timed domain
+# Timing and communication
 
-A functionality is behaviour only.  Cost appears when a hybrid is
-*instantiated* in a model that does the behaviour and something more:
-here, a model in the scheduling monad `Sched`, where every value, share
-or clear, carries the round at which it becomes available, and the state
-carries the program's clock and a communication counter.  An operation's
-result is available at `max (operand times, now) + latency`, so the delay
-of a program is the longest path through its dependency hypergraph,
-computed, not proved; and each operation adds its communication to the
-counter.  Delay and communication are read off one scheduled run
-(`delayOn`, `commOn`).
+Both shared and clear values carry an availability round.
+The availability round under `Model.timed` is:
+`max (operand times, clock) + latency`.
+The operation also adds its communication cost to the counter.
 
-Clear values are timed too (`Domain.timed.clear := Timed`): an opened value
-carries the round at which it was opened, computation on clear values
-takes the latest of its inputs, and a scalar computed from an opened
-value is an ordinary data edge.  The one piece of state, `now`, is the
-round at which the program is issuing requests: it advances only when
-the program looks at a clear value (`Prog.look`), since what is issued
-after a look cannot be issued before the value is known.  A program that
-never looks is a circuit, and `now` stays at 0.
+Clear-value arithmetic takes the latest input time.
+`Prog.look` advances the clock to the value's availability round,
+since subsequent requests may depend on its contents.
+Without `look`, independent requests can start in the same round.
 
-A timed model is a model of an *interface*, chosen by the cost model that
-instantiates the hybrid (`Weft.MPC`), never a property of a
-functionality.  One generic timed model serves every interface
-(`Model.timed`): from an evaluation model and a price per operation it
-reads the operand times and the response shape; a functionality at a
-price is then an MPC entry (`Functionality.priced`).  Any other model of
-the interface may be used instead, a per-input profile for instance.  The
-exact instantiation of an abstract operation under a realisation is to
-run the implementation (`Realization.timed`, `Weft.Cost`).
+An MPC chooses a timed model for each functionality (`Weft.MPC`).
+`Model.timed` uses a price per operation;
+`Realization.timed` runs the implementation to obtain its cost (`Weft.Cost`).
+`delayOn` and `commOn` extract delay and communication from a scheduled run.
 -/
 namespace Weft
 
-/-- The price of an operation under a cost model: its latency (rounds)
-and its communication. -/
+/-- Operation latency in rounds and communication cost. -/
 structure Price where
   delay : Nat
   comm : Nat
@@ -44,16 +28,16 @@ structure Price where
 
 /-- Scheduling state: the program's clock and the communication so far. -/
 structure Clock where
-  /-- `now`: the round at which the program is issuing requests.  Advanced
-  by `Prog.look` only. -/
+  /-- Earliest round for issuing requests.
+  `Prog.look` advances it when control flow depends on a clear value. -/
   clock : Nat := 0
   /-- Communication counter. -/
   comm : Nat := 0
 
-/-- The scheduling monad: evaluation with a clock.  `StateT`'s `bind` takes
-the state pair apart by a pattern, which forces a request's step once and
-binds its components; a projection-based bind re-runs the step at every
-later use of a response, which is exponential in the number of requests. -/
+/-- Evaluation with scheduling state.
+`StateT.bind` matches the state pair, forcing each step once.
+A projection-based bind repeats the step at later uses of its response,
+causing exponential reduction time. -/
 abbrev Sched : Type → Type := StateT Clock Id
 
 /-- A value together with the round at which it is available. -/
@@ -62,9 +46,9 @@ structure Timed (T : Type) where
   time : Nat
 
 namespace Timed
-/-- Apply a timed function to a timed argument: ready when both are. -/
+/-- Apply the function when both it and its argument are available. -/
 def seq {A B : Type} (f : Timed (A → B)) (x : Timed A) : Timed B := ⟨f.val x.val, max f.time x.time⟩
-/-- Timed values combine by taking the latest input. -/
+/-- Propagate the latest input time through clear-value computation. -/
 abbrev applicative : Applicative Timed where
   map f x := ⟨f x.val, x.time⟩
   pure x := ⟨x, 0⟩
@@ -76,11 +60,11 @@ abbrev Domain.timed : Domain := ⟨Timed, Timed, Timed.applicative⟩
 
 /-- A value available at round 0. -/
 abbrev Timed.now {T : Type} (x : T) : Timed T := ⟨x, 0⟩
-/-- A program-time value is available at round 0 (`Domain.timed.clear T` unfolds
-to `Timed T`, which the generic coercion does not match). -/
+/-- Embed a value at round 0.
+The generic coercion does not match the unfolded type `Timed T`. -/
 instance {T : Type} : Coe T (Timed T) := ⟨Timed.now⟩
 
-/-- Looking at a clear value advances the program's clock to its time. -/
+/-- Wait until the clear value is available. -/
 instance : Look .timed Sched := ⟨fun c s => (c.val, { s with clock := max s.clock c.time })⟩
 
 namespace Shape
@@ -94,7 +78,7 @@ def untime : (s : Shape) → s.interp .timed → s.interp .ideal
   | vec _ a, f => fun i => a.untime (f i)
   | list a, xs => xs.map a.untime
 
-/-- Time every share of a response at `t`. -/
+/-- Set every shared and clear component's availability round to `t`. -/
 def retime (t : Nat) : (s : Shape) → s.interp .ideal → s.interp .timed
   | unit, _ => ()
   | clear _, x => ⟨x, t⟩
@@ -103,10 +87,9 @@ def retime (t : Nat) : (s : Shape) → s.interp .ideal → s.interp .timed
   | vec _ a, f => fun i => a.retime t (f i)
   | list a, xs => xs.map (a.retime t)
 
-/-- `retime`, in continuation-passing form: the shape is matched once, at
-the head, so that the continuation receives a constructor.  This is what
-keeps evaluation by `rfl` linear: a share's ready time is then one
-projection away, instead of a shape dispatch at every use. -/
+/-- Continuation-passing form of `retime`.
+Matching the outer shape before calling `k` exposes the response constructor,
+so later projections need not repeat that match. -/
 def withTimed {β : Type} (t : Nat) : (s : Shape) → s.interp .ideal → (s.interp .timed → β) → β
   | unit, _, k => k ()
   | clear _, x, k => k ⟨x, t⟩
@@ -115,14 +98,14 @@ def withTimed {β : Type} (t : Nat) : (s : Shape) → s.interp .ideal → (s.int
   | vec _ a, f, k => k fun i => a.retime t (f i)
   | list a, xs, k => k (xs.map (a.retime t))
 
-/-- `withTimed` is `retime`, continued. -/
+/-- `withTimed` agrees with applying the continuation to `retime`. -/
 theorem withTimed_eq {β : Type} (t : Nat) (s : Shape) (x : s.interp .ideal) (k : s.interp .timed → β) :
     withTimed t s x k = k (retime t s x) := by
   cases s <;> rfl
 
 end Shape
 
-/-- When a timed value is ready: the latest of its components. -/
+/-- Latest availability round among the components. -/
 def Shape.ready : (s : Shape) → s.interp .timed → Nat
   | unit, _ => 0
   | clear _, x => x.time
@@ -131,17 +114,16 @@ def Shape.ready : (s : Shape) → s.interp .timed → Nat
   | vec _ a, f => (List.finRange _).foldr (fun i m => max (a.ready (f i)) m) 0
   | list a, xs => xs.foldr (fun x m => max (a.ready x) m) 0
 
-/-- When the operands are ready, at the latest. -/
+/-- Latest availability round among the operands. -/
 def Operands.ready : {ss : List Shape} → Operands .timed ss → Nat
   | [], _ => 0
   | s :: _, p => max (s.ready p.1) (ready p.2)
 /-- The operands, with their times forgotten. -/
 def Operands.untime {ss : List Shape} (a : Operands .timed ss) : Operands .ideal ss := a.map Shape.untime
 
-/-- Pay for a request.  A free request returns the state object itself
-rather than a wrapper around it: the scheduling state is threaded through
-every request, and under call-by-name evaluation a wrapper per request is
-re-forced from every later reference. -/
+/-- Add communication cost.
+Return the state unchanged when the cost is zero;
+rebuilding it would add reductions at every later use under call-by-name evaluation. -/
 def Clock.pay (c : Nat) (s : Clock) : Clock :=
   match c with
   | 0 => s
@@ -153,20 +135,22 @@ def Clock.pay (c : Nat) (s : Clock) : Clock :=
 theorem Clock.pay_comm (c : Nat) (s : Clock) : (s.pay c).comm = s.comm + c := by
   cases c <;> rfl
 
-/-- When a request can be issued: the latest of its operands and `now`. -/
+/-- Earliest issue round allowed by operand and control dependencies. -/
 def Req.base {ι : Interface} (r : Req ι .timed) (s : Clock) : Nat := max r.args.ready s.clock
 
-/-- **The generic timed model.**  From an evaluation model and a price per
-operation: the response is ready `delay` after the request can be issued,
-and the communication is paid.  Written without `let`: a bound term is
-substituted at each use under call-by-name evaluation, and a response
-computed twice per request is exponential in the run. -/
+/-- Evaluate a request and charge its operation's price.
+The response becomes available after the operand and control dependencies,
+plus the operation's latency.
+
+Match the evaluation result to share it during reduction.
+A `let` would substitute the computation at each use,
+causing repeated evaluation along the run. -/
 def Model.timed {ι : Interface} (E : Model ι .ideal Id) (p : ι.Op → Price) : Model ι .timed Sched where
   step r := fun s =>
     match (E.step ⟨r.op, r.args.untime⟩).run with
     | (y, d) => Shape.withTimed (r.base s + (p r.op).delay) (ι.cod r.op) y fun y' => ((y', d), s.pay (p r.op).comm)
 
-/-- The generic timed model, as one equation. -/
+/-- Response, disclosure and state update of a priced step. -/
 theorem Model.timed_step {ι : Interface} (E : Model ι .ideal Id) (p : ι.Op → Price) (r : Req ι .timed) (s : Clock) :
     (Model.timed E p).step r s =
       ((Shape.retime (r.base s + (p r.op).delay) (ι.cod r.op) (E.step ⟨r.op, r.args.untime⟩).run.1,
@@ -174,7 +158,7 @@ theorem Model.timed_step {ι : Interface} (E : Model ι .ideal Id) (p : ι.Op �
   simp only [Model.timed, Shape.withTimed_eq]
   rfl
 
-/-- A priced step never moves the clock. -/
+/-- Issuing a priced request leaves the control clock unchanged. -/
 theorem Model.timed_clock {ι : Interface} (E : Model ι .ideal Id) (p : ι.Op → Price) (r : Req ι .timed) (s : Clock) :
     ((Model.timed E p).step r s).2.clock = s.clock := by
   rw [Model.timed_step, Clock.pay_clock]
@@ -182,7 +166,8 @@ theorem Model.timed_clock {ι : Interface} (E : Model ι .ideal Id) (p : ι.Op �
 section Delay
 variable {ι : Interface} {α : Type}
 
-/-- A scheduled run: output and final clocks (inputs available at round 0). -/
+/-- Run from a zero clock and communication counter.
+Input availability times are supplied by the program. -/
 def Sched.run (M : Model ι .timed Sched) (c : Prog ι .timed α) : α × Clock :=
   let p := Id.run (StateT.run (Weft.run M CostModel.unit c) {})
   (p.1.1, p.2)
@@ -190,29 +175,26 @@ def Sched.run (M : Model ι .timed Sched) (c : Prog ι .timed α) : α × Clock 
 /-- The output of a scheduled run. -/
 def Sched.output (M : Model ι .timed Sched) (c : Prog ι .timed α) : α := (Sched.run M c).1
 
-/-- When a run is done: its output is available and the program has issued
-everything (`now`, which a look may have advanced past the output). -/
+/-- Latest of the output's availability round and the final control clock. -/
 def Sched.done {T : Type} (p : Timed T × Clock) : Nat := max p.1.time p.2.clock
 
-/-- The delay of a program: when its output, share or clear, is available
-and the program is done. -/
+/-- Completion round for a program returning a timed value. -/
 def delayOn {T : Type} (M : Model ι .timed Sched) (c : Prog ι .timed (Timed T)) : Nat :=
   Sched.done (Sched.run M c)
 
-/-- The delay of a program with a structured response: when every
-component is available and the program is done. -/
+/-- Completion round for a program returning a structured value. -/
 def readyOn (M : Model ι .timed Sched) (s : Shape) (c : Prog ι .timed (s.interp .timed)) : Nat :=
   max (s.ready (Sched.run M c).1) (Sched.run M c).2.clock
 
 theorem readyOn_share {T : Type} (M : Model ι .timed Sched) (c : Prog ι .timed (Timed T)) :
     readyOn M (.share T) c = delayOn M c := rfl
 
-/-- `now` at the end of a run: when the program has issued everything.  The
-delay of a program whose output is not a timed value (a plain result
-assembled from looks). -/
+/-- Final control clock.
+Use for plain results computed through `look`,
+whose dependencies are already accounted for by the clock. -/
 def Sched.now (M : Model ι .timed Sched) (c : Prog ι .timed α) : Nat := (Sched.run M c).2.clock
 
-/-- The communication of a program: what the run paid. -/
+/-- Total communication charged during the run. -/
 def commOn (M : Model ι .timed Sched) (c : Prog ι .timed α) : Nat :=
   (Sched.run M c).2.comm
 

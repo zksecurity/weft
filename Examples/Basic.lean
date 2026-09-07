@@ -1,37 +1,36 @@
 import Weft
 
 /-!
-# The basic programs, and the shape of the theorems
+# Basic arithmetic programs
 
-The programs from the design notes, written once against the
-functionalities they need and polymorphic in the domain and the hybrid.
-What one proves about each: correctness by evaluation, rounds in the timed
-domain, communication on a price list, and the view.  Privacy, where it is
-not trivial, is a realisation (`Examples.Beaver`, `Examples.Privacy`).
+Programs parameterised by their domain and required functionalities,
+with examples of output evaluation, timing, communication and views.
+Realisation proofs are in `Examples.Beaver` and `Examples.Privacy`.
 -/
 namespace Weft.Examples.Basic
 
 section Programs
 variable {F : Type} [Add F] [Mul F] [Sub F] {fs : Hybrid} {D : Domain}
 
-/-- Sum of shares: only linear operations, hence free and silent. -/
+/-- Sum shares using linear operations. -/
 def sumAll [Has (Lin F) fs] [OfNat F 0] : List (D.share F) → Prog fs.ops D (D.share F)
   | [] => const 0
   | [x] => pure x
   | x :: xs => do let s ← sumAll xs; add x s
 
-/-- Inner product: the multiplications are independent, so one round, then
-a free sum.  Nothing says "parallel": the timed domain sees it. -/
+/-- Multiply corresponding entries and sum the products.
+The multiplications are independent;
+`zip` truncates to the shorter input list. -/
 def inner [Has (Lin F) fs] [Has (Mult F) fs] [OfNat F 0] (xs ys : List (D.share F)) : Prog fs.ops D (D.share F) := do
   let ps ← (xs.zip ys).mapM fun p => mul p.1 p.2
   sumAll ps
 
-/-- Two dependent multiplications: two rounds. -/
+/-- Compute `(a * b) * c` with two dependent multiplications. -/
 def mul3 [Has (Mult F) fs] (a b c : D.share F) : Prog fs.ops D (D.share F) := do
   let ab ← mul a b
   mul ab c
 
-/-- Balanced product tree: `depth` delay. -/
+/-- A binary tree specifying the multiplication dependencies. -/
 inductive Tree (α : Type) where
   | leaf : α → Tree α
   | node : Tree α → Tree α → Tree α
@@ -43,23 +42,25 @@ def prodTree [Has (Mult F) fs] : Tree (D.share F) → Prog fs.ops D (D.share F)
     let b ← prodTree r
     mul a b
 
-/-- Reveal the product: the view is the product, and nothing else. -/
+/-- Reveal the product.
+The view contains the multiplication event and the revealed value. -/
 def openMul [Has (Mult F) fs] [Has (Reveal F) fs] (a b : D.share F) : Prog fs.ops D (D.clear F) := do
   let p ← mul a b
   reveal p
 
-/-- Reveal both inputs and multiply in the clear: correct, but not private. -/
+/-- Reveal both inputs before multiplying; this discloses more than the product. -/
 def leakyMul [Has (Reveal F) fs] (a b : D.share F) : Prog fs.ops D (D.clear F) := do
   let x ← reveal a
   let y ← reveal b
   pure (x * y)
 
-/-- The reactive pattern: open, compute in the clear, insert back. -/
+/-- Reveal the divisor and scale the shared numerator by its public reciprocal. -/
 def divByOpened [Has (Lin F) fs] [Has (Reveal F) fs] [Div F] [OfNat F 1] (x d : D.share F) : Prog fs.ops D (D.share F) := do
-  let dv ← reveal d          -- d is public information in this application
-  smul (1 / dv) x            -- 1/d computed in the clear, multiplied back in
+  let dv ← reveal d          -- The divisor is disclosed.
+  smul (1 / dv) x            -- Scalar multiplication waits for the reciprocal.
 
-/-- `max a b = a + [a < b] · (b - a)`: a comparison round plus one multiplication round. -/
+/-- Compute `a + [a < b] · (b - a)`.
+The multiplication depends on the comparison result. -/
 def maxOf [LT F] [DecidableRel (α := F) (· < ·)] [Zero F] [One F]
     [Has (Lin F) fs] [Has (Mult F) fs] [Has (Cmp F) fs] (a b : D.share F) : Prog fs.ops D (D.share F) := do
   let c ← lt a b
@@ -67,7 +68,7 @@ def maxOf [LT F] [DecidableRel (α := F) (· < ·)] [Zero F] [One F]
   let e ← mul c d
   add a e
 
-/-- `⟨xs, ys⟩ + c`.  One round: the products in parallel, then free linear operations. -/
+/-- Add a public constant to an inner product. -/
 def dotPlus [Has (Lin F) fs] [Has (Mult F) fs] [OfNat F 0] (xs ys : List (D.share F)) (c : F) :
     Prog fs.ops D (D.share F) := do
   let ps ← (xs.zip ys).mapM fun p => mul p.1 p.2
@@ -75,9 +76,9 @@ def dotPlus [Has (Lin F) fs] [Has (Mult F) fs] [OfNat F 0] (xs ys : List (D.shar
   let k ← const c
   add s k
 
-/-- Horner evaluation of `Σ aᵢ xⁱ`: one multiplication per coefficient, each
-depending on the last, so `n` rounds.  The honest cost of the schedule you
-wrote; a parallel-prefix version would be `log n`. -/
+/-- Horner evaluation with coefficients in increasing degree order.
+This implementation uses one dependent multiplication per coefficient,
+including the multiplication by the initial zero. -/
 def horner [Has (Lin F) fs] [Has (Mult F) fs] [OfNat F 0] (x : D.share F) : List (D.share F) → Prog fs.ops D (D.share F)
   | [] => const 0
   | a :: as => do
@@ -85,7 +86,7 @@ def horner [Has (Lin F) fs] [Has (Mult F) fs] [OfNat F 0] (x : D.share F) : List
     let t ← mul r x
     add t a
 
-/-- Triples from random shares and one secure multiplication: the offline phase as a program. -/
+/-- Generate a Beaver triple from two random shares and one multiplication. -/
 def tripleFromRand [Fintype F] [Inhabited F] [Has (Rand F) fs] [Has (Mult F) fs] :
     Prog fs.ops D (D.share F × D.share F × D.share F) := do
   let a ← rand F
@@ -93,7 +94,7 @@ def tripleFromRand [Fintype F] [Inhabited F] [Has (Rand F) fs] [Has (Mult F) fs]
   let c ← mul a b
   pure (a, b, c)
 
-/-- A public coin used as a challenge: a random linear combination of shares. -/
+/-- Combine shares with successive powers of a public random challenge. -/
 def randomCombination [Fintype F] [Inhabited F] [OfNat F 0] [Has (Lin F) fs] [Has (PubCoin F) fs]
     (xs : List (D.share F)) : Prog fs.ops D (D.share F) := do
   let r ← coin F
@@ -106,43 +107,43 @@ def randomCombination [Fintype F] [Inhabited F] [OfNat F 0] [Has (Lin F) fs] [Ha
   go r xs
 end Programs
 
-/-! ## The shape of the theorems -/
+/-! ## Evaluation and cost examples -/
 
 section Theorems
 variable (F : Type) [Add F] [Mul F] [Sub F] [Inhabited F]
 
-/-- The black box, priced: multiplication one round and two units, reveal one round and one unit. -/
+/-- Standard prices: multiplication `(1, 2)`, reveal `(1, 1)`, linear operations `(0, 0)`. -/
 abbrev abb : MPC := [(Lin F).priced ⟨0, 0⟩, (Mult F).priced ⟨1, 2⟩, (Reveal F).priced ⟨1, 1⟩]
 
--- Functional correctness (against the ideal model), by evaluation.
+-- Output evaluation.
 example (a b c : F) : output (Std F).eval (mul3 (fs := Std F) (D := .ideal) a b c) = a * b * c := rfl
 
--- Delay, from data dependencies in the timed domain (inputs available at round 0).
+-- Two dependent multiplications from inputs available at round 0.
 example (a b c : F) : delayOn (Std.timed F) (mul3 (fs := Std F) (D := .timed) ⟪a⟫ ⟪b⟫ ⟪c⟫) = 2 := rfl
--- The product tree is written with plain binds and still costs its depth: the two
--- subtrees do not depend on each other, and the pass sees it.
+-- The two subtrees are independent,
+-- so the root is ready after two multiplication rounds.
 example (a b c d : F) :
     delayOn (Std.timed F)
       (prodTree (fs := Std F) (D := .timed) (.node (.node (.leaf ⟪a⟫) (.leaf ⟪b⟫)) (.node (.leaf ⟪c⟫) (.leaf ⟪d⟫))))
       = 2 := rfl
 
--- Communication, on the price list.
+-- Two multiplications at two communication units each.
 example (a b c : F) : commOn (abb F).timed (mul3 (fs := (abb F).hybrid) (D := .timed) ⟪a⟫ ⟪b⟫ ⟪c⟫) = 4 := rfl
 
--- The view is computed, not asserted: what the adversary sees of a run.
+-- The event list includes operation records as well as clear values.
 example (a b : F) : view (Std F).eval (openMul (fs := Std F) (D := .ideal) a b)
     = [⟨Std.mult F, ((), (), ()), (), ()⟩, ⟨Std.reveal F, ((), ()), a * b, ()⟩] := rfl
 example (a b : F) : view (Std F).eval (leakyMul (fs := Std F) (D := .ideal) a b)
     = [⟨Std.reveal F, ((), ()), a, ()⟩, ⟨Std.reveal F, ((), ()), b, ()⟩] := rfl
 
--- Standard-functionality programs: correctness, delay, silence.
+-- Inner product with a public offset, followed by Horner evaluation.
 section
 variable [OfNat F 0]
 example (a b c : F) (k : F) :
     output (Std F).eval (dotPlus (fs := Std F) (D := .ideal) [a, b] [c, c] k) = a * c + b * c + k := rfl
 example (a b : F) (k : F) :
     delayOn (Std.timed F) (dotPlus (fs := Std F) (D := .timed) [⟪a⟫, ⟪b⟫] [⟪a⟫, ⟪b⟫] k) = 1 := rfl
--- (seven operations: a closed instance, evaluated by the kernel)
+-- Kernel evaluation avoids the elaborator's reduction overhead on this instance.
 example : delayOn (Std.timed (Fin 7)) (horner (F := Fin 7) (fs := Std (Fin 7)) (D := .timed) ⟪3⟫ [⟪1⟫, ⟪2⟫, ⟪4⟫]) = 3 := by
   decide +kernel
 example (x a₀ a₁ a₂ : F) :
@@ -153,7 +154,7 @@ example : commOn (abb (Fin 7)).timed (horner (F := Fin 7) (fs := (abb (Fin 7)).h
     = 6 := by decide +kernel
 end
 
-/-! ### The offline phase, timed: a triple costs one multiplication round when assembled from random shares -/
+/-! ### Generating a triple from random shares -/
 section
 variable [Fintype F]
 abbrev offline : MPC := [(Lin F).priced ⟨0, 0⟩, (Mult F).priced ⟨1, 2⟩, (Rand F).priced ⟨0, 0⟩]

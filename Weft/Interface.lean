@@ -3,23 +3,19 @@ import Weft.Shape
 /-!
 # Interfaces, requests and events
 
-An *interface* is a vocabulary: the public operations, the shapes of the
-operands of each, and the shape of its response.  A *request* is an
-operation applied to operands; a clear operand (a public constant, a
-scalar, an opened value) is a clear shape, a secret input is a share.
+An interface specifies operations, operand and response shapes,
+and a disclosure type for each operation.
+A request supplies the operands of one operation.
 
-The adversary's record of one request, the *event*, has four channels:
-the operation (public, it is the program), the clear operands and the
-clear outputs (public, by shape), and the disclosure the functionality
-declares.  The first three are structural: nothing user-written decides
-what the adversary sees of a request, and a model cannot omit a public
-value.
+An event records the operation, clear operands, clear response components,
+and the model's declared disclosure.
+The interpreter derives the clear components from their shapes,
+so they are recorded independently of the declared disclosure.
 -/
 namespace Weft
 
-/-- An interface: operations with their operand shapes and response shapes.
-`leak` is the *type* of the declared disclosure of an operation (`Unit`
-when it declares nothing); what is disclosed is the model's business. -/
+/-- Operations with operand shapes, response shapes and disclosure types.
+The model supplies the disclosure value; `Unit` denotes no additional disclosure. -/
 structure Interface where
   Op : Type
   dom : Op → List Shape
@@ -34,10 +30,9 @@ structure Req (ι : Interface) (D : Domain) where
   op : ι.Op
   args : Operands D (ι.dom op)
 
-/-- The adversary's record of one request: the operation, the clear part of
-the operands, the clear part of the response, the declared disclosure.  At
-the ideal domain, the default, clear parts are plain values; a run in
-another domain records them as that domain has them. -/
+/-- The adversary's record of a request.
+Shared operands and response components are erased;
+clear components retain their representation in `D`. -/
 structure Event (ι : Interface) (D : Domain := .ideal) where
   op : ι.Op
   args : Operands D.erase (ι.dom op)

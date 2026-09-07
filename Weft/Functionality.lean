@@ -3,30 +3,26 @@ import Weft.Model
 /-!
 # Functionalities and hybrids
 
-A *functionality* is an interface with its meaning: one joint ideal step
-per request, at the ideal domain, in `PMF`.  It is total, and it is
-written by a trusted author; a program in the hybrid may not look inside
-an operand, the functionality may.
+A functionality specifies a joint response and disclosure for each request.
+Its ideal model is total and may inspect operands.
+Programs access the functionality through its interface.
 
-A *hybrid* is a list of functionalities.  Its interface indexes the list;
-its model dispatches by position and is assembled from the components'
-ideal models and nothing else, so a program's meaning is fixed the moment
-it typechecks.  `Has F fs` is the certificate that `F` is available in
-`fs`: a position and one equality of functionalities, from which
-operands, response, program and disclosure transport at once.
+A hybrid is a list of functionalities.
+Requests identify a component by position,
+and the hybrid model dispatches to that component's model.
+`Has F fs` records a position in `fs` and an equality with `F`;
+this equality transports the request and response types.
 -/
 namespace Weft
 
-/-- A functionality: an interface with its meaning.
+/-- An interface with a uniquely specified ideal model.
 
-`eval` is the functionality with its coins fixed to a dummy, for evaluation
-by `rfl`; for a deterministic functionality it is the semantics itself
-(`Functionality.ofEval`).  The semantics is a model in `PMF`, `F.model`.
-It is stored as the predicate `IsModel` it uniquely satisfies rather than
-as data, so that a functionality *value* is computable: `PMF` is not, and
-a program over a literal hybrid mentions its functionalities.  An author
-writes `IsModel := (· = M)` for the model `M` they mean, and states
-`F.model = M` once (`Functionality.model_eq`). -/
+`eval` fixes the random coins for deterministic evaluation.
+`IsModel` specifies the probabilistic model as a predicate,
+keeping the functionality value computable despite the noncomputable `PMF` model.
+This allows computable programs to mention literal hybrids.
+
+For a model `M`, set `IsModel := (· = M)` and use `model_eq` to recover it. -/
 structure Functionality where
   ops : Interface
   eval : Model ops .ideal Id
@@ -42,7 +38,7 @@ noncomputable def model (F : Functionality) : Model F.ops .ideal PMF :=
 theorem isModel_model (F : Functionality) : F.IsModel F.model :=
   F.isModel_unique.exists.choose_spec
 
-/-- The one equation an author states about their functionality. -/
+/-- Identify the selected model using uniqueness. -/
 theorem model_eq {F : Functionality} {M : Model F.ops .ideal PMF} (h : F.IsModel M) : F.model = M :=
   F.isModel_unique.unique F.isModel_model h
 
@@ -65,14 +61,13 @@ noncomputable abbrev program (F : Functionality) (r : Req F.ops .ideal) : PMF (R
 
 end Functionality
 
-/-- A hybrid: a list of functionalities, available as black boxes. -/
+/-- Functionalities available to a program. -/
 abbrev Hybrid := List Functionality
 
 namespace Hybrid
 
-/-- The component at a position.  Structurally recursive and reducible, so
-that the interface of a literal hybrid computes wherever a type is
-compared. -/
+/-- Select a component by position.
+Reducibility lets Lean compute the interface of a literal hybrid during unification. -/
 @[reducible] def get : (fs : Hybrid) → Fin fs.length → Functionality
   | F :: _, ⟨0, _⟩ => F
   | _ :: fs, ⟨n + 1, h⟩ => get fs ⟨n, Nat.lt_of_succ_lt_succ h⟩
@@ -104,8 +99,7 @@ theorem eval_step (fs : Hybrid) (i : Fin fs.length) (o : (fs.get i).ops.Op)
     (a : Operands .ideal ((fs.get i).ops.dom o)) :
     fs.eval.step ⟨⟨i, o⟩, a⟩ = (fs.get i).eval.step ⟨o, a⟩ := rfl
 
-/-- A hybrid of deterministic functionalities: its semantics is its
-evaluation model, lifted. -/
+/-- A hybrid of lifted evaluation models is itself a lifted evaluation model. -/
 theorem model_lift (fs : Hybrid) (h : ∀ i, (fs.get i).model = (fs.get i).eval.lift PMF) :
     fs.model = fs.eval.lift PMF := by
   apply Model.ext
@@ -120,7 +114,7 @@ abbrev head (F : Functionality) (fs : Hybrid) : Fin (F :: fs).length := ⟨0, Na
 abbrev next (F : Functionality) (fs : Hybrid) (i : Fin fs.length) : Fin (F :: fs).length :=
   ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩
 
-/-! The step of a literal hybrid, by position: these are what `simp` uses. -/
+/-! Simplification rules for dispatch on literal hybrids. -/
 
 @[simp] theorem model_cons_zero (F : Functionality) (fs : Hybrid) (o : F.ops.Op)
     (a : Operands .ideal (F.ops.dom o)) :
@@ -137,8 +131,8 @@ abbrev next (F : Functionality) (fs : Hybrid) (i : Fin fs.length) : Fin (F :: fs
 
 end Hybrid
 
-/-- `F` is available in the hybrid `fs`: a position and one equality.
-Instances walk a literal list. -/
+/-- Membership of `F` in `fs`, witnessed by a position and an equality.
+Instance search traverses literal lists. -/
 class Has (F : Functionality) (fs : Hybrid) where
   i : Fin fs.length
   eq : fs.get i = F
@@ -147,7 +141,7 @@ instance Has.here (F : Functionality) (fs : Hybrid) : Has F (F :: fs) := ⟨Hybr
 instance Has.there (F G : Functionality) (fs : Hybrid) [h : Has F fs] : Has F (G :: fs) :=
   ⟨Hybrid.next G fs h.i, h.eq⟩
 
-/-- An event of a hybrid, seen in the hybrid with one more component in front. -/
+/-- Shift an event's component index after prepending a functionality. -/
 def Event.shift {fs : Hybrid} (G : Functionality) (e : Event fs.ops) : Event (Hybrid.ops (G :: fs)) :=
   ⟨⟨Hybrid.next G fs e.op.1, e.op.2⟩, e.args, e.out, e.leak⟩
 
@@ -158,8 +152,8 @@ variable {F : Functionality} {fs : Hybrid} [h : Has F fs]
 def op (o : F.ops.Op) : fs.ops.Op :=
   h.eq.rec (motive := fun G _ => G.ops.Op → fs.ops.Op) (fun o => ⟨h.i, o⟩) o
 
-/-- An event of `F`, as an event of the hybrid: this is what the trivial
-realisation's simulator replays. -/
+/-- Embed an event at `F`'s position in the hybrid.
+Used by the inclusion realisation's simulator. -/
 def event (e : Event F.ops) : Event fs.ops :=
   h.eq.rec (motive := fun G _ => Event G.ops → Event fs.ops) (fun e => ⟨⟨h.i, e.op⟩, e.args, e.out, e.leak⟩) e
 
@@ -193,22 +187,20 @@ def opAt (fs : Hybrid) (i : Fin fs.length) (r : Req (fs.get i).ops D) :
     Prog fs.ops D (Resp (fs.get i).ops D r.op) :=
   .call ⟨⟨i, r.op⟩, r.args⟩ .pure
 
-/-- Issue a request to a functionality available in the hybrid.  The
-certificate `Has F fs` transports the request and the response along its
-equality; on a literal hybrid that equality is `rfl` and everything
-computes. -/
+/-- Issue a request using `Has` to transport its types.
+For literal hybrids, the membership equality reduces to `rfl`. -/
 def op {fs : Hybrid} {F : Functionality} [h : Has F fs] (r : Req F.ops D) :
     Prog fs.ops D (Resp F.ops D r.op) :=
   (h.eq.rec (motive := fun G _ => (r : Req G.ops D) → Prog fs.ops D (Resp G.ops D r.op))
     (opAt fs h.i)) r
 
-/-- Issue a request to the first component of a hybrid.  Typed by that
-component's interface, so that `simp` can match the response type. -/
+/-- Issue a request to the first component.
+Keeping its interface explicit lets `simp` match the response type. -/
 def opHead (F : Functionality) (fs : Hybrid) (r : Req F.ops D) :
     Prog (Hybrid.ops (F :: fs)) D (Resp F.ops D r.op) :=
   .call ⟨⟨Hybrid.head F fs, r.op⟩, r.args⟩ .pure
 
-/-- A program over a hybrid, seen in the hybrid with one more component in front. -/
+/-- Shift a program's requests after prepending a functionality. -/
 def lift {fs : Hybrid} (G : Functionality) {α : Type} : Prog fs.ops D α → Prog (Hybrid.ops (G :: fs)) D α :=
   handle fun r => .call ⟨⟨Hybrid.next G fs r.op.1, r.op.2⟩, r.args⟩ .pure
 
@@ -237,25 +229,25 @@ instance Incl.cons (F : Functionality) (fs gs : Hybrid) [hF : Has F gs] [hs : In
 namespace Prog
 variable {D : Domain} {α : Type}
 
-/-- A program over a smaller hybrid runs on any larger one. -/
+/-- Embed a program using the supplied component memberships. -/
 def weaken {fs gs : Hybrid} [s : Incl fs gs] : Prog fs.ops D α → Prog gs.ops D α :=
   handle fun r => @op D gs (fs.get r.op.1) (s.has r.op.1) ⟨r.op.2, r.args⟩
 
 end Prog
 
-/-! ### Generic theorems: by `subst` on the certificate -/
+/-! ### Evaluation through `Has` -/
 
 section Generic
 variable {fs : Hybrid} {F : Functionality} [h : Has F fs]
 
-/-- The output of one request is the component's program, wherever it sits in the hybrid. -/
+/-- A request evaluates to the selected functionality's response. -/
 theorem output_op (r : Req F.ops .ideal) :
     output fs.eval (Prog.op r) = (F.eval.step r).run.1 := by
   obtain ⟨i, e⟩ := h
   subst e
   rfl
 
-/-- The view of one request: the component's event, at its position. -/
+/-- A request records the selected functionality's event. -/
 theorem view_op (r : Req F.ops .ideal) :
     view fs.eval (Prog.op r)
       = [Has.event ⟨r.op, r.args.blank, (F.ops.cod r.op).blank (F.eval.step r).run.1, (F.eval.step r).run.2⟩] := by
@@ -263,7 +255,7 @@ theorem view_op (r : Req F.ops .ideal) :
   subst e
   rfl
 
-/-- One request, as a distribution. -/
+/-- Joint response and event distribution of a request through `Has`. -/
 theorem dist_op (r : Req F.ops .ideal) :
     dist fs.model (Prog.op r) = (do
       let (y, d) ← F.model.step r

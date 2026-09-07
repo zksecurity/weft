@@ -3,12 +3,10 @@ import Mathlib.Probability.Distributions.Uniform
 import Mathlib.Logic.Equiv.Fin.Basic
 
 /-!
-# Facts about `PMF` used throughout
+# Probability lemmas
 
-* the mask lemma: a uniform draw pushed through a bijection is uniform;
-* fresh draws are jointly uniform: `n` sequential draws are one draw
-  from `Fⁿ`, a theorem about `bind` rather than a modelling assumption;
-* total variation distance and the facts the statistical layer needs.
+Uniform sampling under bijections, joint uniformity of independent draws,
+congruence on distribution supports, and total variation distance.
 -/
 namespace Weft
 
@@ -19,10 +17,9 @@ theorem PMF.monad_bind_eq_bind {α β : Type} (p : PMF α) (f : α → PMF β) :
 theorem PMF.monad_pure_eq_pure {α : Type} (a : α) : (pure a : PMF α) = PMF.pure a := rfl
 theorem PMF.monad_map_eq_map {α β : Type} (f : α → β) (p : PMF α) : f <$> p = p.map f := rfl
 
-/-- **The mask lemma.**  The image of the uniform distribution under a
-bijection is uniform: a revealed value `f(secret, mask)` that is, for each
-secret, a bijective function of a fresh uniform mask is itself uniform and
-independent of the secret. -/
+/-- Bijections preserve the uniform distribution.
+For a fixed secret, a bijection of a fresh uniform mask remains uniform;
+hence its distribution is independent of the secret. -/
 theorem uniform_map_equiv {α β : Type} [Fintype α] [Nonempty α] [Fintype β] [Nonempty β] (e : α ≃ β) :
     (uniform α).map e = uniform β := by
   ext b
@@ -35,7 +32,7 @@ theorem uniform_map_equiv {α β : Type} [Fintype α] [Nonempty α] [Fintype β]
 section Joint
 variable {α β : Type} [Fintype α] [Nonempty α] [Fintype β] [Nonempty β]
 
-/-- Two fresh draws are one draw from the product. -/
+/-- Independent uniform draws give the uniform distribution on the product. -/
 theorem uniform_prod :
     (do let a ← uniform α; let b ← uniform β; pure (a, b)) = uniform (α × β) := by
   ext ⟨a, b⟩
@@ -46,7 +43,7 @@ theorem uniform_prod :
   · intro b' hb; simp [Ne.symm hb]
   · intro a' ha; simp [Ne.symm ha]
 
-/-- Two draws in a row, as one draw from the product, in the shape the proofs use. -/
+/-- Combine two independent uniform draws before applying `f`. -/
 theorem bind_bind_pure_eq {γ : Type} (f : α → β → γ) :
     ((uniform α).bind fun a => (uniform β).bind fun b => (pure (f a b) : PMF γ))
       = (uniform (α × β)).bind fun p => pure (f p.1 p.2) := by
@@ -61,7 +58,7 @@ noncomputable def seqUniform (F : Type) [Fintype F] [Nonempty F] : (n : Nat) →
     let xs ← seqUniform F n
     pure (Fin.cons x xs)
 
-/-- **Joint uniformity.**  `n` fresh draws are jointly uniform on `Fⁿ`. -/
+/-- Sequential independent draws are jointly uniform on `Fⁿ`. -/
 theorem seqUniform_eq_uniform (F : Type) [Fintype F] [Nonempty F] :
     ∀ n, seqUniform F n = uniform (Fin n → F)
   | 0 => by

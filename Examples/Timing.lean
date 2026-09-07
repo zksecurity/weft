@@ -2,23 +2,20 @@ import Weft
 import Examples.Basic
 
 /-!
-# Delay by dependency tracking: examples and timing profiles
+# Data and control dependencies
 
-No `∥` anywhere: sequential `do`-code gets the parallel count, because
-delay is computed from data dependencies in the timed domain.
+Requests with independent operands can overlap,
+even when written sequentially in `do` notation.
+Reading a clear value with `Prog.look` adds a control dependency to later requests.
 
-The second part is about composition.  An abstract operation is a
-functionality, behaviour only; what it costs is decided by the cost model
-that instantiates it.  A single latency serialises its whole
-implementation behind all of its inputs; a *timing profile* (the longest
-path from each input to the output) is exact for a straight-line
-implementation in isolation but not in general (report, Issue 10): the
-reveal and control clocks are global state, so an inlined callee that
-reveals waits on every earlier reveal of the caller, which no per-input
-profile can know.  The exact instantiation is to *run the implementation*
-in the target's cost model (`Realization.timed`); the hybrid then costs
-what the inlined program costs, as a theorem (`Realizations.delayOn_timed`),
-and atomic and profiled models are approximations of it.
+The composition examples compare three models of `a·b + c`:
+a fixed latency, an input timing profile, and a derived implementation model.
+The fixed latency waits for all operands before charging for multiplication.
+The profile permits multiplication to overlap the arrival of `c`.
+
+The derived model runs the implementation with the caller's scheduling state.
+`Realizations.delayOn_timed` proves agreement with inlining;
+a custom profile needs a separate correctness argument for the states in which it is used.
 -/
 namespace Weft.Examples.Timing
 open Weft.Examples.Basic
@@ -26,20 +23,19 @@ open Weft.Examples.Basic
 section Programs
 variable {F : Type} [Add F] [Mul F] [Sub F] {fs : Hybrid} {D : Domain}
 
-/-- Written sequentially; `ab` and `cd` do not depend on each other. -/
+/-- Multiply two independent pairs, then multiply their results. -/
 def mul4seq [Has (Mult F) fs] (a b c d : D.share F) : Prog fs.ops D (D.share F) := do
   let ab ← mul a b
   let cd ← mul c d
   mul ab cd
 
-/-- A genuinely sequential chain. -/
+/-- Three multiplications, each depending on the previous result. -/
 def chain3 [Has (Mult F) fs] (a b c d : D.share F) : Prog fs.ops D (D.share F) := do
   let x ← mul a b
   let y ← mul x c
   mul y d
 
-/-- Reveal, compute in the clear, insert back: the opened value carries its
-time through the clear computation and back in through `const`. -/
+/-- Propagate an opening's availability time through clear arithmetic and `const`. -/
 def revealThenUse [Has (Lin F) fs] [Has (Mult F) fs] [Has (Reveal F) fs] (a b c : D.share F) (k : D.clear F) :
     Prog fs.ops D (D.share F) := do
   let p ← mul a b
@@ -47,21 +43,21 @@ def revealThenUse [Has (Lin F) fs] [Has (Mult F) fs] [Has (Reveal F) fs] (a b c 
   let t ← const (v * k)
   mul t c
 
-/-- Two openings in sequence: one round.  Nothing waits for an opened value
-unless it uses it. -/
+/-- Issue two openings without reading either value.
+Both use the same control clock and have no data dependency on each other. -/
 def revealBoth [Has (Reveal F) fs] (v₁ v₂ : D.share F) : Prog fs.ops D (D.clear F × D.clear F) := do
   let a ← reveal v₁
   let b ← reveal v₂
   pure (a, b)
-/-- The same, but the program looks at the first value before issuing the
-second opening: the second is issued when the first is known, so two rounds. -/
+/-- Read the first opening before issuing the second.
+The read creates a control dependency between them. -/
 def revealBothLook [Has (Reveal F) fs] (v₁ v₂ : D.share F) : Prog fs.ops D (D.clear F × D.clear F) := do
   let a ← reveal v₁
   Prog.look a fun _ => do
     let b ← reveal v₂
     pure (a, b)
-/-- Using the first opened value as a scalar while the second is still
-opening: still one round, a data dependency on the first only. -/
+/-- Use the first opening as a scalar without reading it through `look`.
+The second opening remains independent. -/
 def revealUseReveal [Has (Lin F) fs] [Has (Reveal F) fs] (v₁ v₂ x : D.share F) : Prog fs.ops D (D.share F × D.clear F) := do
   let a ← reveal v₁
   let b ← reveal v₂
@@ -72,25 +68,25 @@ end Programs
 section
 variable (F : Type) [Add F] [Mul F] [Sub F] [Inhabited F]
 
--- Two rounds, not three: `ab` and `cd` are independent, and the pass sees it.
+-- The pair products overlap, giving two multiplication layers.
 example (a b c d : F) : delayOn (Std.timed F) (mul4seq (fs := Std F) (D := .timed) ⟪a⟫ ⟪b⟫ ⟪c⟫ ⟪d⟫) = 2 := rfl
--- The genuinely sequential chain is still three.
+-- The chain has three multiplication layers.
 example (a b c d : F) : delayOn (Std.timed F) (chain3 (fs := Std F) (D := .timed) ⟪a⟫ ⟪b⟫ ⟪c⟫ ⟪d⟫) = 3 := rfl
 -- Reveal at 2, clear computation, `const` at 2, multiplication at 3.
 example (a b c k : F) : delayOn (Std.timed F) (revealThenUse (fs := Std F) (D := .timed) ⟪a⟫ ⟪b⟫ ⟪c⟫ k) = 3 := rfl
--- Two openings in sequence are one round; looking at the first before issuing the second,
--- two; using the first as a scalar while the second opens is still one.
+-- Independent openings overlap; `look` serialises them.
+-- Scalar use adds a dependency only to the scalar multiplication.
 example (v₁ v₂ : F) : (Sched.output (Std.timed F) (revealBoth (fs := Std F) (D := .timed) ⟪v₁⟫ ⟪v₂⟫)).2.time = 1 := rfl
 example (v₁ v₂ : F) :
     (Sched.output (Std.timed F) (revealBothLook (fs := Std F) (D := .timed) ⟪v₁⟫ ⟪v₂⟫)).2.time = 2 := rfl
 example (v₁ v₂ x : F) :
     (Sched.output (Std.timed F) (revealUseReveal (fs := Std F) (D := .timed) ⟪v₁⟫ ⟪v₂⟫ ⟪x⟫)).1.time = 1 := rfl
--- Values are unchanged: the timed model computes the same thing.
+-- Check the arithmetic output of the timed run.
 example (a b c d : F) :
     (Sched.output (Std.timed F) (mul4seq (fs := Std F) (D := .timed) ⟪a⟫ ⟪b⟫ ⟪c⟫ ⟪d⟫)).val = a * b * (c * d) := rfl
 end
 
-/-! ## An abstract operation, and how a cost model instantiates it -/
+/-! ## Models of a compound operation -/
 
 namespace MulAdd
 inductive Op where | mulAdd
@@ -100,8 +96,8 @@ abbrev ops (F : Type) : Interface where
   cod _ := .share F
 def eval (F : Type) [Add F] [Mul F] : Model (ops F) .ideal Id :=
   .silent fun ⟨.mulAdd, (a, b, c, ())⟩ => a * b + c
-/-- The *profiled* instantiation, a hand-written timed model of the interface:
-`d_a = d_b = delay`, `d_c = 0`.  (The atomic one is the generic model at a price.) -/
+/-- Input profile with multiplication latency from `a` and `b`,
+and zero latency from `c`; also take the maximum with the current clock. -/
 def profiled (F : Type) [Add F] [Mul F] (p : Price) : Model (ops F) .timed Sched :=
   ⟨fun r s => match r with
     | ⟨.mulAdd, (a, b, c, ())⟩ =>
@@ -112,17 +108,17 @@ end MulAdd
 section Profiles
 variable (F : Type) [Add F] [Mul F] [Sub F] [Inhabited F]
 
-/-- The abstract operation `mulAdd a b c = a·b + c`: one functionality,
-behaviour only.  What it costs is the cost model's business. -/
+/-- Return a share of `a·b + c`. -/
 abbrev MulAdd : Functionality := .ofEval (MulAdd.ops F) (MulAdd.eval F)
 
-/-- Its implementation over the black box: `c` is only needed after the multiplication. -/
+/-- Multiply `a` and `b`, then add `c`.
+Only the addition depends on `c`. -/
 def mulAddImpl {fs : Hybrid} {D : Domain} [Has (Lin F) fs] [Has (Mult F) fs] (a b c : D.share F) :
     Prog fs.ops D (D.share F) := do
   let p ← mul a b
   add p c
 
-/-- ...and the certificate that it realises `MulAdd`. -/
+/-- Realise `MulAdd` with a fixed view of one multiplication and one addition. -/
 program mulAddReal : Realization (MulAdd F) (Std F) where
   impl D r := mulAddImpl F r.args.1 r.args.2.1 r.args.2.2.1
   Sim _ := pure [⟨Std.mult F, ((), (), ()), (), ()⟩, ⟨Std.lin F .add, ((), (), ()), (), ()⟩]
@@ -131,39 +127,36 @@ program mulAddReal : Realization (MulAdd F) (Std F) where
     simp only [mulAddImpl, mul, add, weft, Functionality.ofEval_model, MulAdd.eval]
     rfl
 
-/-- A caller in which `c` arrives late: `c = x·y` is ready at round 1. -/
+/-- Supply `c` from a separate multiplication `x·y`. -/
 def caller {fs : Hybrid} {D : Domain} [Has (MulAdd F) fs] [Has (Mult F) fs] (a b x y : D.share F) :
     Prog fs.ops D (D.share F) := do
   let c ← mul x y
   Prog.op (F := MulAdd F) ⟨.mulAdd, (a, b, c, ())⟩
-/-- The same caller with the operation inlined. -/
+/-- Inline `mulAddImpl` into the caller. -/
 def callerInlined {fs : Hybrid} {D : Domain} [Has (Lin F) fs] [Has (Mult F) fs] (a b x y : D.share F) :
     Prog fs.ops D (D.share F) := do
   let c ← mul x y
   mulAddImpl F a b c
 
-/-- The hybrid the caller is written in. -/
+/-- Compound multiply-add with linear operations and multiplication. -/
 abbrev Hyb : Hybrid := [MulAdd F, Lin F, Mult F]
 
-/-- Three cost models for the one hybrid: `mulAdd` atomic (a price), profiled
-(a hand-written timed model), and instantiated by running its
-implementation over the black box. -/
+/-- Fixed-price, profiled and implementation-derived models of the same hybrid. -/
 abbrev atomicMPC : MPC := [(MulAdd F).priced ⟨1, 2⟩, (Lin F).priced ⟨0, 0⟩, (Mult F).priced ⟨1, 2⟩]
 abbrev profiledMPC : MPC := [MPC.entry (MulAdd F) (MulAdd.profiled F ⟨1, 2⟩), (Lin F).priced ⟨0, 0⟩, (Mult F).priced ⟨1, 2⟩]
 noncomputable abbrev derivedMPC : MPC := [MPC.derived (Std.mpc F) (mulAddReal F), (Lin F).priced ⟨0, 0⟩, (Mult F).priced ⟨1, 2⟩]
 
--- Atomic: mulAdd waits for c (round 1), then 1 round: 2.  Inlined: p = a·b at round 1
--- in parallel with c, then a free add: 1.  The atomic model over-approximates...
+-- The fixed-price model waits for `c` at round 1,
+-- then charges another multiplication round.
 example (a b x y : F) : delayOn (atomicMPC F).timed (caller F (fs := Hyb F) (D := .timed) ⟪a⟫ ⟪b⟫ ⟪x⟫ ⟪y⟫) = 2 := rfl
--- ...the profile is exact here...
+-- The profile overlaps `a·b` with the computation of `c`.
 example (a b x y : F) : delayOn (profiledMPC F).timed (caller F (fs := Hyb F) (D := .timed) ⟪a⟫ ⟪b⟫ ⟪x⟫ ⟪y⟫) = 1 := rfl
--- ...the derived instantiation is exact by construction...
+-- Running the implementation also finishes at round 1.
 example (a b x y : F) : delayOn (derivedMPC F).timed (caller F (fs := Hyb F) (D := .timed) ⟪a⟫ ⟪b⟫ ⟪x⟫ ⟪y⟫) = 1 := rfl
--- ...and all agree with the inlined program on this caller.
+-- Inlining agrees with the profiled and derived models on this caller.
 example (a b x y : F) : delayOn (Std.timed F) (callerInlined F (fs := Std F) (D := .timed) ⟪a⟫ ⟪b⟫ ⟪x⟫ ⟪y⟫) = 1 := rfl
 
-/-- **Delay composes exactly** under the derived instantiation: this is
-`Realizations.delayOn_timed`, for every caller, not a check on one. -/
+/-- Realise the hybrid over `Std F` for the timing composition theorem below. -/
 noncomputable def mulAddOverStd : Realizations (Hyb F) (Std F) :=
   .cons (mulAddReal F) (Realizations.incl [Lin F, Mult F] (Std F))
 example (a b x y : F) :

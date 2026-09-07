@@ -3,11 +3,11 @@ import Examples.Basic
 import Examples.Beaver
 
 /-!
-# Gallery: what different programs look like
+# Arithmetic program examples
 
-Each program is written once, against the functionalities it needs, and is
-polymorphic in the domain and the hybrid.  The examples after each one are
-what a user proves; `rfl` or `decide` means the interpreter just ran.
+Matrix products, product trees, public control flow, sorting and conversions,
+followed by evaluation and timing checks on concrete inputs.
+Programs specify their required functionalities through `Has` instances.
 -/
 namespace Weft.Examples.Gallery
 open Weft.Examples.Basic
@@ -15,16 +15,16 @@ open Weft.Examples.Basic
 section Programs
 variable {F : Type} [Add F] [Mul F] [Sub F] {fs : Hybrid} {D : Domain}
 
-/-! ## 1. Reusing programs: matrix–vector product on top of `inner` -/
+/-! ## Matrix–vector product -/
 
-/-- Every row is an inner product; rows are independent, so still one round. -/
+/-- Apply `inner` to each row; all row computations are independent. -/
 def matVec [Has (Lin F) fs] [Has (Mult F) fs] [OfNat F 0] (rows : List (List (D.share F))) (v : List (D.share F)) :
     Prog fs.ops D (List (D.share F)) :=
   rows.mapM fun row => inner row v
 
-/-! ## 2. Choosing the schedule: log-depth product -/
+/-! ## Product by pairwise reduction -/
 
-/-- Multiply adjacent pairs (independent, so one round); halves the list. -/
+/-- Multiply adjacent pairs and retain any unpaired final element. -/
 def pairwise [Has (Mult F) fs] : List (D.share F) → Prog fs.ops D (List (D.share F))
   | a :: b :: rest => do
     let p ← mul a b
@@ -32,9 +32,9 @@ def pairwise [Has (Mult F) fs] : List (D.share F) → Prog fs.ops D (List (D.sha
     pure (p :: ps)
   | xs => pure xs
 
-/-- Product of a list by repeated pairing: `⌈log₂ n⌉` rounds, versus `n − 1`
-for a fold.  The recursion is on public fuel (the length), so the program's
-shape is a function of public data only. -/
+/-- Reduce adjacent pairs until one product remains.
+For a nonempty list of length `n`, the multiplication depth is `⌈log₂ n⌉`.
+The public list length supplies recursion fuel. -/
 def prodAll [Has (Lin F) fs] [Has (Mult F) fs] [OfNat F 1] (xs : List (D.share F)) : Prog fs.ops D (D.share F) :=
   go xs.length xs
 where
@@ -45,10 +45,10 @@ where
       let ys ← pairwise xs
       go n ys
 
-/-! ## 3. Public control flow: square-and-multiply with a public exponent -/
+/-! ## Public exponentiation -/
 
-/-- The exponent is public (given as bits, least significant first), so the
-*shape* of the program depends on it and the round count is a function of it. -/
+/-- Square-and-multiply with exponent bits in least-significant-first order.
+The public exponent determines the operation sequence. -/
 def expBits [Has (Lin F) fs] [Has (Mult F) fs] [OfNat F 1] (x : D.share F) : List Bool → Prog fs.ops D (D.share F)
   | [] => const 1
   | [b] => if b then pure x else const 1
@@ -57,8 +57,8 @@ def expBits [Has (Lin F) fs] [Has (Mult F) fs] [OfNat F 1] (x : D.share F) : Lis
     let sq ← mul h h
     if b then mul sq x else pure sq
 
-/-- Bits of a public natural, least significant first (structural on fuel so
-that it computes by `rfl`). -/
+/-- Binary digits in least-significant-first order.
+Recursion on fuel keeps evaluation reducible. -/
 def bits (n : Nat) : List Bool := go n n
 where
   go : Nat → Nat → List Bool
@@ -68,9 +68,9 @@ where
 def expPublic [Has (Lin F) fs] [Has (Mult F) fs] [OfNat F 1] (x : D.share F) (e : Nat) : Prog fs.ops D (D.share F) :=
   expBits x (bits e)
 
-/-! ## 4. Oblivious selection and a sorting network -/
+/-! ## Oblivious selection and sorting -/
 
-/-- `if c then a else b` without branching: `b + c·(a − b)`. -/
+/-- Select `a` for `c = 1` and `b` for `c = 0` using `b + c·(a − b)`. -/
 def select [Has (Lin F) fs] [Has (Mult F) fs] (c a b : D.share F) : Prog fs.ops D (D.share F) := do
   let d ← sub a b
   let t ← mul c d
@@ -78,8 +78,8 @@ def select [Has (Lin F) fs] [Has (Mult F) fs] (c a b : D.share F) : Prog fs.ops 
 
 variable [LT F] [DecidableRel (α := F) (· < ·)] [Zero F] [One F]
 
-/-- Compare-and-swap: one comparison, then one multiplication (both outputs
-share it: `min = b + c(a − b)`, `max = a + b − min`). -/
+/-- Compare and swap using one comparison and one multiplication.
+Both outputs reuse the selected minimum: `max = a + b − min`. -/
 def cswap [Has (Lin F) fs] [Has (Mult F) fs] [Has (Cmp F) fs] (a b : D.share F) : Prog fs.ops D (D.share F × D.share F) := do
   let c ← lt a b
   let lo ← select c a b
@@ -87,8 +87,8 @@ def cswap [Has (Lin F) fs] [Has (Mult F) fs] [Has (Cmp F) fs] (a b : D.share F) 
   let hi ← sub s lo
   pure (lo, hi)
 
-/-- A 4-element sorting network: three layers; the swaps within a layer are
-independent, which the timed domain sees without being told. -/
+/-- A four-element sorting network with three comparator layers.
+Comparators within a layer are independent. -/
 def sort4 [Has (Lin F) fs] [Has (Mult F) fs] [Has (Cmp F) fs] (a b c d : D.share F) :
     Prog fs.ops D (D.share F × D.share F × D.share F × D.share F) := do
   let (a, b) ← cswap a b
@@ -98,12 +98,11 @@ def sort4 [Has (Lin F) fs] [Has (Mult F) fs] [Has (Cmp F) fs] (a b c d : D.share
   let (b, c) ← cswap b c
   pure (a, b, c, d)
 
-/-! ## 5. Reactive: open, decide in the clear, continue -/
+/-! ## Binary search with public branches -/
 
-/-- Position of a secret `s` in a public sorted list, by bisection.  Each
-step opens one comparison bit and branches on it in the clear.  The opened
-bits are exactly the path to the answer, so the program's view is a function
-of its (public) output. -/
+/-- Search a public sorted list by revealing comparison bits.
+Each bit selects the next half;
+for a fixed list, the resulting path is determined by the returned index. -/
 def binarySearch [Has (Lin F) fs] [Has (Cmp F) fs] [Has (Reveal F) fs] [DecidableEq F]
     (s : D.share F) (xs : List F) : Prog fs.ops D Nat :=
   go xs.length xs
@@ -116,17 +115,18 @@ where
         let m ← const (xs[n]?.getD 0)
         let c ← lt s m
         let bit ← reveal c
-        Prog.look bit fun bit =>        -- the program branches on `bit`: nothing before it is known
+        Prog.look bit fun bit =>        -- Wait for the comparison before choosing the next half.
           if bit = 0 then do
             let i ← go fuel (xs.drop n)
             pure (n + i)
           else
             go fuel (xs.take n)
 
-/-! ## 6. Masked opening: a zero test that reveals only the answer -/
+/-! ## Randomised zero test -/
 
-/-- `x = 0` iff `x·r = 0` for random `r ≠ 0`.  The opened value is `x·r`:
-zero when `x = 0`, uniform otherwise, so it is simulatable from the output. -/
+/-- Test whether `x·r` is zero for uniform `r`.
+Over a finite field, zero inputs always return one;
+nonzero inputs return one with probability `1 / |F|`, since `r` may be zero. -/
 def isZero [Fintype F] [Inhabited F] [DecidableEq F]
     [Has (Lin F) fs] [Has (Mult F) fs] [Has (Rand F) fs] [Has (Reveal F) fs] (x : D.share F) : Prog fs.ops D (D.share F) := do
   let r ← rand F
@@ -134,13 +134,13 @@ def isZero [Fintype F] [Inhabited F] [DecidableEq F]
   let v ← reveal y
   const ((fun v => if v = 0 then 1 else 0) <$> v)
 
-/-! ## 7. Structured data: records of shares -/
+/-! ## Records of shares -/
 
 structure Point (D : Domain) (F : Type) where
   x : D.share F
   y : D.share F
 
-/-- Squared distance between two secret points: two independent multiplications, one round. -/
+/-- Squared distance using two independent multiplications. -/
 def dist2 [Has (Lin F) fs] [Has (Mult F) fs] (p q : Point D F) : Prog fs.ops D (D.share F) := do
   let dx ← sub p.x q.x
   let dy ← sub p.y q.y
@@ -148,11 +148,12 @@ def dist2 [Has (Lin F) fs] [Has (Mult F) fs] (p q : Point D F) : Prog fs.ops D (
   let sy ← mul dy dy
   add sx sy
 
-/-! ## 8. Writing directly against a preprocessing functionality -/
+/-! ## Multiplication and reveal with preprocessing -/
 
-/-- A program that *wants* a triple: multiply-and-open in one round by
-opening `x − a` and `y − b`, then `x·y` is public and no extra opening is
-needed.  Written against `Pre`, not `Std`. -/
+/-- Open the two masked inputs, then open the remaining shared sum.
+Adding the product of the first two openings yields `x·y`.
+With precomputed triples and unit-cost reveals,
+this takes two rounds and three openings. -/
 def mulOpen [Fintype F] [Inhabited F] [Has (Lin F) fs] [Has (Reveal F) fs] [Has (MulTriple F) fs]
     (x y : D.share F) : Prog fs.ops D (D.clear F) := do
   let (a, b, c) ← mulTriple F
@@ -167,88 +168,87 @@ def mulOpen [Fintype F] [Inhabited F] [Has (Lin F) fs] [Has (Reveal F) fs] [Has 
   let v ← reveal s
   pure (v + e * d)
 
-/-! ## 9. Polymorphic over the hybrid: pick the best available implementation
+/-! ## Selecting an implementation through a type class
 
-An AES S-box needs a field inversion.  Some MPCs offer inversion natively;
-on others it is `x^254` by square-and-multiply.  The program is written once
-against a *capability class*; instance priority picks the native
-functionality when the hybrid lists it and falls back otherwise.
-Correctness is the same for every instance; only the cost differs, and both
-are computed. -/
+`HasInv` prefers native inversion when available,
+otherwise it computes `x^254`.
+The fallback represents inversion over a field of 256 elements;
+the class itself carries no correctness law.
+The examples over `Rat` compare costs only. -/
 
-/-- Capability: "some way to invert".  Instances are the strategies. -/
+/-- Select an inversion implementation; correctness is a separate obligation. -/
 class HasInv (F : Type) (fs : Hybrid) (D : Domain) where
   inv : D.share F → Prog fs.ops D (D.share F)
 
 instance (priority := high) [Inv F] [Has (Inversion F) fs] : HasInv F fs D := ⟨fun x => nativeInv x⟩
 instance [OfNat F 1] [Has (Lin F) fs] [Has (Mult F) fs] : HasInv F fs D := ⟨fun x => expPublic x 254⟩
 
-/-- The S-box: inversion, then a (free) affine layer. -/
+/-- Apply the selected inversion implementation, then the supplied affine program. -/
 def sbox [HasInv F fs D] (affine : D.share F → Prog fs.ops D (D.share F)) (x : D.share F) : Prog fs.ops D (D.share F) := do
   let y ← HasInv.inv x
   affine y
 
 end Programs
 
-/-! ## The theorems, for concrete sizes -/
+/-! ## Evaluation and timing checks -/
 
 section Theorems
 variable (F : Type) [Add F] [Mul F] [Sub F] [OfNat F 0] [OfNat F 1] [Inhabited F]
 local notation "M" => Hybrid.eval (Std F)
 local notation "T" => Std.timed F
 
--- 1. matVec: still one round (rows independent).
+-- Independent rows finish in the same round.
 example (a b c d e f : F) :
     (Sched.output T (matVec (fs := Std F) (D := .timed) [[⟪a⟫, ⟪b⟫], [⟪c⟫, ⟪d⟫]] [⟪e⟫, ⟪f⟫])).map Timed.time
       = [1, 1] := rfl
 
--- 2. log-depth product: 4 elements, 2 rounds; 8 elements, 3 rounds.
+-- Pairwise reduction has depth two for four inputs and three for eight.
 example (a b c d : F) : delayOn T (prodAll (fs := Std F) (D := .timed) [⟪a⟫, ⟪b⟫, ⟪c⟫, ⟪d⟫]) = 2 := rfl
 example : delayOn (Std.timed (Fin 7)) (prodAll (F := Fin 7) (fs := Std (Fin 7)) (D := .timed)
     [⟪1⟫, ⟪2⟫, ⟪3⟫, ⟪4⟫, ⟪5⟫, ⟪6⟫, ⟪0⟫, ⟪1⟫]) = 3 := by decide +kernel
 
--- 3. public exponent: x^5 = ((x²)²)·x, three multiplications in sequence.
+-- Computing `x^5` uses two squares followed by one multiplication by `x`.
 example (x : F) : delayOn T (expPublic (fs := Std F) (D := .timed) ⟪x⟫ 5) = 3 := rfl
 example (x : F) : output M (expPublic (fs := Std F) (D := .ideal) x 5) = x * x * (x * x) * x := rfl
 
--- 7. records: one round, silent.
+-- Squared distance has one multiplication layer and a fixed event list.
 example (a b c d : F) : delayOn T (dist2 (fs := Std F) (D := .timed) ⟨⟪a⟫, ⟪b⟫⟩ ⟨⟪c⟫, ⟪d⟫⟩) = 1 := rfl
 example (p q : Point .ideal F) : view M (dist2 (fs := Std F) p q)
     = [⟨Std.lin F .sub, ((), (), ()), (), ()⟩, ⟨Std.lin F .sub, ((), (), ()), (), ()⟩, ⟨Std.mult F, ((), (), ()), (), ()⟩, ⟨Std.mult F, ((), (), ()), (), ()⟩,
        ⟨Std.lin F .add, ((), (), ()), (), ()⟩] := rfl
 end Theorems
 
-/-! ### Programs that use comparison: a hybrid with `Cmp` -/
+/-! ### Comparison costs -/
 
-/-- The black box with comparison. -/
+/-- Standard arithmetic with comparison. -/
 abbrev StdCmp (F : Type) [Add F] [Mul F] [Sub F] [LT F] [DecidableRel (α := F) (· < ·)] [Zero F] [One F] : Hybrid :=
   [Lin F, Mult F, Reveal F, Cmp F]
 
 section Cmp
 variable (F : Type) [Add F] [Mul F] [Sub F] [LT F] [DecidableRel (α := F) (· < ·)] [Zero F] [One F]
 
-/-- Its cost instantiation, with the comparison priced at `cmp` rounds. -/
+/-- Charge `cmp` rounds and four communication units per comparison. -/
 def StdCmp.timed (cmp : Nat := 3) : Model (StdCmp F).ops .timed Sched :=
   MPC.timed [(Lin F).priced ⟨0, 0⟩, (Mult F).priced ⟨1, 2⟩, (Reveal F).priced ⟨1, 1⟩, (Cmp F).priced ⟨cmp, 4⟩]
 end Cmp
 
--- 4. sorting network: the middle outputs go through all 3 layers, 3 × (3 + 1) rounds;
---    a cheaper comparison changes only the number.  (Closed instances over `Int`, kernel `decide`.)
+-- The middle outputs depend on all three comparator layers.
+-- Each layer costs one comparison followed by one multiplication.
 set_option maxHeartbeats 1600000 in
 example : (Sched.output (StdCmp.timed Int) (sort4 (F := Int) (fs := StdCmp Int) (D := .timed) ⟪3⟫ ⟪1⟫ ⟪4⟫ ⟪2⟫)).2.1.time
     = 12 := by decide +kernel
 example : (Sched.output (StdCmp.timed Int 1) (sort4 (F := Int) (fs := StdCmp Int) (D := .timed) ⟪3⟫ ⟪1⟫ ⟪4⟫ ⟪2⟫)).2.1.time
     = 6 := by decide +kernel
--- ...and it sorts.
+-- Check the sorted output on this input.
 example : (output (StdCmp Int).eval (sort4 (F := Int) (fs := StdCmp Int) (D := .ideal) 3 1 4 2) : Int × Int × Int × Int)
     = (1, 2, 3, 4) := by decide +kernel
 
--- 5. bisection over Int: the answer, the revealed bits, and the delay.
+-- Search result, comparison bits and control dependencies.
 section
 def sorted : List Int := [1, 3, 5, 7, 9, 11, 13, 15]
 example : output (StdCmp Int).eval (binarySearch (F := Int) (fs := StdCmp Int) (D := .ideal) 11 sorted) = 5 := by
   decide +kernel
-/-- The bits opened along the way: the path to the answer. -/
+/-- Extract the revealed comparison bits. -/
 def openedBits : List (Event (StdCmp Int).ops) → List Int :=
   List.filterMap fun e => match e with
     | ⟨⟨⟨2, _⟩, .reveal⟩, _, out, _⟩ => some out
@@ -257,15 +257,15 @@ example : openedBits (view (StdCmp Int).eval (binarySearch (F := Int) (fs := Std
     = [0, 1, 0] := by decide +kernel
 example : openedBits (view (StdCmp Int).eval (binarySearch (F := Int) (fs := StdCmp Int) (D := .ideal) 12 sorted))
     = [0, 1, 0] := by decide +kernel
--- Delay 3 × (3 + 1): each level's comparison is issued after the program has looked at the
--- previous level's opened bit.  The output is a plain index assembled from looks, so the
--- delay is `now` at the end.
+-- Each level waits for the previous comparison bit.
+-- Three levels cost `3 × (3 + 1)` rounds.
+-- The returned index is plain, so its delay is the final control clock.
 example : Sched.now (StdCmp.timed Int) (binarySearch (F := Int) (fs := StdCmp Int) (D := .timed) ⟪11⟫ sorted) = 12 := by
   decide +kernel
 end
 
--- 6. zero test: the semantics.  What is revealed is `x · r` for a fresh uniform
---    `r`, and nothing else; the output is a function of it.
+-- The opened value is `x·r` for uniform `r`.
+-- The final constant records the result of the zero test.
 section
 variable (F : Type) [Field F] [Fintype F] [Inhabited F] [DecidableEq F]
 abbrev ZHyb : Hybrid := [Lin F, Mult F, Reveal F, Rand F]
@@ -278,13 +278,13 @@ theorem isZero_dist (x : F) :
   rfl
 end
 
--- 8. multiply-and-reveal on the preprocessing functionality: two rounds, three reveals.
+-- Two reveal rounds: the masked inputs, followed by the remaining sum.
 section
 variable (F : Type) [Field F] [Fintype F] [Inhabited F]
 example : delayOn (Pre.timed (Fin 7)) (mulOpen (F := Fin 7) (fs := Pre (Fin 7)) (D := .timed) ⟪3⟫ ⟪4⟫) = 2 := by
   decide +kernel
--- The semantics: the triple is a jointly uniform pair, and the three opened
--- values are the two masked inputs and the masked product.
+-- The triple uses independent uniform masks.
+-- The view records both masked inputs and the sum before adding their product.
 theorem mulOpen_dist (x y : F) :
     dist (Pre F).model (mulOpen (fs := Pre F) (D := .ideal) x y)
       = (uniform (Fin 2 → F)).bind fun v =>
@@ -300,13 +300,13 @@ theorem mulOpen_dist (x y : F) :
   rfl
 end
 
--- 9. capability dispatch: same S-box source, 13 rounds on the black box, 1 round with native inversion.
+-- Compare the exponentiation fallback with native inversion using an identity affine layer.
 section
 def affineId {F : Type} {fs : Hybrid} {D : Domain} : D.share F → Prog fs.ops D (D.share F) := pure
 abbrev StdInv (F : Type) [Field F] : Hybrid := [Lin F, Mult F, Reveal F, Inversion F]
 def StdInv.timed (F : Type) [Field F] : Model (StdInv F).ops .timed Sched :=
   MPC.timed [(Lin F).priced ⟨0, 0⟩, (Mult F).priced ⟨1, 2⟩, (Reveal F).priced ⟨1, 1⟩, (Inversion F).priced ⟨1, 2⟩]
--- (closed instance with kernel `decide`; the elaborator's `whnf` is slow at this depth)
+-- Use kernel evaluation for the longer exponentiation program.
 example : delayOn (Std.timed Rat) (sbox (F := Rat) (fs := Std Rat) (D := .timed) affineId ⟪3⟫) = 13 := by decide +kernel
 example (x : Rat) : delayOn (StdInv.timed Rat) (sbox (fs := StdInv Rat) (D := .timed) affineId ⟪x⟫) = 1 := rfl
 end

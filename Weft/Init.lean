@@ -1,13 +1,12 @@
 import Lean
 
 /-!
-# Simp sets
+# Semantic simplification
 
-`weft` collects the equations that unfold the semantics of a concrete
-program: the interpreter's laws, the transports along `Has`, and each
-standard functionality's model.  `simp [weft, ‹the program›]` normalises
-`dist fs.model c` to "draw the coins, then a point".
+`weft` collects interpreter laws, transport rules for `Has`,
+and standard functionality models.
+`simp [weft, myProgram]` unfolds a concrete run into random draws and a result.
 -/
 
-/-- Unfolding the semantics of a concrete program. -/
+/-- Equations for unfolding program semantics. -/
 register_simp_attr weft

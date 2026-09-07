@@ -1,22 +1,21 @@
 import Weft.Interface
 
 /-!
-# Programs: the free monad over an interface
+# Programs over an interface
 
-A program is a tree of requests with Lean continuations.  It opens values,
-computes in the clear and branches on public values, so "program" rather
-than "circuit"; the straight-line case is a circuit.  Programs are
-polymorphic in the domain, which is what keeps them from looking inside a
-share (see `Weft.Program` for the check that makes this a guarantee).
+Programs issue requests and branch on clear values.
+`call` passes a response to its continuation;
+`look` passes the contents of a clear value to its continuation.
+
+Implementations are polymorphic in the domain.
+`Weft.Program` checks the restrictions needed to prevent inspection of shares.
 -/
 namespace Weft
 
-/-- The free monad over an interface: `pure`; one request and a
-continuation on its response; or one look at a clear value and a
-continuation on what it holds.  `look` is the only way to turn a
-`D.clear T` into a `T`, so it is where a program's control flow depends on
-an opened value, and the timed domain sees it (`Weft.Timed`).  The ideal
-semantics ignores it. -/
+/-- Requests and clear-value reads with continuations.
+`look` makes a control dependency explicit:
+in the timed model it waits for the value,
+while in the ideal model it applies the continuation directly. -/
 inductive Prog (ι : Interface) (D : Domain) : Type → Type 1 where
   | pure {α : Type} : α → Prog ι D α
   | call {α : Type} (r : Req ι D) : (Resp ι D r.op → Prog ι D α) → Prog ι D α
@@ -58,10 +57,10 @@ theorem bind_assoc {γ : Type} (c : Prog ι D α) (f : α → Prog ι D β) (g :
 instance : LawfulMonad (Prog ι D) :=
   LawfulMonad.mk' _ bind_pure (fun _ _ => rfl) fun c f g => bind_assoc c f g
 
-/-- Issue one request of the interface itself. -/
+/-- Issue a request and return its response. -/
 def req (r : Req ι D) : Prog ι D (Resp ι D r.op) := .call r .pure
 
-/-- Realise every request of `ι` by a program over `κ` (a handler). -/
+/-- Replace each request with the program supplied by `h`. -/
 def handle (h : (r : Req ι D) → Prog κ D (Resp ι D r.op)) : Prog ι D α → Prog κ D α
   | .pure a => .pure a
   | .call r k => bind (h r) fun y => handle h (k y)

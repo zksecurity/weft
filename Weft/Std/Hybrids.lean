@@ -3,32 +3,32 @@ import Weft.Std.Random
 /-!
 # Standard hybrids
 
-`Std F` is the arithmetic black box; `Pre F` is a preprocessing model with
-no native multiplication.  Both are lists, and a program written against
-`[Has (Lin F) fs] [Has (Mult F) fs]` runs on either, and on any other
-hybrid that lists what it needs.
+`Std F` offers linear operations, multiplication and reveal.
+`Pre F` offers linear operations, reveal and Beaver triples.
+To run a `Std F` program over `Pre F`,
+replace multiplication with its Beaver realisation (`Examples.Privacy`).
 -/
 namespace Weft
 
-/-- The arithmetic black box. -/
+/-- Linear operations, multiplication and reveal. -/
 abbrev Std (F : Type) [Add F] [Mul F] [Sub F] : Hybrid := [Lin F, Mult F, Reveal F]
 
 namespace Std
 variable (F : Type) [Add F] [Mul F] [Sub F]
-/-- The operations of the black box, by position, for stating views. -/
+/-- Component indices used when stating views. -/
 abbrev lin (o : Lin.Op) : (Std F).ops.Op := ⟨0, o⟩
 abbrev mult : (Std F).ops.Op := ⟨1, .mult⟩
 abbrev reveal : (Std F).ops.Op := ⟨2, .reveal⟩
-/-- The black box as an MPC: linear operations free, multiplication one
-round and two units, reveal one round and one unit, by default. -/
+/-- Zero-cost linear operations with configurable multiplication and reveal prices.
+The defaults are `(1 round, 2 units)` and `(1 round, 1 unit)`, respectively. -/
 abbrev mpc (pMult : Price := ⟨1, 2⟩) (pReveal : Price := ⟨1, 1⟩) : MPC :=
   [(Lin F).priced ⟨0, 0⟩, (Mult F).priced pMult, (Reveal F).priced pReveal]
-/-- The cost instantiation of the black box, at those prices. -/
+/-- Timed model of `Std` at the supplied prices. -/
 def timed (pMult : Price := ⟨1, 2⟩) (pReveal : Price := ⟨1, 1⟩) : Model (Std F).ops .timed Sched :=
   (mpc F pMult pReveal).timed
 end Std
 
-/-- A preprocessing-model functionality: no native multiplication, Beaver triples instead. -/
+/-- Linear operations, reveal and Beaver triples. -/
 abbrev Pre (F : Type) [Add F] [Mul F] [Sub F] [Fintype F] [Inhabited F] : Hybrid :=
   [Lin F, Reveal F, MulTriple F]
 
@@ -37,10 +37,10 @@ variable (F : Type) [Add F] [Mul F] [Sub F] [Fintype F] [Inhabited F]
 abbrev lin (o : Lin.Op) : (Pre F).ops.Op := ⟨0, o⟩
 abbrev reveal : (Pre F).ops.Op := ⟨1, .reveal⟩
 abbrev triple : (Pre F).ops.Op := ⟨2, .get⟩
-/-- The preprocessing model as an MPC: triples free when precomputed. -/
+/-- Preprocessing MPC with zero-cost triples by default. -/
 abbrev mpc (pReveal : Price := ⟨1, 1⟩) (pTriple : Price := ⟨0, 0⟩) : MPC :=
   [(Lin F).priced ⟨0, 0⟩, (Reveal F).priced pReveal, (MulTriple F).priced pTriple]
-/-- The cost instantiation of the preprocessing model, at those prices. -/
+/-- Timed model of `Pre` at the supplied prices. -/
 def timed (pReveal : Price := ⟨1, 1⟩) (pTriple : Price := ⟨0, 0⟩) : Model (Pre F).ops .timed Sched :=
   (mpc F pReveal pTriple).timed
 end Pre
@@ -50,7 +50,7 @@ notation "⟪" x "⟫" => Timed.now x
 
 end Weft
 
-/-! ## The simp set that unfolds a program's semantics -/
+/-! ## Semantic simplification rules -/
 namespace Weft
 attribute [weft] Prog.bind_eq Prog.pure_eq Prog.bind_pure' Prog.bind_call Prog.bind_look Prog.handle_pure Prog.handle_call
   Prog.handle_look run_look_ideal dist_look Look.ideal_look Domain.ideal_map Domain.ideal_pure Domain.ideal_seq

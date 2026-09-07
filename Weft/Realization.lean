@@ -1,28 +1,21 @@
 import Weft.Std.Hybrids
 
 /-!
-# Realisations: one certificate, and how it composes
+# Realisations and composition
 
-A *realisation* of a functionality `F` over a hybrid `fs` is a program
-for every operation of `F` and every domain, a simulator, and the
-equation: the program's (response, view) at the ideal domain equals `F`'s
-response paired with the simulator's output on `F`'s event.  The
-simulator receives the event and nothing else: never a hidden component
-of the response, never an operand.  The full response stays in the joint,
-because a hidden component may be opened later and the trace must be
-consistent with that opening.
+A realisation implements each operation of `F` over a hybrid `fs`.
+For requests satisfying `Pre`, the real and simulated joint distributions agree.
+The simulated distribution pairs the ideal response with the simulator's view.
+The simulator receives `F`'s event:
+the operation, clear operands and response components, and declared disclosure.
 
-This is the only privacy notion.  "This program is private with declared
-disclosure `d`" is a realisation of a one-operation functionality whose
-model says so.  A gadget is that, at most a word.
+We retain the full response in the joint distribution.
+A shared response may be opened later,
+and the simulated view must remain consistent with that opening.
 
-A realisation may come with a precondition on requests; the guarantee
-holds for valid requests only.  A caller discharges it by `Valid`: every
-request it issues, on the support of its ideal run, satisfies the
-precondition.  Composition is `Realization.comp`, once: inlining composes
-programs, `simList` composes simulators, and the precondition of the
-composite is the caller's together with validity of its program for the
-callees.
+`Valid` requires every request in the support of a caller's ideal run to satisfy `Pre`.
+`Realization.comp` inlines implementations and composes their simulators with `simList`.
+Its precondition combines the outer precondition with validity for the inner calls.
 -/
 namespace Weft
 
@@ -39,9 +32,8 @@ noncomputable def simList {ι κ : Interface} (Sim : Event ι → PMF (List (Eve
 @[simp] theorem simList_cons {ι κ : Interface} (Sim : Event ι → PMF (List (Event κ))) (e : Event ι) (es : List (Event ι)) :
     simList Sim (e :: es) = (do let s ← Sim e; let t ← simList Sim es; pure (s ++ t)) := rfl
 
-/-- `Valid M P c`: every request `c` issues, on the support of its run under
-`M`, satisfies `P`.  Inductive on the program, restricted to supported
-responses. -/
+/-- Every request reachable under `M` satisfies `P`.
+Only responses in the support of the model are considered. -/
 inductive Valid {ι : Interface} (M : Model ι .ideal PMF) (P : Req ι .ideal → Prop) :
     {α : Type} → Prog ι .ideal α → Prop
   | pure {α : Type} (a : α) : Valid M P (.pure a)
@@ -52,7 +44,7 @@ inductive Valid {ι : Interface} (M : Model ι .ideal PMF) (P : Req ι .ideal �
 
 attribute [simp] Valid.pure
 
-/-- A precondition that always holds is always valid. -/
+/-- A universally satisfied precondition is valid for every program. -/
 theorem Valid.of_forall {ι : Interface} (M : Model ι .ideal PMF) {P : Req ι .ideal → Prop} (hP : ∀ r, P r)
     {α : Type} (c : Prog ι .ideal α) : Valid M P c := by
   induction c with
@@ -64,7 +56,7 @@ theorem Valid.of_forall {ι : Interface} (M : Model ι .ideal PMF) {P : Req ι .
 theorem Valid.true {ι : Interface} (M : Model ι .ideal PMF) {α : Type} (c : Prog ι .ideal α) :
     Valid M (fun _ => True) c := Valid.of_forall M (fun _ => trivial) c
 
-/-- What a run can produce. -/
+/-- Support of a request followed by a continuation. -/
 theorem mem_support_dist_call {ι : Interface} (M : Model ι .ideal PMF) {α : Type} (r : Req ι .ideal)
     (k : Resp ι .ideal r.op → Prog ι .ideal α) (p : α × List (Event ι)) :
     p ∈ (dist M (.call r k)).support ↔
@@ -74,8 +66,7 @@ theorem mem_support_dist_call {ι : Interface} (M : Model ι .ideal PMF) {α : T
   simp only [PMF.monad_bind_eq_bind, PMF.monad_pure_eq_pure, PMF.support_bind, PMF.support_pure,
     Set.mem_iUnion, Set.mem_singleton_iff, exists_prop]
 
-/-- Validity of a sequential composition: the first part is valid and,
-on every run it can produce, so is the continuation. -/
+/-- Sequential composition preserves validity when every reachable continuation is valid. -/
 theorem Valid.bind {ι : Interface} {M : Model ι .ideal PMF} {P : Req ι .ideal → Prop} {α β : Type}
     {c : Prog ι .ideal α} {k : α → Prog ι .ideal β} (hc : Valid M P c)
     (hk : ∀ p ∈ (dist M c).support, Valid M P (k p.1)) : Valid M P (Prog.bind c k) := by
@@ -91,9 +82,9 @@ theorem Valid.bind {ι : Interface} {M : Model ι .ideal PMF} {P : Req ι .ideal
     cases hc with
     | look _ _ hk' => exact .look c _ (ih c hk' fun q hq => hk q (by rw [dist_look]; exact hq))
 
-/-- **A realisation.**  `impl` is a program for every domain (it cannot
-look inside a share); `Sim` sees only the event; `real` is the equation,
-under `Pre`. -/
+/-- An implementation and simulator with equal joint distributions under `Pre`.
+`impl` is polymorphic in the domain;
+`Weft.Program` provides the implementation check. -/
 structure Realization (F : Functionality) (fs : Hybrid) where
   impl : (D : Domain) → (r : Req F.ops D) → Prog fs.ops D (Resp F.ops D r.op)
   Pre : Req F.ops .ideal → Prop := fun _ => True
@@ -116,7 +107,7 @@ def get : {fs : Hybrid} → Realizations fs gs → (i : Fin fs.length) → Reali
   | _, .cons r _, ⟨0, _⟩ => r
   | _, .cons _ rs, ⟨n + 1, h⟩ => rs.get ⟨n, Nat.lt_of_succ_lt_succ h⟩
 
-/-- The handler: each request of the hybrid, implemented by its component's realisation. -/
+/-- Dispatch each request to its component's implementation. -/
 def impl (g : Realizations fs gs) (D : Domain) (r : Req fs.ops D) : Prog gs.ops D (Resp fs.ops D r.op) :=
   (g.get r.op.1).impl D ⟨r.op.2, r.args⟩
 
@@ -138,13 +129,11 @@ theorem real (g : Realizations fs gs) (r : Req fs.ops .ideal) (h : g.Pre r) :
 
 end Realizations
 
-/-- **Composition.**  Inlining realisations of every component into a
-caller: the concrete run of the inlined program is the abstract run of
-the caller with each event replaced by its simulation, for every caller
-valid for the realisations' preconditions.  Induction on the caller's
-free-monad trace; at each request the realisation equation, and one
-commutation of independent draws: the simulator's coins for this request
-do not interact with the rest of the run. -/
+/-- Inlining preserves the caller's joint distribution up to per-event simulation.
+The caller must satisfy the realisations' preconditions.
+
+Induct on the caller and apply the realisation equation at each request.
+The simulator's fresh coins commute with the continuation's draws. -/
 theorem handle_realizes {fs gs : Hybrid} (g : Realizations fs gs) {α : Type} (c : Prog fs.ops .ideal α)
     (hc : Valid fs.model g.Pre c) :
     dist gs.model (Prog.handle (g.impl .ideal) c) = (do
@@ -167,8 +156,7 @@ theorem handle_realizes {fs gs : Hybrid} (g : Realizations fs gs) {α : Type} (c
     cases hc with
     | look _ _ hk => rw [Prog.handle_look, dist_look, dist_look]; exact ih c hk
 
-/-- Correctness transports: the output distribution of the inlined program
-is the caller's on the abstract hybrid. -/
+/-- Inlining valid realisations preserves the output distribution. -/
 theorem output_transport {fs gs : Hybrid} (g : Realizations fs gs) {α : Type} (c : Prog fs.ops .ideal α)
     (hc : Valid fs.model g.Pre c) :
     Prod.fst <$> dist gs.model (Prog.handle (g.impl .ideal) c) = Prod.fst <$> dist fs.model c := by
@@ -179,17 +167,15 @@ theorem output_transport {fs gs : Hybrid} (g : Realizations fs gs) {α : Type} (
 
 namespace Realization
 
-/-- The trusted realisation: calling `F` realises `F` over any hybrid that
-contains it.  The simulator replays the event at `F`'s position. -/
+/-- Realise `F` by calling it in a hybrid containing it.
+The simulator embeds the event at `F`'s position. -/
 noncomputable def incl (F : Functionality) (gs : Hybrid) [h : Has F gs] : Realization F gs where
   impl _ r := Prog.op r
   Sim e := pure [Has.event e]
   real r _ := by rw [dist_op]; simp
 
-/-- **Composition, once.**  Inlining realisations of the components of `fs`
-into a realisation over `fs`.  The precondition of the composite is the
-outer one together with validity of the outer program for the inner
-preconditions. -/
+/-- Inline the realisations of `fs` into `f`.
+Require `f.Pre` and validity of `f.impl` for the inner preconditions. -/
 noncomputable def comp {F : Functionality} {fs gs : Hybrid} (f : Realization F fs) (g : Realizations fs gs) :
     Realization F gs where
   impl D r := Prog.handle (g.impl D) (f.impl D r)
@@ -205,13 +191,13 @@ end Realization
 
 namespace Realizations
 
-/-- Every component available in the target: the trivial realisations. -/
+/-- Realise each component by its occurrence in the target hybrid. -/
 noncomputable def incl : (fs : Hybrid) → (gs : Hybrid) → [Incl fs gs] → Realizations fs gs
   | [], _, _ => .nil
   | F :: fs, gs, s => .cons (Realization.incl F gs (h := s.has ⟨0, Nat.zero_lt_succ _⟩))
       (@incl fs gs ⟨fun i => s.has ⟨i.val + 1, Nat.succ_lt_succ i.isLt⟩⟩)
 
-/-- The identity: every component of `fs` realised by itself. -/
+/-- Realise each component by itself. -/
 noncomputable abbrev id (fs : Hybrid) : Realizations fs fs := incl fs fs
 
 end Realizations

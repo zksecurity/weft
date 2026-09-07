@@ -2,17 +2,17 @@ import Weft.Std.Hybrids
 import Mathlib.Data.ZMod.Basic
 
 /-!
-# Boolean circuits: the `𝔽₂` hybrid
+# Boolean circuits over `𝔽₂`
 
-`𝔽₂` is `ZMod 2`: `+` is xor, `*` is and.  A Boolean circuit is an
-ordinary `Lin`/`Mult` program over `GF2`, and `Bool2` is the hybrid that
-offers exactly those two.  Its usual price list makes xor free and one
-AND one round and one unit, so `delayOn` is the AND depth and `commOn`
-the AND count.
+`Bool2` offers linear operations and multiplication over `ZMod 2`,
+where addition is XOR and multiplication is AND.
+The default prices make XOR free and charge one round and one unit per AND.
+For circuits with inputs at round 0,
+output delay is AND depth and communication is AND count.
 -/
 namespace Weft
 
-/-- `𝔽₂` is `ZMod 2`: `+` is xor, `*` is and, literals `0` and `1`. -/
+/-- The two-element field; addition is XOR and multiplication is AND. -/
 abbrev GF2 := ZMod 2
 
 namespace GF2
@@ -49,22 +49,22 @@ end GF2
 /-- The `m` low bits of `n` as elements of `𝔽₂`, least significant first. -/
 def bitsOf (m : Nat) (n : Nat) : Fin m → GF2 := fun i => if n.testBit i then 1 else 0
 
-/-- Boolean circuits: xor (free, `Lin`) and and (`Mult`). -/
+/-- Linear operations and multiplication over `𝔽₂`. -/
 abbrev Bool2 : Hybrid := [Lin GF2, Mult GF2]
 
 namespace Bool2
 
-/-- The operations, by position, for stating views. -/
+/-- Component indices used when stating views. -/
 abbrev lin (o : Lin.Op) : Bool2.ops.Op := ⟨0, o⟩
 abbrev mult : Bool2.ops.Op := ⟨1, .mult⟩
 
-/-- The Boolean MPC: xor free, an AND one round and one unit by default. -/
+/-- Zero-cost linear operations; one round and one unit per AND by default. -/
 abbrev mpc (pMult : Price := ⟨1, 1⟩) : MPC := [(Lin GF2).priced ⟨0, 0⟩, (Mult GF2).priced pMult]
 
-/-- The cost instantiation of Boolean circuits at that price. -/
+/-- Timed Boolean model at the supplied AND price. -/
 def timed (pMult : Price := ⟨1, 1⟩) : Model Bool2.ops .timed Sched := (mpc pMult).timed
 
-/-- No functionality of `Bool2` draws coins: its semantics is its evaluation model, lifted. -/
+/-- `Bool2` has deterministic semantics. -/
 theorem model_eq : Bool2.model = Bool2.eval.lift PMF := by
   apply Hybrid.model_lift
   intro i

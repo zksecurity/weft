@@ -4,15 +4,14 @@ import Weft.Std.Arith
 /-!
 # Randomised functionalities
 
-Randomness is a feature of the functionality, not of the program: a fresh
-share, a nonzero share, a public coin, a correlation from preprocessing
-are requests like any other.  Each has a semantics in `PMF` and an
-evaluation model with the coin fixed to a dummy (values under evaluation
-models are meaningless by design; costs and delays are not).
+Programs request randomness through functionalities:
+uniform shares, nonzero shares, public coins and preprocessing correlations.
+Each request samples fresh coins in `PMF`.
+`seqUniform_eq_uniform` relates sequential draws to joint uniform sampling.
 
-There is no tape and no coin index: each draw is a fresh `bind`, so `k`
-draws are one draw from `Fᵏ` (`seqUniform_eq_uniform`), which is what
-every mask argument needs.
+Evaluation models fix the coins to chosen values.
+They describe that fixed execution;
+for reactive programs, other coin choices may change both outputs and costs.
 -/
 namespace Weft
 
@@ -29,14 +28,14 @@ noncomputable def model (F : Type) [Fintype F] [Nonempty F] : Model (ops F) .ide
 def eval (F : Type) [Inhabited F] : Model (ops F) .ideal Id := ⟨fun _ => pure ((default : F), ())⟩
 end Rand
 
-/-- A fresh, uniformly random shared value, unknown to everyone. -/
+/-- Sample a uniform value and return it as a share. -/
 abbrev Rand (F : Type) [Fintype F] [Inhabited F] : Functionality :=
   ⟨Rand.ops F, Rand.eval F, (· = Rand.model F), Functionality.unique_eq _⟩
 
 @[simp, weft] theorem Rand.model_eq (F : Type) [Fintype F] [Inhabited F] :
     (Rand F).model = Rand.model F := Functionality.model_eq rfl
 
-/-! ## A fresh random *nonzero* share -/
+/-! ## Nonzero random shares -/
 
 instance {F : Type} [Zero F] [Nontrivial F] : Nonempty {x : F // x ≠ 0} :=
   let ⟨x, hx⟩ := exists_ne (0 : F); ⟨⟨x, hx⟩⟩
@@ -52,16 +51,15 @@ noncomputable def model (F : Type) [Zero F] [Nontrivial F] [Fintype F] [Decidabl
 def eval (F : Type) [One F] : Model (ops F) .ideal Id := ⟨fun _ => pure ((1 : F), ())⟩
 end RandNZ
 
-/-- A fresh random share that is nonzero, uniform on `F \ {0}`.  Programs
-that mask by multiplication ask for it, so that correctness is perfect:
-the functionality, not luck, guarantees the mask is invertible. -/
+/-- Sample uniformly from `F \ {0}` and return a share.
+Over a field, this supplies an invertible mask. -/
 abbrev RandNZ (F : Type) [Zero F] [One F] [Nontrivial F] [Fintype F] [DecidableEq F] : Functionality :=
   ⟨RandNZ.ops F, RandNZ.eval F, (· = RandNZ.model F), Functionality.unique_eq _⟩
 
 @[simp, weft] theorem RandNZ.model_eq (F : Type) [Zero F] [One F] [Nontrivial F] [Fintype F] [DecidableEq F] :
     (RandNZ F).model = RandNZ.model F := Functionality.model_eq rfl
 
-/-! ## A public coin: everyone, including the adversary, learns it -/
+/-! ## Public coins -/
 
 namespace PubCoin
 inductive Op where | coin
@@ -74,21 +72,21 @@ noncomputable def model (F : Type) [Fintype F] [Nonempty F] : Model (ops F) .ide
 def eval (F : Type) [Inhabited F] : Model (ops F) .ideal Id := ⟨fun _ => pure ((default : F), ())⟩
 end PubCoin
 
-/-- A public random value.  Its response is clear, so it is in the view by shape. -/
+/-- Sample a uniform clear value, recorded in the event. -/
 abbrev PubCoin (F : Type) [Fintype F] [Inhabited F] : Functionality :=
   ⟨PubCoin.ops F, PubCoin.eval F, (· = PubCoin.model F), Functionality.unique_eq _⟩
 
 @[simp, weft] theorem PubCoin.model_eq (F : Type) [Fintype F] [Inhabited F] :
     (PubCoin F).model = PubCoin.model F := Functionality.model_eq rfl
 
-/-! ## Correlations: a function of `k` jointly uniform coins -/
+/-! ## Correlated randomness -/
 
-/-- A correlation is a deterministic function of `k` *jointly uniform* coins. -/
+/-- A deterministic function of `k` jointly uniform coins. -/
 structure Correlation (R T : Type) where
   k : Nat
   build : (Fin k → R) → T
 
-/-- Sampling a correlation: the `k` coins are drawn jointly uniform on `Rᵏ`. -/
+/-- Apply the correlation function to a uniform draw from `Rᵏ`. -/
 noncomputable def Correlation.sample {R T : Type} [Fintype R] [Nonempty R] (c : Correlation R T) : PMF T :=
   (uniform (Fin c.k → R)).map c.build
 
@@ -106,7 +104,7 @@ def eval (F : Type) [Mul F] [Inhabited F] : Model (ops F) .ideal Id :=
   ⟨fun _ => pure (((default : F), (default : F), (default : F) * default), ())⟩
 end MulTriple
 
-/-- The preprocessing box handing out Beaver triples: the promise its name makes. -/
+/-- Sample `(a, b, a·b)` with independent uniform `a` and `b`. -/
 abbrev MulTriple (F : Type) [Mul F] [Fintype F] [Inhabited F] : Functionality :=
   ⟨MulTriple.ops F, MulTriple.eval F, (· = MulTriple.model F), Functionality.unique_eq _⟩
 
@@ -127,17 +125,17 @@ def eval (F : Type) [Mul F] [Inhabited F] : Model (ops F) .ideal Id :=
   ⟨fun _ => pure (((default : F), (default : F) * default), ())⟩
 end SquarePair
 
-/-- The preprocessing box handing out square pairs. -/
+/-- Sample `(r, r²)` with uniform `r`. -/
 abbrev SquarePair (F : Type) [Mul F] [Fintype F] [Inhabited F] : Functionality :=
   ⟨SquarePair.ops F, SquarePair.eval F, (· = SquarePair.model F), Functionality.unique_eq _⟩
 
 @[simp, weft] theorem SquarePair.model_eq (F : Type) [Mul F] [Fintype F] [Inhabited F] :
     (SquarePair F).model = SquarePair.model F := Functionality.model_eq rfl
 
-/-! ### A double sharing `([r]_t, [r]_2t)`
+/-! ### Double sharings
 
-In the black box a double sharing is one value seen twice: sharing degree
-is not observable.  If a program must track it, put it in the domain. -/
+Both components represent the same random value.
+This interface does not distinguish sharing degrees. -/
 namespace DoubleSharing
 inductive Op where | get
 abbrev ops (F : Type) : Interface where
@@ -150,19 +148,19 @@ noncomputable def model (F : Type) [Fintype F] [Nonempty F] : Model (ops F) .ide
 def eval (F : Type) [Inhabited F] : Model (ops F) .ideal Id := ⟨fun _ => pure (((default : F), (default : F)), ())⟩
 end DoubleSharing
 
-/-- The preprocessing box handing out double sharings. -/
+/-- Return two shares of the same uniform value. -/
 abbrev DoubleSharing (F : Type) [Fintype F] [Inhabited F] : Functionality :=
   ⟨DoubleSharing.ops F, DoubleSharing.eval F, (· = DoubleSharing.model F), Functionality.unique_eq _⟩
 
 @[simp, weft] theorem DoubleSharing.model_eq (F : Type) [Fintype F] [Inhabited F] :
     (DoubleSharing F).model = DoubleSharing.model F := Functionality.model_eq rfl
 
-/-! ## The operations, as a program writes them -/
+/-! ## Program operations -/
 
 section Ops
 variable {F : Type} {fs : Hybrid} {D : Domain}
 
-/-- A random share *of `F`*: nothing determines the field, so it is passed. -/
+/-- Request a random share of the explicitly supplied type `F`. -/
 def rand (F : Type) [Fintype F] [Inhabited F] [Has (Rand F) fs] : Prog fs.ops D (D.share F) :=
   Prog.op (F := Rand F) ⟨.rand, ()⟩
 def randNZ (F : Type) [Zero F] [One F] [Nontrivial F] [Fintype F] [DecidableEq F] [Has (RandNZ F) fs] :

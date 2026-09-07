@@ -4,44 +4,38 @@ import Mathlib.Probability.ProbabilityMassFunction.Constructions
 /-!
 # Models and the interpreter
 
-A model of an interface says, in a monad `m`, what each request does: one
-joint *step* returning the response together with the declared disclosure.
-The step is the authoritative joint law; the response marginal is
-`program`, and there is no separate `leak` accessor, because the
-correlation between response and disclosure is part of the specification
-(a public coin whose value is disclosed but not returned).
+A model gives each request a joint response and disclosure in a monad `m`.
+Sampling them together preserves their correlation,
+e.g. when a public coin affects the response.
+`Model.program` projects the response marginal.
 
-Three monads matter:
+`PMF` gives probabilistic semantics; `Id` gives deterministic evaluation.
+For randomised functionalities, the evaluation model fixes the coins.
+`Sched` adds timing and communication accounting (`Weft.Timed`).
 
-* `PMF` is **the semantics**: a run is a distribution over (output, view).
-* `Id` is **evaluation**: coin-free programs compute output, view and cost
-  by `rfl`; randomised functionalities have an evaluation model with the
-  coins fixed to a dummy.
-* `Sched` (a clock state, `Weft.Timed`) is **scheduling**: delay.
-
-The interpreter is written once, for any monad, and records one event per
-request: the operation, the blanked operands and response, and the sampled disclosure.
+`run` interprets a program and records one event per request.
 -/
 namespace Weft
 
-/-- A model: one joint step per request, in `m`. -/
+/-- A joint response and disclosure for each request. -/
 structure Model (ι : Interface) (D : Domain) (m : Type → Type) where
   step : (r : Req ι D) → m (Resp ι D r.op × ι.leak r.op)
 
 namespace Model
 variable {ι : Interface} {D : Domain} {m : Type → Type}
 
-/-- A deterministic step, seen in any monad. -/
+/-- Embed deterministic responses and disclosures in `m`. -/
 def det [Monad m] (program : (r : Req ι D) → Resp ι D r.op)
     (leak : (r : Req ι D) → ι.leak r.op) : Model ι D m :=
   ⟨fun r => pure (program r, leak r)⟩
 
-/-- A deterministic and silent step (every disclosure type must be `Unit`). -/
+/-- A deterministic model with no declared disclosure.
+Operations and clear values are still recorded by the interpreter. -/
 def silent [Monad m] (program : (r : Req ι D) → Resp ι D r.op)
     (h : ∀ o, ι.leak o = Unit := by intro o; rfl) : Model ι D m :=
   det program fun r => (h r.op).symm ▸ ()
 
-/-- An evaluation model, seen in any monad. -/
+/-- Embed an evaluation model in `m`. -/
 def lift (m : Type → Type) [Monad m] (M : Model ι D Id) : Model ι D m :=
   ⟨fun r => pure (M.step r).run⟩
 
@@ -60,9 +54,9 @@ theorem ext {M N : Model ι D m} (h : ∀ r, M.step r = N.step r) : M = N := by
 
 end Model
 
-/-- How a domain's clear values are looked at in a monad: at the ideal
-domain a clear value is plain and a look is `pure`; in the timed domain a
-look advances the program's clock to the value's time (`Weft.Timed`). -/
+/-- Interpret a clear-value read in `m`.
+The ideal instance returns the value;
+the timed instance also waits until it is available. -/
 class Look (D : Domain) (m : Type → Type) where
   look : {T : Type} → D.clear T → m T
 
@@ -71,14 +65,13 @@ instance {m : Type → Type} [Monad m] : Look .ideal m := ⟨fun c => pure c⟩
 @[simp] theorem Look.ideal_look {m : Type → Type} [Monad m] {T : Type} (c : Domain.ideal.clear T) :
     (Look.look c : m T) = pure c := rfl
 
-/-- A cost model: a price for each operation, in an additive monoid.
-Prices see operations only, never an operand. -/
+/-- Additive cost indexed by operation, independent of operands. -/
 structure CostModel (ι : Interface) (C : Type) where
   op : ι.Op → C
 
 def CostModel.unit {ι : Interface} : CostModel ι Unit := ⟨fun _ => ()⟩
 
-/-- What one run accumulates besides its result: cost and the view. -/
+/-- Accumulated cost and adversarial view. -/
 structure Trace (ι : Interface) (D : Domain) (C : Type) where
   cost : C
   view : List (Event ι D)
@@ -97,10 +90,9 @@ def zero : Trace ι D C := ⟨0, []⟩
   simp [seq, add_assoc]
 end Trace
 
-/-- The interpreter: sample the step once, record the event, continue with
-the sampled response.  (The sampled pair is taken apart by projections, not
-by a pattern: a `match` here makes evaluation by `rfl` exponential in the
-number of requests.) -/
+/-- Sample each step and record its event before running the continuation.
+Use projections for the sampled pair;
+pattern matching here causes exponential reduction time under `rfl`. -/
 def run {ι : Interface} {D : Domain} {C α : Type} [AddMonoid C] {m : Type → Type} [Monad m] [Look D m]
     (M : Model ι D m) (K : CostModel ι C) : Prog ι D α → m (α × Trace ι D C)
   | .pure a => pure (a, Trace.zero)
@@ -122,17 +114,15 @@ def view (M : Model ι D Id) (c : Prog ι D α) : List (Event ι D) := (Id.run (
 /-- Evaluation: the cost of one run. -/
 def cost (M : Model ι D Id) (K : CostModel ι C) (c : Prog ι D α) : C := (Id.run (run M K c)).2.cost
 
-/-- **The semantics** (`m := PMF`): the distribution of (output, view). -/
+/-- The joint distribution of output and adversarial view. -/
 noncomputable def dist (M : Model ι D PMF) (c : Prog ι D α) : PMF (α × List (Event ι D)) :=
   (fun p => (p.1, p.2.view)) <$> run M CostModel.unit c
 end Observables
 
-/-! ### The laws
+/-! ### Interpreter laws
 
-`run_bind`: running a sequential composition is running the parts; it
-holds in every lawful monad and is the only fact about the interpreter the
-composition theorems need.  `run_lift`: a coin-free program under a lifted
-model is a point, so `rfl` at `Id` is a theorem at `PMF`. -/
+`run_bind` decomposes a sequential run and concatenates its traces.
+`run_lift` identifies a run under a lifted evaluation model with a point mass. -/
 
 section Laws
 variable {ι : Interface} {D : Domain} {C α β : Type} [AddMonoid C] {m : Type → Type} [Monad m] [Look D m] [Look D PMF]
@@ -170,7 +160,7 @@ theorem run_bind (M : Model ι D m) (K : CostModel ι C) (c : Prog ι D α) (k :
   | call r k' ih => simp only [Prog.bind_call, run_call, ih, bind_assoc, pure_bind, Trace.seq_assoc]
   | look c k' ih => simp only [Prog.bind_look, run_look, ih, bind_assoc]
 
-/-- At the ideal domain a look is invisible to the interpreter. -/
+/-- An ideal-domain read applies the continuation without an effect. -/
 theorem run_look_ideal (M : Model ι .ideal m) (K : CostModel ι C) {T : Type} (c : Domain.ideal.clear T)
     (k : T → Prog ι .ideal α) : run M K (.look c k) = run M K (k c) := by
   simp [run_look]
@@ -226,13 +216,13 @@ end Laws
 section Eval
 variable {ι : Interface} {D : Domain} {α β : Type} [Look D Id]
 
-/-- Run the first part, then the continuation on its output. -/
+/-- Evaluate the continuation on the first program's output. -/
 theorem output_bind (M : Model ι D Id) (c : Prog ι D α) (k : α → Prog ι D β) :
     output M (Prog.bind c k) = output M (k (output M c)) := by
   simp only [output, run_bind]
   rfl
 
-/-- The first part's view, then the continuation's on its output. -/
+/-- Concatenate the first program's view with the continuation's view. -/
 theorem view_bind (M : Model ι D Id) (c : Prog ι D α) (k : α → Prog ι D β) :
     view M (Prog.bind c k) = view M c ++ view M (k (output M c)) := by
   simp only [view, output, run_bind]

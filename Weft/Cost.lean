@@ -1,33 +1,22 @@
 import Weft.Realization
 
 /-!
-# How cost composes
+# Cost under composition
 
-Two composition theorems for cost, both along realisations.
+`Realization.timed` runs an implementation in the target's timed model.
+`Realizations.runOut_timed` shows that using these derived models agrees with inlining:
+the output, final clock and communication counter are equal.
+Custom prices or profiles require a separate argument to bound this derived cost.
 
-* **Exactly, in the cost model.**  The instantiation of an abstract
-  operation under a realisation is to run the implementation in the
-  target's timed model (`Realization.timed`).  With every abstract
-  operation instantiated that way, a scheduled run of the caller in the
-  hybrid *is* the scheduled run of the inlined program: same output,
-  same clocks, same communication (`Realizations.run_timed`).  Delay and
-  communication of a program written against abstract operations are
-  then computed once, in the hybrid, and are what the instantiated
-  program costs.  A hand-written model of the abstract operation (one
-  latency, a per-input profile) is an approximation of this one; what it
-  approximates is now a definition, not a claim.
-
-* **As a distribution, in the ideal domain.**  For a reactive program the
-  cost is a distribution; inlining priced realisations into a valid
-  caller costs what the caller costs with each abstract operation priced
-  at its implementation's cost (`cost_handle`).
+In the ideal domain, reactive programs can have random costs.
+`cost_handle` gives equality of cost distributions for valid callers,
+provided each implementation has a fixed cost for its abstract operation.
 -/
 namespace Weft
 
-/-! ## The exact instantiation of an abstract operation -/
+/-! ## Derived timed models -/
 
-/-- The timed model of `F` that runs `f`'s implementation in the timed
-model `T` of the target: exact by construction. -/
+/-- Run `f`'s implementation under `T` to obtain a timed model of `F`. -/
 def Realization.timed {F : Functionality} {fs : Hybrid} (f : Realization F fs) (T : Model fs.ops .timed Sched) :
     Model F.ops .timed Sched where
   step r := do
@@ -38,21 +27,19 @@ def Realization.timed {F : Functionality} {fs : Hybrid} (f : Realization F fs) (
 abbrev MPC.derived (M : MPC) {F : Functionality} (f : Realization F M.hybrid) : MPC.Entry :=
   ⟨F, f.timed M.timed⟩
 
-/-- The same for every component of a hybrid at once. -/
+/-- Derive a timed model for each component's implementation. -/
 def Realizations.timed {fs gs : Hybrid} (g : Realizations fs gs) (T : Model gs.ops .timed Sched) :
     Model fs.ops .timed Sched where
   step r := do
     let p ← run T CostModel.unit (g.impl .timed r)
     pure (p.1, (fs.eval.step ⟨r.op, r.args.untime⟩).run.2)
 
-/-- The output of a run, in the monad, with the trace dropped. -/
+/-- Project the output while preserving the monad's effects. -/
 def runOut {ι : Interface} {D : Domain} {α : Type} {m : Type → Type} [Monad m] [Look D m] (M : Model ι D m)
     (c : Prog ι D α) : m α :=
   Prod.fst <$> run M CostModel.unit c
 
-/-- **Composition, exactly.**  A scheduled run of the caller with every
-abstract operation instantiated by its implementation is the scheduled
-run of the inlined program. -/
+/-- Running under derived timed models agrees with inlining the implementations. -/
 theorem Realizations.runOut_timed {fs gs : Hybrid} (g : Realizations fs gs) (T : Model gs.ops .timed Sched)
     {α : Type} (c : Prog fs.ops .timed α) :
     runOut (g.timed T) c = runOut T (Prog.handle (g.impl .timed) c) := by
@@ -68,9 +55,7 @@ theorem Realizations.runOut_timed {fs gs : Hybrid} (g : Realizations fs gs) (T :
     have := ih a.1
     simpa only [map_eq_pure_bind, Function.comp_def] using this
 
-/-- One request of the hybrid, run under the realisations' timed model:
-its implementation runs, the response is its output, and the event
-records the request. -/
+/-- Run one component's implementation and record the abstract request's event. -/
 theorem Realizations.run_opAt {fs gs : Hybrid} (g : Realizations fs gs) (T : Model gs.ops .timed Sched)
     (i : Fin fs.length) (r : Req (fs.get i).ops .timed) (s : Clock) :
     StateT.run (run (g.timed T) CostModel.unit (Prog.opAt fs i r)) s =
@@ -111,10 +96,9 @@ theorem Realizations.commOn_timed {fs gs : Hybrid} (g : Realizations fs gs) (T :
     commOn (g.timed T) c = commOn T (Prog.handle (g.impl .timed) c) := by
   simp [commOn, g.sched_timed T c]
 
-/-! ## Cost as a distribution, and composition -/
+/-! ## Cost distributions -/
 
-/-- The cost of a run, as a distribution (a reactive program's shape may
-depend on what it reveals). -/
+/-- Cost distribution, including variation caused by public control flow. -/
 noncomputable def costDist {ι : Interface} {D : Domain} {C α : Type} [AddMonoid C] [Look D PMF] (M : Model ι D PMF)
     (K : CostModel ι C) (c : Prog ι D α) : PMF C :=
   (fun r => r.2.cost) <$> run M K c
@@ -123,16 +107,14 @@ theorem costDist_look {ι : Interface} {C α T : Type} [AddMonoid C] (M : Model 
     (c : Domain.ideal.clear T) (k : T → Prog ι .ideal α) : costDist M K (.look c k) = costDist M K (k c) := by
   simp [costDist, run_look_ideal]
 
-/-- A handler is *priced* under `K` if each request's program has a cost
-independent of its operands and coins (structurally scheduled), given by `p`. -/
+/-- Every implementation run costs `p` for its operation,
+independently of operands and random coins. -/
 def Priced {ι κ : Interface} {C : Type} [AddMonoid C] (M : Model ι .ideal PMF)
     (impl : (r : Req κ .ideal) → Prog ι .ideal (Resp κ .ideal r.op)) (K : CostModel ι C) (p : CostModel κ C) :
     Prop :=
   ∀ r, costDist M K (impl r) = pure (p.op r.op)
 
-/-- **Composition, communication.**  Inlining priced realisations into a
-valid caller costs what the caller costs with each abstract operation
-priced at its implementation's cost. -/
+/-- Inlining preserves the cost distribution when abstract prices match implementation costs. -/
 theorem cost_handle {fs gs : Hybrid} {C : Type} [AddMonoid C] (g : Realizations fs gs)
     {K : CostModel gs.ops C} {p : CostModel fs.ops C} (hp : Priced gs.model (g.impl .ideal) K p)
     {α : Type} (c : Prog fs.ops .ideal α) (hc : Valid fs.model g.Pre c) :
@@ -145,13 +127,13 @@ theorem cost_handle {fs gs : Hybrid} {C : Type} [AddMonoid C] (g : Realizations 
   | call r k ih =>
     cases hc with
     | call _ _ hr hk =>
-    -- the implementation's result is distributed as the abstract program's
+    -- The realisation equation gives equality of response marginals.
     have fst : Prod.fst <$> run gs.model K (g.impl .ideal r) = Prod.fst <$> fs.model.step r := by
       rw [run_fst gs.model K CostModel.unit]
       have := congrArg (fun d => Prod.fst <$> d) (g.real r hr)
       simpa [dist, PMF.monad_map_eq_map, PMF.monad_bind_eq_bind, PMF.monad_pure_eq_pure, PMF.map,
         Function.comp_def, PMF.bind_bind, PMF.pure_bind, PMF.bind_const, PMF.bind_pure] using this
-    -- ...and its cost is `p r.op` on the whole support
+    -- Every supported implementation run has cost `p.op r.op`.
     have cst : ∀ q ∈ (run gs.model K (g.impl .ideal r)).support, q.2.cost = p.op r.op := by
       intro q hq
       have := hp r

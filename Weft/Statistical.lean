@@ -3,18 +3,18 @@ import Weft.Realization
 /-!
 # Statistical realisations
 
-A statistical realisation keeps correctness perfect (the output marginal
-is exactly the functionality's) and allows the real and the simulated
-joint (output, view) distributions to differ by at most `ε` in total
-variation, per operation.  The bound is on the joint, not on the view
-alone: over `𝔽₂`, `b ← rand; reveal (x + b); pure b` has a uniform view
-for every `x`, so an independent-coin simulator is at distance 0 on the
-view while a later opening of `b` reveals `x`.
+A statistical realisation has the exact ideal output marginal,
+with total variation at most `ε` between the real and simulated joint distributions.
 
-Composition rests on one kernel lemma, `statDist_bind_le`: the distance
-of two binds is at most the distance of the first draws plus the expected
-distance of the continuations.  The caller's budget is then the sum, over
-its ideal execution, of the per-request errors.
+The joint bound matters even when the view alone is uniform.
+Over `𝔽₂`, consider `b ← rand; reveal (x + b); pure b`.
+The view is uniform for every `x`,
+but opening the returned `b` reveals `x`.
+
+`statDist_bind_le` adds two terms:
+the initial sampling distance and the expected continuation distance.
+`budget` sums per-request errors along the ideal execution;
+the composition bound using this budget remains to be proved.
 -/
 namespace Weft
 
@@ -23,7 +23,7 @@ theorem ENNReal.tsum_tsub_le {A : Type} (f g : A → ENNReal) : (∑' a, f a) - 
   rw [tsub_le_iff_right, ← ENNReal.tsum_add]
   exact ENNReal.tsum_le_tsum fun a => le_tsub_add
 
-/-- **The kernel lemma.**  Total variation of two binds. -/
+/-- Bound bind distance by initial distance plus expected continuation distance. -/
 theorem PMF.statDist_bind_le {A B : Type} (p q : PMF A) (f g : A → PMF B) :
     PMF.statDist (p.bind f) (q.bind g) ≤ PMF.statDist p q + ∑' a, q a * PMF.statDist (f a) (g a) := by
   have point : ∀ a b, p a * f a b - q a * g a b ≤ (p a - q a) * f a b + q a * (f a b - g a b) := by
@@ -46,13 +46,13 @@ theorem PMF.statDist_bind_le {A B : Type} (p q : PMF A) (f g : A → PMF B) :
     _ = PMF.statDist p q + ∑' a, q a * PMF.statDist (f a) (g a) := by
         rw [ENNReal.tsum_add]; rfl
 
-/-- Data processing: a common postprocessing does not increase the distance. -/
+/-- Applying the same function to both distributions cannot increase total variation. -/
 theorem PMF.statDist_map_le {A B : Type} (p q : PMF A) (h : A → B) :
     PMF.statDist (p.map h) (q.map h) ≤ PMF.statDist p q := by
   have := PMF.statDist_bind_le p q (fun a => PMF.pure (h a)) (fun a => PMF.pure (h a))
   simpa [PMF.map, PMF.statDist_self] using this
 
-/-- **A statistical realisation**: exact output marginal, joint within `ε` per operation. -/
+/-- Exact output marginal and joint simulation error bounded by `ε` per operation. -/
 structure RealizationStat (F : Functionality) (fs : Hybrid) where
   impl : (D : Domain) → (r : Req F.ops D) → Prog fs.ops D (Resp F.ops D r.op)
   Pre : Req F.ops .ideal → Prop := fun _ => True
@@ -78,9 +78,7 @@ noncomputable def Realization.toStat {F : Functionality} {fs : Hybrid} (f : Real
     rfl
   close r hr := le_of_eq (PMF.statDist_eq_zero_of_eq (f.real r hr))
 
-/-- The caller's budget: the sum, over the ideal execution, of the errors
-of the requests it issues.  `min 1` of it is automatic, since total
-variation is at most one. -/
+/-- Expected sum of per-request errors along the ideal execution. -/
 noncomputable def budget {ι : Interface} (M : Model ι .ideal PMF) (ε : ι.Op → ENNReal) {α : Type} :
     Prog ι .ideal α → ENNReal
   | .pure _ => 0

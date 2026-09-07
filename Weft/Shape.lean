@@ -1,28 +1,23 @@
 /-!
 # Domains, shapes and operands
 
-A *domain* says what a share of a `T` is.  Programs are polymorphic in the
-domain, so they can do nothing with a share except hand it to an
-operation; the semantics instantiates the domain.
+A domain chooses the representation of shared and clear values.
+Programs are polymorphic in the domain;
+`Weft.Program` checks that implementations cannot inspect shares.
 
-* `ideal`  — a share of a `T` is a `T`, a clear value is plain.  The
-  semantics and every privacy statement live here.
-* `erased` — a share is `()`.  This is what the adversary sees of a
-  request: the clear components, and only the *shape* of the shared ones.
-* `timed` (`Weft.Timed`) — shares and clear values carry the round at
-  which they are available.
+* `ideal` represents both shared and clear values by their underlying types.
+* `erased` replaces shares with `Unit` and preserves clear values.
+* `timed` attaches an availability round to both kinds of value.
 
-The operands and the response of an operation are described by `Shape`s,
-a closed language over types, so that their public part (`blank`) is
-structural: a clear operand or a clear response is in the adversary's
-record by shape, and a model cannot omit it.
+`Shape` describes operands and responses.
+Its `blank` operation removes shared values from the adversary's record,
+while preserving clear values and the surrounding structure.
 -/
 namespace Weft
 
-/-- A domain: what a share of a `T` is, and what a clear value of a `T`
-is.  Programs are polymorphic in it.  Clear values form an applicative
-functor, so that a program computes on them (`e * d`) without seeing
-inside; the only way to look at one is `Prog.look`. -/
+/-- Representations of shared and clear values.
+The applicative supports computation on clear values;
+`Prog.look` exposes a clear value to the program's control flow. -/
 structure Domain where
   share : Type → Type
   clear : Type → Type
@@ -30,22 +25,19 @@ structure Domain where
 
 instance (D : Domain) : Applicative D.clear := D.apply
 
-/-- Plain values, as an applicative. -/
+/-- The identity applicative. -/
 abbrev Domain.plain : Applicative (fun T : Type => T) where
   map f x := f x
   pure x := x
   seq f x := f (x ())
 
-/-- The ideal domain: a share is its value, a clear value is plain.
-Semantics and privacy live here. -/
+/-- Interpret shares and clear values as their underlying values. -/
 abbrev Domain.ideal : Domain := ⟨fun T => T, fun T => T, Domain.plain⟩
 
-/-- `Domain.ideal.clear` unfolds to `fun T => T`, which the generic instance
-does not match; name the instance at that type. -/
+/-- The generic instance does not match the unfolded type `fun T => T`. -/
 instance : Applicative Domain.ideal.clear := Domain.plain
 
-/-- The erasure of a domain: shares become `()`, clear values stay what
-they are.  What the adversary sees of a request in that domain. -/
+/-- Replace shares with `Unit` and preserve clear values. -/
 abbrev Domain.erase (D : Domain) : Domain := ⟨fun _ => Unit, D.clear, D.apply⟩
 
 /-- The erased ideal domain: shares are `()`, clear values are plain. -/
@@ -59,7 +51,7 @@ variable {D : Domain} {T A B : Type}
 @[simp] theorem ideal_seq (f : Domain.ideal.clear (A → B)) (x : Unit → Domain.ideal.clear A) :
     (Seq.seq f x : Domain.ideal.clear B) = f (x ()) := rfl
 
-/-! Arithmetic on clear values, in any domain: pointwise through the applicative. -/
+/-! Lift arithmetic through the clear-value applicative. -/
 instance [Add T] : Add (D.clear T) := ⟨fun a b => (· + ·) <$> a <*> b⟩
 instance [Sub T] : Sub (D.clear T) := ⟨fun a b => (· - ·) <$> a <*> b⟩
 instance [Mul T] : Mul (D.clear T) := ⟨fun a b => (· * ·) <$> a <*> b⟩
@@ -67,13 +59,13 @@ instance [Div T] : Div (D.clear T) := ⟨fun a b => (· / ·) <$> a <*> b⟩
 instance [Neg T] : Neg (D.clear T) := ⟨fun a => Neg.neg <$> a⟩
 instance [Inv T] : Inv (D.clear T) := ⟨fun a => Inv.inv <$> a⟩
 instance {n : Nat} [OfNat T n] : OfNat (D.clear T) n := ⟨pure (OfNat.ofNat n)⟩
-/-- A program-time value is a clear value available at once. -/
+/-- Embed a value using `pure`. -/
 instance : Coe T (D.clear T) := ⟨pure⟩
 
 end Domain
 
-/-- The shape of a response: a closed language over types, so that the
-public part of a response is structural. -/
+/-- Operand and response shapes,
+with explicit shared and clear components. -/
 inductive Shape where
   | unit
   | clear (T : Type)
@@ -84,8 +76,8 @@ inductive Shape where
 
 namespace Shape
 
-/-- A shape, interpreted in a domain.  Reducible, so that `D.share F` and
-`Resp ι D o` unify wherever they are the same type. -/
+/-- Interpret a shape in `D`.
+Reducibility lets response types unify with their component types. -/
 @[reducible] def interp (D : Domain) : Shape → Type
   | unit => Unit
   | clear T => D.clear T
@@ -103,8 +95,7 @@ def blank {D : Domain} : (s : Shape) → s.interp D → s.interp D.erase
   | vec _ a, f => fun i => a.blank (f i)
   | list a, xs => xs.map a.blank
 
-/-- Whether a response has a clear component (a program may branch on it,
-so in the timed domain it raises the reveal clock). -/
+/-- Whether the shape contains a `clear` constructor. -/
 def hasClear : Shape → Bool
   | unit => false
   | clear _ => true
@@ -113,7 +104,8 @@ def hasClear : Shape → Bool
   | vec _ a => a.hasClear
   | list a => a.hasClear
 
-/-- A shape without clear components: blanking it is trivial. -/
+/-- Shapes containing no clear components.
+Container structure, e.g. list length, is still public. -/
 def Hidden : Shape → Prop
   | unit => True
   | clear _ => False
@@ -134,18 +126,15 @@ def Hidden : Shape → Prop
 
 end Shape
 
-/-- The operands of a request: a value of each shape in the operand list.
-Clear operands are public by shape, like clear responses; a share is a
-share. -/
+/-- A tuple of operands with the given shapes. -/
 @[reducible] def Operands (D : Domain) : List Shape → Type
   | [] => Unit
   | s :: ss => s.interp D × Operands D ss
 
 namespace Operands
 
-/-! Pairs are taken apart by projections throughout, not by patterns: a
-pattern here makes evaluation by `rfl` exponential in the number of
-requests. -/
+/-! Use projections to unpack operand pairs.
+Pattern matching here causes exponential reduction time under `rfl`. -/
 
 /-- Map a shape-indexed transformation over the operands. -/
 def map {D E : Domain} (f : (s : Shape) → s.interp D → s.interp E) :

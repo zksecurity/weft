@@ -2,23 +2,20 @@ import Weft.Init
 import Weft.MPC
 
 /-!
-# The arithmetic functionalities
+# Arithmetic functionalities
 
-Each functionality is an interface (an inductive of operations, the clear
-arguments in the constructors, operand lists, response shapes) and a
-model.  Deterministic ones are given at `Id` and lifted.  The name is the
-promise: `Mult.eval` says that `mult` multiplies, and every hybrid that
-lists `Mult F` means that.
+Linear operations, multiplication, reveal, comparison and inversion.
+Each functionality specifies an interface and a deterministic evaluation model,
+which is lifted to `PMF` for the ideal semantics.
 
-A functionality has no cost: an MPC prices it (`(Mult F).priced ⟨1, 2⟩`,
-`Weft.MPC`).
+Costs are assigned by an MPC, e.g. `(Mult F).priced ⟨1, 2⟩`.
 -/
 namespace Weft
 
-/-! ## Linear operations: free and silent everywhere -/
+/-! ## Linear operations -/
 
 namespace Lin
-/-- Constants and scalars are clear operands: in the record of the request, by shape. -/
+/-- Constants and scalars are clear operands and appear in request events. -/
 inductive Op where
   | const
   | add
@@ -54,13 +51,13 @@ abbrev ops (F : Type) : Interface where
 def eval (F : Type) [Mul F] : Model (ops F) .ideal Id := .silent fun ⟨.mult, (a, b, ())⟩ => a * b
 end Mult
 
-/-- Secure multiplication. -/
+/-- Multiply shared operands and return a share. -/
 abbrev Mult (F : Type) [Mul F] : Functionality := .ofEval (Mult.ops F) (Mult.eval F)
 
 @[simp, weft] theorem Mult.model_eq (F : Type) [Mul F] :
     (Mult F).model = (Mult.eval F).lift PMF := Functionality.ofEval_model _ _
 
-/-! ## Opening a share: the response is clear, and that is the whole disclosure -/
+/-! ## Revealing shares -/
 
 namespace Reveal
 inductive Op where | reveal
@@ -71,8 +68,8 @@ abbrev ops (F : Type) : Interface where
 def eval (F : Type) : Model (ops F) .ideal Id := .silent fun ⟨.reveal, (x, ())⟩ => x
 end Reveal
 
-/-- Opening a share to everyone.  The value is public by shape; nothing
-further is declared. -/
+/-- Return a share's value as a clear response.
+The event records it without an additional disclosure field. -/
 abbrev Reveal (F : Type) : Functionality := .ofEval (Reveal.ops F) (Reveal.eval F)
 
 @[simp, weft] theorem Reveal.model_eq (F : Type) :
@@ -90,7 +87,7 @@ def eval (F : Type) [LT F] [DecidableRel (α := F) (· < ·)] [Zero F] [One F] :
   .silent fun ⟨.lt, (a, b, ())⟩ => (if a < b then 1 else 0 : F)
 end Cmp
 
-/-- A comparison functionality some MPCs offer natively: `[a < b]` as a share. -/
+/-- Return the comparison indicator `[a < b]` as a share. -/
 abbrev Cmp (F : Type) [LT F] [DecidableRel (α := F) (· < ·)] [Zero F] [One F] : Functionality :=
   .ofEval (Cmp.ops F) (Cmp.eval F)
 
@@ -108,13 +105,14 @@ abbrev ops (F : Type) : Interface where
 def eval (F : Type) [Inv F] : Model (ops F) .ideal Id := .silent fun ⟨.inv, (x, ())⟩ => (x⁻¹ : F)
 end Inversion
 
-/-- Native field inversion (`0⁻¹ = 0`, as in Mathlib). -/
+/-- Apply the underlying inverse operation to a share.
+For fields, Mathlib uses `0⁻¹ = 0`. -/
 abbrev Inversion (F : Type) [Inv F] : Functionality := .ofEval (Inversion.ops F) (Inversion.eval F)
 
 @[simp, weft] theorem Inversion.model_eq (F : Type) [Inv F] :
     (Inversion F).model = (Inversion.eval F).lift PMF := Functionality.ofEval_model _ _
 
-/-! ## The operations, as a program writes them -/
+/-! ## Program operations -/
 
 section Ops
 variable {F : Type} {fs : Hybrid} {D : Domain}

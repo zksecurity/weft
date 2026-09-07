@@ -2,22 +2,17 @@ import Lean
 import Weft.Realization
 
 /-!
-# The `program` command: certificates with a checked implementation
+# Checking implementations
 
-A realisation's `impl` is a program for every domain, so it can do nothing
-with a share except pass it to an operation.  Lean enforces that for a
-computable `def`: comparing two shares needs a `DecidableEq (D.share T)`
-instance that does not exist, and a classical one makes the definition
-noncomputable.  Not enforced by Lean: `noncomputable def`, `unsafe`,
-`implemented_by`, `partial`, and a parameter of the certificate that
-supplies a way to inspect shares (a callback over the domain, a
-decidability dictionary).
+`program` declares a realisation and checks its fully applied `impl` term.
+It rejects domain-dependent certificate parameters and disallowed constants,
+following references through the package's definitions.
+The simulator and proof may remain noncomputable.
 
-`program` closes those gaps.  It declares the certificate and then checks
-the fully applied `impl` term as it sits in it: every constant it uses,
-transitively through this package's definitions, is computable, not
-unsafe, and carries no `implemented_by` or `extern`; no parameter of the
-certificate mentions a domain.  Simulators and proofs are unconstrained.
+These checks supplement domain polymorphism:
+Lean also permits noncomputable definitions, unsafe code and replacement implementations.
+A certificate parameter could supply operations on shares.
+The checker restricts these mechanisms in the implementation term.
 
     program beaverMult (F : Type) [Field F] [Fintype F] [Inhabited F] : Realization (Mult F) (Pre F) :=
       { impl := ..., Sim := ..., real := ... }
@@ -25,17 +20,16 @@ certificate mentions a domain.  Simulators and proofs are unconstrained.
 namespace Weft.Program
 open Lean Elab Command Meta
 
-/-- Constants that are the checked package: traverse into these, stop at the rest. -/
+/-- Identify package constants for transitive checking. -/
 private def isLocalConst (n : Name) : Bool :=
   !([`Lean, `Init, `Std, `Mathlib, `Nat, `List, `Fin, `Prod, `Option, `Sum, `Sigma, `PUnit, `Unit, `Bool, `Eq,
     `Function, `id, `ite, `dite, `Decidable, `instDecidableEqNat, `Int,
     `Array, `Vector, `Subarray, `ByteArray, `String, `Char, `UInt8, `UInt16, `UInt32, `UInt64, `USize, `BitVec]
     : List Name).any fun p => Name.isPrefixOf p n
 
-/-- Why a constant is unacceptable in an implementation, if it is.  In
-`strict` mode (the certificate's own term) noncomputable constants and
-data axioms are rejected too; inside a computable definition Lean has
-already checked that they sit in irrelevant positions. -/
+/-- Return the reason a constant is disallowed, if any.
+Strict checking also rejects noncomputable constants and `Classical.choice`.
+Inside a computable definition, Lean has already checked their computational relevance. -/
 private def offence (env : Environment) (strict : Bool) (n : Name) : Option String :=
   if n == ``sorryAx then some "sorry"
   else if strict && isNoncomputable env n then some "noncomputable"
@@ -43,15 +37,14 @@ private def offence (env : Environment) (strict : Bool) (n : Name) : Option Stri
     | some ci =>
       if ci.isUnsafe then some "unsafe"
       else if strict && n == ``Classical.choice then some "Classical.choice"
-      else if !isLocalConst n then none   -- the standard library's externs are its own business
+      else if !isLocalConst n then none   -- Trust standard-library externs.
       else if (Compiler.getImplementedBy? env n).isSome then some "implemented_by"
       else if isExtern env n then some "extern"
       else if ci.isPartial then some "partial"
       else none
     | none => some "unknown"
 
-/-- Check every constant of `e` outside its proofs, and transitively the
-package's own definitions it uses. -/
+/-- Check non-proof references in `e` and recursively inspect package definitions. -/
 private partial def checkExpr (env : Environment) (strict : Bool) (e : Expr) (visited : IO.Ref NameSet) : MetaM Unit := do
   let consts ← IO.mkRef ({} : NameSet)
   Meta.forEachExpr' e fun sub => do
@@ -68,8 +61,8 @@ private partial def checkExpr (env : Environment) (strict : Bool) (e : Expr) (vi
         if let some v := ci.value? then
           checkExpr env false v visited
 
-/-- Peel the certificate's parameters, reject any that mentions a domain,
-find `Realization.mk` and check its `impl`. -/
+/-- Reject domain-dependent parameters,
+then locate `Realization.mk` and check its implementation field. -/
 private def checkCertificate (declName : Name) : TermElabM Unit := do
   let env ← getEnv
   let some ci := env.find? declName | throwError "program: no declaration `{declName}`"
@@ -89,9 +82,8 @@ private def checkCertificate (declName : Name) : TermElabM Unit := do
     let visited ← IO.mkRef ({} : NameSet)
     checkExpr env true impl visited
 
-/-- `program name params : Realization F fs := body` declares `name` as a
-(noncomputable, the simulator is a `PMF`) definition and checks its
-implementation. -/
+/-- Declare a realisation and check its implementation.
+The declaration is noncomputable to accommodate the `PMF` simulator. -/
 syntax (name := programCmd) (docComment)? "program " declId ppIndent(optDeclSig) declVal : command
 
 @[command_elab programCmd] def elabProgram : CommandElab := fun stx => do
