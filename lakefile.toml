@@ -4,7 +4,7 @@ defaultTargets = ["Weft", "Examples"]
 [[require]]
 name = "mathlib"
 git = "https://github.com/leanprover-community/mathlib4"
-rev = "v4.29.0"
+rev = "633b366493a76df88a2bff099ed0cbf711a59ec9"
 
 [[lean_lib]]
 name = "Weft"

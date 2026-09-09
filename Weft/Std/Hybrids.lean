@@ -56,7 +56,7 @@ attribute [weft] Prog.bind_eq Prog.pure_eq Prog.bind_pure' Prog.bind_call Prog.b
   Prog.handle_look run_look_ideal dist_look Look.ideal_look Domain.ideal_map Domain.ideal_pure Domain.ideal_seq
   Prog.op_here Prog.op_there Prog.lift Prog.opHead
   dist_bind dist_call dist_pure dist_pure' Hybrid.model_cons_zero Hybrid.model_cons_succ
-  Model.det_step Model.lift_step Model.silent Model.det Model.program Id.run_pure
+  Model.det_step Model.lift_step Model.silent Model.det Model.program Id.run_pure Id.run
   PMF.monad_bind_eq_bind PMF.monad_pure_eq_pure PMF.monad_map_eq_map
   PMF.map_bind PMF.pure_map PMF.bind_map PMF.bind_bind PMF.pure_bind PMF.bind_pure
   PMF.bind_const Function.comp_def

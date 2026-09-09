@@ -130,10 +130,10 @@ program invertTotalReal : Realization (InvertTotal F) (InvHyb F) where
     rw [invert_dist]
     by_cases hx : x = 0
     · subst hx
-      simp only [zero_mul, inv_zero, PMF.bind_const, weft, Functionality.ofEval_model, decide_true, if_true]
+      simp only [zero_mul, inv_zero, PMF.bind_const, weft, Functionality.ofEval_model, decide_true, ite_true]
     · have out : ∀ s : {s : F // s ≠ 0}, (x * s.1)⁻¹ * s.1 = x⁻¹ := fun s => by
         have := s.2; field_simp
-      simp only [out, weft, Functionality.ofEval_model, hx, decide_false, Bool.false_eq_true, if_false]
+      simp only [out, weft, Functionality.ofEval_model, hx, decide_false, Bool.false_eq_true, ite_false]
       let e : {s : F // s ≠ 0} ≃ {t : F // t ≠ 0} :=
         (Equiv.mulLeft₀ x hx).subtypeEquiv fun s => by simp [hx]
       conv_rhs => rw [← uniform_map_equiv e, PMF.bind_map]

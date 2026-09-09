@@ -227,10 +227,10 @@ theorem mulBeaver_bad_not_realizes :
   obtain ⟨a, -, -, hv⟩ := mem₁
   -- This would equate `[1, 0]` with `[−a, −a]`.
   have h := congrArg (opened F) hv
-  simp [opened, badView] at h
-  obtain ⟨h1, h2⟩ := h
-  rw [h2, neg_zero] at h1
-  exact one_ne_zero h1
+  change [(1 : F), 0] = [0 - a 0, 0 - a 0] at h
+  have h1 := (List.cons.inj h).1
+  have h2 := (List.cons.inj (List.cons.inj h).2).1
+  exact one_ne_zero (h1.trans h2.symm)
 end Privacy
 
 end Weft.Examples.Beaver

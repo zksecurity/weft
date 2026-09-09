@@ -156,7 +156,6 @@ theorem Model.timed_step {ι : Interface} (E : Model ι .ideal Id) (p : ι.Op �
       ((Shape.retime (r.base s + (p r.op).delay) (ι.cod r.op) (E.step ⟨r.op, r.args.untime⟩).run.1,
         (E.step ⟨r.op, r.args.untime⟩).run.2), s.pay (p r.op).comm) := by
   simp only [Model.timed, Shape.withTimed_eq]
-  rfl
 
 /-- Issuing a priced request leaves the control clock unchanged. -/
 theorem Model.timed_clock {ι : Interface} (E : Model ι .ideal Id) (p : ι.Op → Price) (r : Req ι .timed) (s : Clock) :

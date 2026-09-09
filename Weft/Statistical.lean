@@ -50,7 +50,7 @@ theorem PMF.statDist_bind_le {A B : Type} (p q : PMF A) (f g : A → PMF B) :
 theorem PMF.statDist_map_le {A B : Type} (p q : PMF A) (h : A → B) :
     PMF.statDist (p.map h) (q.map h) ≤ PMF.statDist p q := by
   have := PMF.statDist_bind_le p q (fun a => PMF.pure (h a)) (fun a => PMF.pure (h a))
-  simpa [PMF.map, PMF.statDist_self] using this
+  simpa [PMF.map, PMF.statDist_self, Function.comp_def] using this
 
 /-- Exact output marginal and joint simulation error bounded by `ε` per operation. -/
 structure RealizationStat (F : Functionality) (fs : Hybrid) where
