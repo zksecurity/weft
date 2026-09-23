@@ -7,7 +7,8 @@ import Mathlib.Probability.ProbabilityMassFunction.Constructions
 A model gives each request a joint response and disclosure in a monad `m`.
 Sampling them together preserves their correlation,
 e.g. when a public coin affects the response.
-`Model.program` projects the response marginal.
+`Model.response` and `Model.leakage` project the two marginals.
+Use `step` when their correlation matters.
 
 `PMF` gives probabilistic semantics; `Id` gives deterministic evaluation.
 For randomised functionalities, the evaluation model fixes the coins.
@@ -39,9 +40,14 @@ def silent [Monad m] (program : (r : Req ι D) → Resp ι D r.op)
 def lift (m : Type → Type) [Monad m] (M : Model ι D Id) : Model ι D m :=
   ⟨fun r => pure (M.step r).run⟩
 
-/-- The response marginal. -/
-def program [Functor m] (M : Model ι D m) (r : Req ι D) : m (Resp ι D r.op) :=
+/-- The response marginal. Use `step` to retain its correlation with leakage. -/
+def response [Functor m] (M : Model ι D m) (r : Req ι D) : m (Resp ι D r.op) :=
   Prod.fst <$> M.step r
+
+/-- The declared-leakage marginal, not the full event recorded by the interpreter.
+Use `step` to retain its correlation with the response. -/
+def leakage [Functor m] (M : Model ι D m) (r : Req ι D) : m (ι.leak r.op) :=
+  Prod.snd <$> M.step r
 
 theorem ext {M N : Model ι D m} (h : ∀ r, M.step r = N.step r) : M = N := by
   cases M; cases N; simp only [Model.mk.injEq]; exact funext h

@@ -58,7 +58,7 @@ structure RealizationStat (F : Functionality) (fs : Hybrid) where
   Pre : Req F.ops .ideal → Prop := fun _ => True
   Sim : Event F.ops → PMF (List (Event fs.ops))
   ε : F.ops.Op → ENNReal
-  output : ∀ r, Pre r → Prod.fst <$> dist fs.model (impl .ideal r) = F.program r
+  output : ∀ r, Pre r → Prod.fst <$> dist fs.model (impl .ideal r) = F.response r
   close : ∀ r, Pre r → PMF.statDist (dist fs.model (impl .ideal r)) (do
     let (y, d) ← F.model.step r
     let s ← Sim ⟨r.op, r.args.blank, (F.ops.cod r.op).blank y, d⟩
@@ -74,7 +74,7 @@ noncomputable def Realization.toStat {F : Functionality} {fs : Hybrid} (f : Real
   output r hr := by
     rw [f.real r hr]
     simp [PMF.monad_bind_eq_bind, PMF.monad_map_eq_map, PMF.monad_pure_eq_pure, PMF.map_bind, PMF.pure_map,
-      PMF.bind_const, Model.program]
+      PMF.bind_const, Model.response]
     rfl
   close r hr := le_of_eq (PMF.statDist_eq_zero_of_eq (f.real r hr))
 

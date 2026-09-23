@@ -10,3 +10,4 @@ import Examples.Timing
 import Examples.MultiField
 import Examples.Checked
 import Examples.Statistical
+import Examples.Marginals

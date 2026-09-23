@@ -55,9 +55,14 @@ abbrev ofEval (ι : Interface) (E : Model ι .ideal Id) : Functionality :=
 @[simp] theorem ofEval_model (ι : Interface) (E : Model ι .ideal Id) : (ofEval ι E).model = E.lift PMF :=
   model_eq rfl
 
-/-- The response marginal of the semantics. -/
-noncomputable abbrev program (F : Functionality) (r : Req F.ops .ideal) : PMF (Resp F.ops .ideal r.op) :=
-  F.model.program r
+/-- The response marginal of the semantics. Use `model.step` for the joint law. -/
+noncomputable abbrev response (F : Functionality) (r : Req F.ops .ideal) : PMF (Resp F.ops .ideal r.op) :=
+  F.model.response r
+
+/-- The declared-leakage marginal of the semantics, not the full public event.
+Use `model.step` for the joint response/leakage law. -/
+noncomputable abbrev leakage (F : Functionality) (r : Req F.ops .ideal) : PMF (F.ops.leak r.op) :=
+  F.model.leakage r
 
 end Functionality
 
