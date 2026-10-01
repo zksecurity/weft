@@ -1,6 +1,5 @@
 import Weft
 import Examples.Basic
-import Examples.Privacy
 import Mathlib.Data.ZMod.Basic
 import Mathlib.Algebra.Field.ZMod
 
@@ -71,7 +70,10 @@ abbrev AesHybrid : Hybrid := [AES F (toyAes), Const F, Addition F, Subtraction F
 /-- Realise the toy function with an input-independent three-event view. -/
 program aesByProgram : Realization (AES F toyAes) (Std F) where
   impl D r := toyAesProg r.1 r.2.1
-  Sim _ := pure [event[Addition F] (), event[Mult F] (), event[Mult F] ()]
+  Sim _ := pure
+    [event[Addition F] (),
+     event[Mult F] (),
+     event[Mult F] ()]
   real r _ := by
     obtain ⟨k, m, ⟨⟩⟩ := r
     simp only [toyAesProg, toyAes, add, mul, weft, Functionality.ofEval_model, AesF.eval]
@@ -103,7 +105,10 @@ theorem cbc2Plain_output (k iv m₁ m₂ : F) :
 -- The hybrid view is a fixed list of four operation records.
 example (k iv m₁ m₂ : F) :
     view (AesHybrid F).eval (cbc2 (fs := AesHybrid F) (D := .ideal) toyAes k iv m₁ m₂)
-      = [⟨2, ()⟩, ⟨0, ()⟩, ⟨2, ()⟩, ⟨0, ()⟩] := rfl
+      = [⟨2, ()⟩,
+         ⟨0, ()⟩,
+         ⟨2, ()⟩,
+         ⟨0, ()⟩] := rfl
 
 -- The fixed price assigns one round to each block-function call.
 -- The arithmetic implementation uses two dependent multiplications,
@@ -167,7 +172,11 @@ abbrev CBC : Functionality :=
 The simulator returns its four fixed operation records. -/
 program cbcOverHybrid : Realization (CBC F) (AesHybrid F) where
   impl D r := cbc2 toyAes r.1 r.2.1 r.2.2.1 r.2.2.2.1
-  Sim _ := pure [⟨2, ()⟩, ⟨0, ()⟩, ⟨2, ()⟩, ⟨0, ()⟩]
+  Sim _ := pure
+    [⟨2, ()⟩,
+     ⟨0, ()⟩,
+     ⟨2, ()⟩,
+     ⟨0, ()⟩]
   real r _ := by
     obtain ⟨k, iv, m₁, m₂, ⟨⟩⟩ := r
     simp only [cbc2, enc, add, weft, Functionality.ofEval_model, AesF.eval]

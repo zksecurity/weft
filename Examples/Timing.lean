@@ -119,7 +119,9 @@ def mulAddImpl {fs : Hybrid} {D : Domain} [Has (Addition F) fs] [Has (Mult F) fs
 /-- Realise `MulAdd` with a fixed view of one multiplication and one addition. -/
 program mulAddReal : Realization (MulAdd F) (Std F) where
   impl D r := mulAddImpl F r.1 r.2.1 r.2.2.1
-  Sim _ := pure [event[Mult F] (), event[Addition F] ()]
+  Sim _ := pure
+    [event[Mult F] (),
+     event[Addition F] ()]
   real r _ := by
     obtain ⟨a, b, c, ⟨⟩⟩ := r
     simp only [mulAddImpl, mul, add, weft, Functionality.ofEval_model, MulAdd.eval]

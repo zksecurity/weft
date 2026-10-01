@@ -85,9 +85,16 @@ variable (F : Type) [Add F] [Mul F] [Sub F] [Fintype F] [Inhabited F]
 
 /-- The view of one Beaver multiplication, as a function of the two opened values. -/
 def beaverView (q : F × F) : List (Event (Pre F).ops) :=
-  [event[MulTriple F] (), event[Subtraction F] (), event[Reveal F] q.1, event[Subtraction F] (),
-   event[Reveal F] q.2, event[Smul F] q.1, event[Smul F] q.2,
-   event[Addition F] (), event[Addition F] (), event[Const F] (q.1 * q.2),
+  [event[MulTriple F] (),
+   event[Subtraction F] (),
+   event[Reveal F] q.1,
+   event[Subtraction F] (),
+   event[Reveal F] q.2,
+   event[Smul F] q.1,
+   event[Smul F] q.2,
+   event[Addition F] (),
+   event[Addition F] (),
+   event[Const F] (q.1 * q.2),
    event[Addition F] ()]
 
 -- `mulBeaver_dist` samples the two masked inputs,
@@ -134,8 +141,18 @@ theorem mulBeaver_dist (x y : F) :
     dist (Pre F).model (mulBeaver (fs := Pre F) (D := .ideal) x y)
       = (uniform (Fin 2 → F)).bind fun v =>
           pure (x * y, beaverView F (x - v 0, y - v 1)) := by
-  simp only [mulBeaver, mulBeaverFrom, beaverView, mulTriple, sub, reveal,
-    smul, add, const, weft]
+  simp only [
+    mulBeaver,
+    mulBeaverFrom,
+    beaverView,
+    mulTriple,
+    sub,
+    reveal,
+    smul,
+    add,
+    const,
+    weft
+  ]
   congr 1
   funext v
   rw [beaver_correct]
@@ -198,11 +215,16 @@ def mulBeaverBad (x y : F) : Prog (BadPre F).ops .ideal F :=
 /-- Event list for the correlated-mask implementation. -/
 def badView (q : F × F) : List (Event (BadPre F).ops) :=
   [event[BadMulTriple F] (),
-   event[Subtraction F] (), event[Reveal F] q.1,
-   event[Subtraction F] (), event[Reveal F] q.2,
-   event[Smul F] q.1, event[Smul F] q.2,
-   event[Addition F] (), event[Addition F] (),
-   event[Const F] (q.1 * q.2), event[Addition F] ()]
+   event[Subtraction F] (),
+   event[Reveal F] q.1,
+   event[Subtraction F] (),
+   event[Reveal F] q.2,
+   event[Smul F] q.1,
+   event[Smul F] q.2,
+   event[Addition F] (),
+   event[Addition F] (),
+   event[Const F] (q.1 * q.2),
+   event[Addition F] ()]
 
 omit [Fintype F] [Inhabited F] in
 theorem badBeaver_correct (x y a : F) :

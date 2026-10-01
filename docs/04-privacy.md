@@ -94,7 +94,8 @@ def openProduct {fs : Hybrid} {D : Domain}
 program openProductReal : Realization (OpenProduct F) (Std F) where
   impl D r := openProduct F r.1 r.2.1
   Sim e := pure
-    [event[Mult F] (), event[Reveal F] e]
+    [event[Mult F] (),
+     event[Reveal F] e]
   real r _ := by
     obtain ⟨a, b, ⟨⟩⟩ := r
     simp only [openProduct, mul, reveal, weft, Functionality.ofEval_model]
@@ -164,8 +165,7 @@ The simulator embeds the declared leakage as an event at that position.
 This is the base case for a primitive supplied by the hybrid.
 `Realizations.incl` builds the corresponding family from an inclusion.
 
-[Examples/Privacy.lean](../Examples/Privacy.lean) assembles `stdOverPre` and composes its public-multiplication certificate with that family.
-[Examples/AesHybrid.lean](../Examples/AesHybrid.lean) demonstrates another layer of composition using a toy block function.
+[Examples/AesHybrid.lean](../Examples/AesHybrid.lean) demonstrates composition using a toy block function.
 
 ## What `program` Checks
 

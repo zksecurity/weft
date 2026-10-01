@@ -1,7 +1,5 @@
 import Examples.Basic
 import Examples.Beaver
-import Examples.Gallery
-import Examples.Privacy
 import Examples.Inversion
 import Examples.AesHybrid
 import Examples.RandomCombination

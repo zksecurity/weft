@@ -53,7 +53,9 @@ private def scaleAdd {D : Domain} (c : D.clear Nat) (x y : D.share Nat) :
 
 example (c x y : Nat) :
     dist (Hybrid.model [Addition Nat, Smul Nat]) (scaleAdd (D := .ideal) c x y) =
-      pure (c * x + y, [⟨1, c⟩, ⟨0, ()⟩]) := by
+      pure (c * x + y,
+        [⟨1, c⟩,
+         ⟨0, ()⟩]) := by
   simp only [scaleAdd, smul, add, weft]
   rfl
 

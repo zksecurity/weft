@@ -140,6 +140,6 @@ The `program` command adds checks on the fully applied implementation term, incl
 A declaration of type `Realization` alone does not record that this check ran.
 The command and its precise scope are covered in [Privacy](04-privacy.md).
 
-More examples are in [Examples/Basic.lean](../Examples/Basic.lean) and [Examples/Gallery.lean](../Examples/Gallery.lean).
+More examples are in [Examples/Basic.lean](../Examples/Basic.lean).
 
 [Previous: Hybrids](02-hybrids.md) · [Next: Privacy](04-privacy.md)

@@ -5,7 +5,7 @@ import Weft
 
 Programs parameterised by their domain and required functionalities,
 with examples of output evaluation, timing, communication and views.
-Realisation proofs are in `Examples.Beaver` and `Examples.Privacy`.
+The Beaver realisation proof is in `Examples.Beaver`.
 -/
 namespace Weft.Examples.Basic
 
@@ -138,9 +138,11 @@ example (a b c : F) : commOn (abb F).timed (mul3 (fs := (abb F).hybrid) (D := .t
 
 -- The event list includes operation records as well as clear values.
 example (a b : F) : view (Std F).eval (openMul (fs := Std F) (D := .ideal) a b)
-    = [event[Mult F] (), event[Reveal F] (a * b)] := rfl
+    = [event[Mult F] (),
+       event[Reveal F] (a * b)] := rfl
 example (a b : F) : view (Std F).eval (leakyMul (fs := Std F) (D := .ideal) a b)
-    = [event[Reveal F] a, event[Reveal F] b] := rfl
+    = [event[Reveal F] a,
+       event[Reveal F] b] := rfl
 
 -- Inner product with a public offset, followed by Horner evaluation.
 section
@@ -154,8 +156,13 @@ example : delayOn (Std.timed (Fin 7)) (horner (F := Fin 7) (fs := Std (Fin 7)) (
   decide +kernel
 example (x a₀ a₁ a₂ : F) :
     view (Std F).eval (horner (fs := Std F) (D := .ideal) x [a₀, a₁, a₂])
-      = [event[Const F] (0 : F), event[Mult F] (), event[Addition F] (), event[Mult F] (),
-         event[Addition F] (), event[Mult F] (), event[Addition F] ()] := rfl
+      = [event[Const F] (0 : F),
+         event[Mult F] (),
+         event[Addition F] (),
+         event[Mult F] (),
+         event[Addition F] (),
+         event[Mult F] (),
+         event[Addition F] ()] := rfl
 example : commOn (abb (Fin 7)).timed (horner (F := Fin 7) (fs := (abb (Fin 7)).hybrid) (D := .timed) ⟪3⟫ [⟪1⟫, ⟪2⟫, ⟪4⟫])
     = 6 := by decide +kernel
 end

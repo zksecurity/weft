@@ -290,8 +290,13 @@ abbrev DaHyb : Hybrid :=
 
 /-- The view of one conversion, as a function of the opened bit. -/
 def b2aView (c : GF2) : List (Event DaHyb.ops) :=
-  [⟨9, ()⟩, ⟨5, ()⟩, ⟨8, c⟩, ⟨0, (c.toNat : ZMod 17)⟩,
-   ⟨1, ()⟩, ⟨3, 2 * (c.toNat : ZMod 17)⟩, ⟨2, ()⟩]
+  [⟨9, ()⟩,
+   ⟨5, ()⟩,
+   ⟨8, c⟩,
+   ⟨0, (c.toNat : ZMod 17)⟩,
+   ⟨1, ()⟩,
+   ⟨3, 2 * (c.toNat : ZMod 17)⟩,
+   ⟨2, ()⟩]
 
 /-- Sample uniform `b`, open `x + b`, and reconstruct `x` in `ZMod 17`. -/
 theorem b2a_dist (x : GF2) :

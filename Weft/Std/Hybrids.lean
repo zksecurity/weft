@@ -6,7 +6,7 @@ import Weft.Std.Random
 `Std F` offers linear operations, multiplication and reveal.
 `Pre F` offers linear operations, reveal and Beaver triples.
 To run a `Std F` program over `Pre F`,
-replace multiplication with its Beaver realisation (`Examples.Privacy`).
+replace multiplication with its Beaver realisation (`Examples.Beaver`).
 -/
 namespace Weft
 

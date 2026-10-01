@@ -21,10 +21,9 @@ A functionality implemented by another Weft program can then be replaced by that
 
 For example, `Std F` supplies linear arithmetic, multiplication, and opening.
 `Pre F` supplies linear arithmetic, opening, and Beaver triples.
-The certificate `beaverMult` realises multiplication over `Pre F`.
-Together with the two inclusion realisations, it gives `stdOverPre : Realizations (Std F) (Pre F)`.
-Hence a caller proved over `Std F` can be instantiated over `Pre F` by inlining those realisations.
-The construction is in [Examples/Privacy.lean](../Examples/Privacy.lean).
+[Examples/Beaver.lean](../Examples/Beaver.lean) proves `beaverMult`, which realises multiplication over `Pre F`.
+Combining it with inclusion realisations for the other operations gives a `Realizations (Std F) (Pre F)` family.
+A caller proved over `Std F` can then be instantiated over `Pre F` by inlining that family.
 
 ## What the Simulator Must Reproduce
 
