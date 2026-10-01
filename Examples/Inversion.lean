@@ -81,10 +81,10 @@ example : delayOn (invMPC (ZMod 7)).timed (divide (F := ZMod 7) (fs := (invMPC (
 
 /-- The view of one inversion, as a function of the opened value. -/
 def invView (m : F) : List (Event (InvHyb F).ops) :=
-  [⟨6, ()⟩,
-   ⟨4, ()⟩,
-   ⟨5, m⟩,
-   ⟨3, (m⁻¹ : F)⟩]
+  [event[RandNZ F] (),
+   event[Mult F] (),
+   event[Reveal F] m,
+   event[Smul F] (m⁻¹ : F)]
 
 /-- Sample nonzero `s`, reveal `x·s`, and output `s / (x·s)`. -/
 theorem invert_dist (x : F) :
