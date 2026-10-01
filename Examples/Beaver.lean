@@ -193,12 +193,16 @@ Use `mulBeaverFrom` because `BadPre` does not contain `MulTriple`. -/
 def mulBeaverBad (x y : F) : Prog (BadPre F).ops .ideal F :=
   mulBeaverFrom (Prog.op (F := BadMulTriple F) ()) x y
 
+local notation:max "event[" f "]" d:arg => Has.event (F := f) d
+
 /-- Event list for the correlated-mask implementation. -/
 def badView (q : F × F) : List (Event (BadPre F).ops) :=
-  [⟨5, ()⟩, ⟨2, ()⟩, ⟨4, q.1⟩,
-   ⟨2, ()⟩, ⟨4, q.2⟩, ⟨3, q.1⟩,
-   ⟨3, q.2⟩, ⟨1, ()⟩, ⟨1, ()⟩,
-   ⟨0, q.1 * q.2⟩, ⟨1, ()⟩]
+  [event[BadMulTriple F] (),
+   event[Subtraction F] (), event[Reveal F] q.1,
+   event[Subtraction F] (), event[Reveal F] q.2,
+   event[Smul F] q.1, event[Smul F] q.2,
+   event[Addition F] (), event[Addition F] (),
+   event[Const F] (q.1 * q.2), event[Addition F] ()]
 
 omit [Fintype F] [Inhabited F] in
 theorem badBeaver_correct (x y a : F) :
