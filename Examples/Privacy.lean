@@ -60,7 +60,7 @@ abbrev OpenMul : Functionality :=
 /-- Simulate `openMul` using the product in the ideal event. -/
 program openMulReal : Realization (OpenMul F) (Std F) where
   impl D r := openMul r.1 r.2.1
-  Sim e := pure [⟨Std.mult F, ()⟩, ⟨Std.reveal F, e⟩]
+  Sim e := pure [event[Mult F] (), event[Reveal F] e]
   real r _ := by
     obtain ⟨a, b, ⟨⟩⟩ := r
     simp only [openMul, mul, reveal, weft, Functionality.ofEval_model]

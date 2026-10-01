@@ -167,6 +167,9 @@ omit h in
 
 end Has
 
+-- Name a standalone functionality; membership supplies its position in the hybrid.
+scoped notation:max "event[" f "]" d:arg => Has.event (F := f) d
+
 namespace Prog
 variable {D : Domain}
 

@@ -15,13 +15,6 @@ abbrev Std (F : Type) [Add F] [Mul F] [Sub F] : Hybrid := [Const F, Addition F, 
 
 namespace Std
 variable (F : Type) [Add F] [Mul F] [Sub F]
-/-- Component indices used when stating views. -/
-abbrev const : (Std F).ops.Op := 0
-abbrev add : (Std F).ops.Op := 1
-abbrev sub : (Std F).ops.Op := 2
-abbrev smul : (Std F).ops.Op := 3
-abbrev mult : (Std F).ops.Op := 4
-abbrev reveal : (Std F).ops.Op := 5
 /-- Zero-cost linear operations with configurable multiplication and reveal prices.
 The defaults are `(1 round, 2 units)` and `(1 round, 1 unit)`, respectively. -/
 abbrev mpc (pMult : Price := ⟨1, 2⟩) (pReveal : Price := ⟨1, 1⟩) : MPC :=
@@ -39,12 +32,6 @@ abbrev Pre (F : Type) [Add F] [Mul F] [Sub F] [Fintype F] [Inhabited F] : Hybrid
 
 namespace Pre
 variable (F : Type) [Add F] [Mul F] [Sub F] [Fintype F] [Inhabited F]
-abbrev const : (Pre F).ops.Op := 0
-abbrev add : (Pre F).ops.Op := 1
-abbrev sub : (Pre F).ops.Op := 2
-abbrev smul : (Pre F).ops.Op := 3
-abbrev reveal : (Pre F).ops.Op := 4
-abbrev triple : (Pre F).ops.Op := 5
 /-- Preprocessing MPC with zero-cost triples by default. -/
 abbrev mpc (pReveal : Price := ⟨1, 1⟩) (pTriple : Price := ⟨0, 0⟩) : MPC :=
   [(Const F).priced ⟨0, 0⟩, (Addition F).priced ⟨0, 0⟩,

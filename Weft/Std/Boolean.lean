@@ -54,13 +54,6 @@ abbrev Bool2 : Hybrid := [Const GF2, Addition GF2, Subtraction GF2, Smul GF2, Mu
 
 namespace Bool2
 
-/-- Component indices used when stating views. -/
-abbrev const : Bool2.ops.Op := 0
-abbrev add : Bool2.ops.Op := 1
-abbrev sub : Bool2.ops.Op := 2
-abbrev smul : Bool2.ops.Op := 3
-abbrev mult : Bool2.ops.Op := 4
-
 /-- Zero-cost linear operations; one round and one unit per AND by default. -/
 abbrev mpc (pMult : Price := ⟨1, 1⟩) : MPC :=
   [(Const GF2).priced ⟨0, 0⟩, (Addition GF2).priced ⟨0, 0⟩,

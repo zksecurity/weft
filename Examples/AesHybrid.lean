@@ -71,7 +71,7 @@ abbrev AesHybrid : Hybrid := [AES F (toyAes), Const F, Addition F, Subtraction F
 /-- Realise the toy function with an input-independent three-event view. -/
 program aesByProgram : Realization (AES F toyAes) (Std F) where
   impl D r := toyAesProg r.1 r.2.1
-  Sim _ := pure [⟨Std.add F, ()⟩, ⟨Std.mult F, ()⟩, ⟨Std.mult F, ()⟩]
+  Sim _ := pure [event[Addition F] (), event[Mult F] (), event[Mult F] ()]
   real r _ := by
     obtain ⟨k, m, ⟨⟩⟩ := r
     simp only [toyAesProg, toyAes, add, mul, weft, Functionality.ofEval_model, AesF.eval]

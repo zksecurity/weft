@@ -85,10 +85,10 @@ variable (F : Type) [Add F] [Mul F] [Sub F] [Fintype F] [Inhabited F]
 
 /-- The view of one Beaver multiplication, as a function of the two opened values. -/
 def beaverView (q : F × F) : List (Event (Pre F).ops) :=
-  [⟨Pre.triple F, ()⟩, ⟨Pre.sub F, ()⟩, ⟨Pre.reveal F, q.1⟩, ⟨Pre.sub F, ()⟩,
-   ⟨Pre.reveal F, q.2⟩, ⟨Pre.smul F, q.1⟩, ⟨Pre.smul F, q.2⟩,
-   ⟨Pre.add F, ()⟩, ⟨Pre.add F, ()⟩, ⟨Pre.const F, q.1 * q.2⟩,
-   ⟨Pre.add F, ()⟩]
+  [event[MulTriple F] (), event[Subtraction F] (), event[Reveal F] q.1, event[Subtraction F] (),
+   event[Reveal F] q.2, event[Smul F] q.1, event[Smul F] q.2,
+   event[Addition F] (), event[Addition F] (), event[Const F] (q.1 * q.2),
+   event[Addition F] ()]
 
 -- `mulBeaver_dist` samples the two masked inputs,
 -- then applies `beaverView` to obtain the view.
@@ -192,8 +192,6 @@ abbrev BadPre : Hybrid := [Const F, Addition F, Subtraction F, Smul F, Reveal F,
 Use `mulBeaverFrom` because `BadPre` does not contain `MulTriple`. -/
 def mulBeaverBad (x y : F) : Prog (BadPre F).ops .ideal F :=
   mulBeaverFrom (Prog.op (F := BadMulTriple F) ()) x y
-
-local notation:max "event[" f "]" d:arg => Has.event (F := f) d
 
 /-- Event list for the correlated-mask implementation. -/
 def badView (q : F × F) : List (Event (BadPre F).ops) :=

@@ -216,8 +216,8 @@ example (x : F) : output M (expPublic (fs := Std F) (D := .ideal) x 5) = x * x *
 -- Squared distance has one multiplication layer and a fixed event list.
 example (a b c d : F) : delayOn T (dist2 (fs := Std F) (D := .timed) ⟨⟪a⟫, ⟪b⟫⟩ ⟨⟪c⟫, ⟪d⟫⟩) = 1 := rfl
 example (p q : Point .ideal F) : view M (dist2 (fs := Std F) p q)
-    = [⟨Std.sub F, ()⟩, ⟨Std.sub F, ()⟩, ⟨Std.mult F, ()⟩, ⟨Std.mult F, ()⟩,
-       ⟨Std.add F, ()⟩] := rfl
+    = [event[Subtraction F] (), event[Subtraction F] (), event[Mult F] (), event[Mult F] (),
+       event[Addition F] ()] := rfl
 end Theorems
 
 /-! ### Comparison costs -/
@@ -297,10 +297,10 @@ theorem mulOpen_dist (x y : F) :
     dist (Pre F).model (mulOpen (fs := Pre F) (D := .ideal) x y)
       = (uniform (Fin 2 → F)).bind fun v =>
           pure (x * y,
-            [⟨Pre.triple F, ()⟩, ⟨Pre.sub F, ()⟩, ⟨Pre.reveal F, x - v 0⟩,
-             ⟨Pre.sub F, ()⟩, ⟨Pre.reveal F, y - v 1⟩, ⟨Pre.smul F, x - v 0⟩,
-             ⟨Pre.smul F, y - v 1⟩, ⟨Pre.add F, ()⟩, ⟨Pre.add F, ()⟩,
-             ⟨Pre.reveal F, v 0 * v 1 + (x - v 0) * v 1 + (y - v 1) * v 0⟩]) := by
+            [event[MulTriple F] (), event[Subtraction F] (), event[Reveal F] (x - v 0),
+             event[Subtraction F] (), event[Reveal F] (y - v 1), event[Smul F] (x - v 0),
+             event[Smul F] (y - v 1), event[Addition F] (), event[Addition F] (),
+             event[Reveal F] (v 0 * v 1 + (x - v 0) * v 1 + (y - v 1) * v 0)]) := by
   simp only [mulOpen, mulTriple, sub, reveal, smul, add, weft]
   congr 1
   funext v

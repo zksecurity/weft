@@ -100,7 +100,9 @@ it reindexes the simulator's events as well.
 `Bool2`, from [Weft/Std/Boolean.lean](../Weft/Std/Boolean.lean), contains `Const GF2`, `Addition GF2`, `Subtraction GF2`, `Smul GF2`, and `Mult GF2`.
 It does not include opening.
 
-Helpers such as `Std.mult`, `Std.reveal`, and `Pre.triple` name the functionality positions when stating concrete views.
+Views name the standalone functionality using `event[F] d`, where `d` is its declared leakage.
+For example, `event[Reveal F] x` records an opening in any hybrid containing `Reveal F`.
+The notation uses `Has.event` to obtain the position from membership; each functionality keeps its own signature and model.
 Each hybrid is an ordinary list;
 there is no central enumeration to extend when adding a new functionality.
 

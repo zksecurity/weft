@@ -94,7 +94,7 @@ def openProduct {fs : Hybrid} {D : Domain}
 program openProductReal : Realization (OpenProduct F) (Std F) where
   impl D r := openProduct F r.1 r.2.1
   Sim e := pure
-    [⟨Std.mult F, ()⟩, ⟨Std.reveal F, e⟩]
+    [event[Mult F] (), event[Reveal F] e]
   real r _ := by
     obtain ⟨a, b, ⟨⟩⟩ := r
     simp only [openProduct, mul, reveal, weft, Functionality.ofEval_model]
