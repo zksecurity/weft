@@ -20,16 +20,19 @@ section
 variable (F : Type) [Add F] [Mul F] [Sub F]
 
 /-- Linear operations and multiplication alone. -/
-abbrev Arith : Hybrid := [Lin F, Mult F]
+abbrev Arith : Hybrid := [Const F, Addition F, Subtraction F, Smul F, Mult F]
 
 /-- The arithmetic hybrid has deterministic semantics. -/
 theorem arith_model : (Arith F).model = (Arith F).eval.lift PMF := by
-  apply Model.ext
-  intro r
-  obtain ⟨⟨⟨_ | _ | n, h⟩, o⟩, a⟩ := r
-  · simp only [Hybrid.model_step, Hybrid.eval_step, Model.lift_step, Hybrid.get, Lin.model_eq]
-  · simp only [Hybrid.model_step, Hybrid.eval_step, Model.lift_step, Hybrid.get, Mult.model_eq]
-  · exact absurd h (by simp)
+  apply Hybrid.model_lift
+  intro i
+  match i with
+  | ⟨0, _⟩ => exact Const.model_eq F
+  | ⟨1, _⟩ => exact Addition.model_eq F
+  | ⟨2, _⟩ => exact Subtraction.model_eq F
+  | ⟨3, _⟩ => exact Smul.model_eq F
+  | ⟨4, _⟩ => exact Mult.model_eq F
+  | ⟨n + 5, h⟩ => exact absurd h (by simp)
 
 /-- An input-independent view can be simulated by returning `ops`. -/
 theorem arith_private {I α : Type} (c : I → Prog (Arith F).ops .ideal α) (ops : List (Event (Arith F).ops))
@@ -44,7 +47,7 @@ theorem arith_private {I α : Type} (c : I → Prog (Arith F).ops .ideal α) (op
 example (a b c : F) : output (Arith F).eval (mul3 (fs := Arith F) (D := .ideal) a b c) = a * b * c := rfl
 -- The view consists of two multiplication records for every input.
 example (a b c : F) : view (Arith F).eval (mul3 (fs := Arith F) (D := .ideal) a b c)
-    = [⟨⟨1, .mult⟩, ()⟩, ⟨⟨1, .mult⟩, ()⟩] := rfl
+    = [⟨4, ()⟩, ⟨4, ()⟩] := rfl
 end
 
 end Weft.Examples.Silent

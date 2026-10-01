@@ -26,7 +26,9 @@ variable {F : Type} [Add F] [Mul F] [Sub F] [Fintype F] [Inhabited F] {fs : Hybr
 /-- Beaver multiplication parameterised by its triple source.
 Correctness requires `c = a·b`;
 privacy additionally requires independent uniform masks. -/
-def mulBeaverFrom [Has (Lin F) fs] [Has (Reveal F) fs] (triple : Prog fs.ops D (D.share F × D.share F × D.share F))
+def mulBeaverFrom
+    [Has (Const F) fs] [Has (Addition F) fs] [Has (Subtraction F) fs] [Has (Smul F) fs] [Has (Reveal F) fs]
+    (triple : Prog fs.ops D (D.share F × D.share F × D.share F))
     (x y : D.share F) : Prog fs.ops D (D.share F) := do
   let (a, b, c) ← triple
   let u ← sub x a
@@ -42,11 +44,15 @@ def mulBeaverFrom [Has (Lin F) fs] [Has (Reveal F) fs] (triple : Prog fs.ops D (
   add s ed
 
 /-- Use the independent masks supplied by `MulTriple`. -/
-def mulBeaver [Has (Lin F) fs] [Has (Reveal F) fs] [Has (MulTriple F) fs] (x y : D.share F) : Prog fs.ops D (D.share F) :=
+def mulBeaver
+    [Has (Const F) fs] [Has (Addition F) fs] [Has (Subtraction F) fs] [Has (Smul F) fs] [Has (Reveal F) fs]
+    [Has (MulTriple F) fs] (x y : D.share F) : Prog fs.ops D (D.share F) :=
   mulBeaverFrom (mulTriple F) x y
 
 /-- Multiply three shares using two triples. -/
-def mul3Beaver [Has (Lin F) fs] [Has (Reveal F) fs] [Has (MulTriple F) fs] (x y z : D.share F) :
+def mul3Beaver
+    [Has (Const F) fs] [Has (Addition F) fs] [Has (Subtraction F) fs] [Has (Smul F) fs] [Has (Reveal F) fs]
+    [Has (MulTriple F) fs] (x y z : D.share F) :
     Prog fs.ops D (D.share F) := do
   let xy ← mulBeaver x y
   mulBeaver xy z
@@ -57,9 +63,21 @@ end Programs
 section MPCs
 variable (F : Type) [Add F] [Mul F] [Sub F] [Fintype F] [Inhabited F]
 /-- Precomputed triples are free; each opening costs one round and one unit. -/
-abbrev preMPC : MPC := [(Lin F).priced ⟨0, 0⟩, (Reveal F).priced ⟨1, 1⟩, (MulTriple F).priced ⟨0, 0⟩]
+abbrev preMPC : MPC := [
+  (Const F).priced ⟨0, 0⟩,
+  (Addition F).priced ⟨0, 0⟩,
+  (Subtraction F).priced ⟨0, 0⟩,
+  (Smul F).priced ⟨0, 0⟩,
+  (Reveal F).priced ⟨1, 1⟩,
+  (MulTriple F).priced ⟨0, 0⟩]
 /-- Charge two rounds and three units for online triple generation. -/
-abbrev preOnline : MPC := [(Lin F).priced ⟨0, 0⟩, (Reveal F).priced ⟨1, 1⟩, (MulTriple F).priced ⟨2, 3⟩]
+abbrev preOnline : MPC := [
+  (Const F).priced ⟨0, 0⟩,
+  (Addition F).priced ⟨0, 0⟩,
+  (Subtraction F).priced ⟨0, 0⟩,
+  (Smul F).priced ⟨0, 0⟩,
+  (Reveal F).priced ⟨1, 1⟩,
+  (MulTriple F).priced ⟨2, 3⟩]
 end MPCs
 
 section Evaluation
@@ -67,10 +85,10 @@ variable (F : Type) [Add F] [Mul F] [Sub F] [Fintype F] [Inhabited F]
 
 /-- The view of one Beaver multiplication, as a function of the two opened values. -/
 def beaverView (q : F × F) : List (Event (Pre F).ops) :=
-  [⟨Pre.triple F, ()⟩, ⟨Pre.lin F .sub, ()⟩, ⟨Pre.reveal F, q.1⟩, ⟨Pre.lin F .sub, ()⟩,
-   ⟨Pre.reveal F, q.2⟩, ⟨Pre.lin F .smul, q.1⟩, ⟨Pre.lin F .smul, q.2⟩,
-   ⟨Pre.lin F .add, ()⟩, ⟨Pre.lin F .add, ()⟩, ⟨Pre.lin F .const, q.1 * q.2⟩,
-   ⟨Pre.lin F .add, ()⟩]
+  [⟨Pre.triple F, ()⟩, ⟨Pre.sub F, ()⟩, ⟨Pre.reveal F, q.1⟩, ⟨Pre.sub F, ()⟩,
+   ⟨Pre.reveal F, q.2⟩, ⟨Pre.smul F, q.1⟩, ⟨Pre.smul F, q.2⟩,
+   ⟨Pre.add F, ()⟩, ⟨Pre.add F, ()⟩, ⟨Pre.const F, q.1 * q.2⟩,
+   ⟨Pre.add F, ()⟩]
 
 -- `mulBeaver_dist` samples the two masked inputs,
 -- then applies `beaverView` to obtain the view.
@@ -136,10 +154,10 @@ The simulator samples a uniform pair of openings;
 `maskEquiv` identifies their distribution with the real masks. -/
 program beaverMult : Realization (Mult F) (Pre F) where
   impl D r := match r with
-    | ⟨.mult, (x, y, ())⟩ => mulBeaver x y
+    | (x, y, ()) => mulBeaver x y
   Sim _ := (uniform (F × F)).map (beaverView F)
   real r _ := by
-    obtain ⟨⟨⟩, x, y, ⟨⟩⟩ := r
+    obtain ⟨x, y, ⟨⟩⟩ := r
     show dist (Pre F).model (mulBeaver x y) = _
     rw [mulBeaver_dist]
     simp only [weft, Mult.model_eq]
@@ -157,30 +175,30 @@ Inputs `(0, 0)` and `(1, 0)` have the same product and disjoint view supports. -
 def BadMulTriple.corr : Correlation F (F × F × F) := ⟨1, fun x => (x 0, x 0, x 0 * x 0)⟩
 
 /-- A model of the triple interface with correlated masks. -/
-noncomputable def BadMulTriple.model : Model (MulTriple.ops F) .ideal PMF :=
+noncomputable def BadMulTriple.model : FunctionModel (MulTriple.sig F) .ideal PMF :=
   ⟨fun _ => (BadMulTriple.corr F).sample.map fun t => (t, ())⟩
 
 /-- The correlated-mask functionality. -/
 abbrev BadMulTriple : Functionality :=
-  ⟨MulTriple.ops F, MulTriple.eval F, (· = BadMulTriple.model F), Functionality.unique_eq _⟩
+  ⟨MulTriple.sig F, MulTriple.eval F, (· = BadMulTriple.model F), Functionality.unique_eq _⟩
 
 @[simp, weft] theorem BadMulTriple.model_eq : (BadMulTriple F).model = BadMulTriple.model F :=
   Functionality.model_eq rfl
 
 /-- Preprocessing with correlated masks. -/
-abbrev BadPre : Hybrid := [Lin F, Reveal F, BadMulTriple F]
+abbrev BadPre : Hybrid := [Const F, Addition F, Subtraction F, Smul F, Reveal F, BadMulTriple F]
 
 /-- Apply the Beaver formula to correlated masks.
 Use `mulBeaverFrom` because `BadPre` does not contain `MulTriple`. -/
 def mulBeaverBad (x y : F) : Prog (BadPre F).ops .ideal F :=
-  mulBeaverFrom (Prog.op (F := BadMulTriple F) ⟨.get, ()⟩) x y
+  mulBeaverFrom (Prog.op (F := BadMulTriple F) ()) x y
 
 /-- Event list for the correlated-mask implementation. -/
 def badView (q : F × F) : List (Event (BadPre F).ops) :=
-  [⟨⟨⟨2, by simp⟩, .get⟩, ()⟩, ⟨⟨⟨0, by simp⟩, .sub⟩, ()⟩, ⟨⟨⟨1, by simp⟩, .reveal⟩, q.1⟩,
-   ⟨⟨⟨0, by simp⟩, .sub⟩, ()⟩, ⟨⟨⟨1, by simp⟩, .reveal⟩, q.2⟩, ⟨⟨⟨0, by simp⟩, .smul⟩, q.1⟩,
-   ⟨⟨⟨0, by simp⟩, .smul⟩, q.2⟩, ⟨⟨⟨0, by simp⟩, .add⟩, ()⟩, ⟨⟨⟨0, by simp⟩, .add⟩, ()⟩,
-   ⟨⟨⟨0, by simp⟩, .const⟩, q.1 * q.2⟩, ⟨⟨⟨0, by simp⟩, .add⟩, ()⟩]
+  [⟨5, ()⟩, ⟨2, ()⟩, ⟨4, q.1⟩,
+   ⟨2, ()⟩, ⟨4, q.2⟩, ⟨3, q.1⟩,
+   ⟨3, q.2⟩, ⟨1, ()⟩, ⟨1, ()⟩,
+   ⟨0, q.1 * q.2⟩, ⟨1, ()⟩]
 
 omit [Fintype F] [Inhabited F] in
 theorem badBeaver_correct (x y a : F) :
@@ -195,21 +213,22 @@ theorem mulBeaver_bad_dist (x y : F) :
   congr 1
   funext v
   rw [badBeaver_correct]
+  rfl
 
 /-- Extract the openings from a `BadPre` view. -/
 def opened : List (Event (BadPre F).ops) → List F :=
   List.filterMap fun e => match e with
-    | ⟨⟨⟨1, _⟩, .reveal⟩, out⟩ => some out
+    | ⟨⟨4, _⟩, out⟩ => some out
     | _ => none
 
 /-- Correlated masks prevent simulation from the multiplication event.
 The view with openings `[1, 0]` occurs on input `(1, 0)`,
 but input `(0, 0)` always produces two equal openings. -/
 theorem mulBeaver_bad_not_realizes :
-    ¬ ∃ Sim : Event (Mult F).ops → PMF (List (Event (BadPre F).ops)),
+    ¬ ∃ Sim : (Mult F).sig.leak → PMF (List (Event (BadPre F).ops)),
       ∀ x y : F, dist (BadPre F).model (mulBeaverBad F x y) = (do
-        let p ← (Mult F).model.step ⟨.mult, (x, y, ())⟩
-        let s ← Sim ⟨.mult, p.2⟩
+        let p ← (Mult F).model.step (x, y, ())
+        let s ← Sim p.2
         pure (p.1, s)) := by
   rintro ⟨Sim, h⟩
   have h₀ := h 0 0

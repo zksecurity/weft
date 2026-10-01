@@ -52,17 +52,17 @@ theorem PMF.statDist_map_le {A B : Type} (p q : PMF A) (h : A → B) :
   have := PMF.statDist_bind_le p q (fun a => PMF.pure (h a)) (fun a => PMF.pure (h a))
   simpa [PMF.map, PMF.statDist_self, Function.comp_def] using this
 
-/-- Exact output marginal and joint simulation error bounded by `ε` per operation. -/
+/-- Exact output marginal and joint simulation error bounded by `ε`. -/
 structure RealizationStat (F : Functionality) (fs : Hybrid) where
-  impl : (D : Domain) → (r : Req F.ops D) → Prog fs.ops D (Resp F.ops D r.op)
-  Pre : Req F.ops .ideal → Prop := fun _ => True
-  Sim : Event F.ops → PMF (List (Event fs.ops))
-  ε : F.ops.Op → ENNReal
+  impl : (D : Domain) → F.sig.Args D → Prog fs.ops D (F.sig.Resp D)
+  Pre : F.sig.Args .ideal → Prop := fun _ => True
+  Sim : F.sig.leak → PMF (List (Event fs.ops))
+  ε : ENNReal
   output : ∀ r, Pre r → Prod.fst <$> dist fs.model (impl .ideal r) = F.response r
   close : ∀ r, Pre r → PMF.statDist (dist fs.model (impl .ideal r)) (do
     let (y, d) ← F.model.step r
-    let s ← Sim ⟨r.op, d⟩
-    pure (y, s)) ≤ ε r.op
+    let s ← Sim d
+    pure (y, s)) ≤ ε
 
 /-- A perfect realisation is a statistical one with `ε = 0`. -/
 noncomputable def Realization.toStat {F : Functionality} {fs : Hybrid} (f : Realization F fs) :
@@ -70,11 +70,11 @@ noncomputable def Realization.toStat {F : Functionality} {fs : Hybrid} (f : Real
   impl := f.impl
   Pre := f.Pre
   Sim := f.Sim
-  ε _ := 0
+  ε := 0
   output r hr := by
     rw [f.real r hr]
     simp [PMF.monad_bind_eq_bind, PMF.monad_map_eq_map, PMF.monad_pure_eq_pure, PMF.map_bind, PMF.pure_map,
-      PMF.bind_const, Model.response]
+      PMF.bind_const, FunctionModel.response]
     rfl
   close r hr := le_of_eq (PMF.statDist_eq_zero_of_eq (f.real r hr))
 

@@ -16,7 +16,7 @@ variable (F : Type) [Field F] [Fintype F] [Inhabited F]
 /-- Beaver multiplication, as a statistical realisation with error zero. -/
 noncomputable def beaverStat : RealizationStat (Mult F) (Pre F) := (beaverMult F).toStat
 
-example (o : (Mult F).ops.Op) : (beaverStat F).ε o = 0 := rfl
+example : (beaverStat F).ε = 0 := rfl
 
 /-- A common continuation does not increase the initial sampling distance. -/
 example (p q : PMF F) (k : F → PMF (F × F)) :

@@ -15,10 +15,10 @@ example {ι : Interface} {D : Domain} {m : Type → Type} [Functor m]
     (M : Model ι D m) (r : Req ι D) :
     M.leakage r = Prod.snd <$> M.step r := rfl
 
-example (F : Functionality) (r : Req F.ops .ideal) :
+example (F : Functionality) (r : F.sig.Args .ideal) :
     F.response r = Prod.fst <$> F.model.step r := rfl
 
-example (F : Functionality) (r : Req F.ops .ideal) :
+example (F : Functionality) (r : F.sig.Args .ideal) :
     F.leakage r = Prod.snd <$> F.model.step r := rfl
 
 private abbrev bitOps : Interface :=
@@ -42,7 +42,20 @@ example (b : Bool) : view undisclosedClear (Prog.req ⟨(), (b, ())⟩) = [⟨()
 example (b : Bool) : output undisclosedClear (Prog.req ⟨(), (b, ())⟩) = b := rfl
 
 -- Reveal explicitly discloses the same value it returns.
-example (F : Type) (x : F) : (Reveal.eval F).step ⟨.reveal, (x, ())⟩ = pure (x, x) := rfl
+example (F : Type) (x : F) : (Reveal.eval F).step (x, ()) = pure (x, x) := rfl
+
+-- An arithmetic caller can require just the two functions it uses.
+-- Their different leakage types are carried by the selected hybrid position.
+private def scaleAdd {D : Domain} (c : D.clear Nat) (x y : D.share Nat) :
+    Prog (Hybrid.ops [Addition Nat, Smul Nat]) D (D.share Nat) := do
+  let z ← smul c x
+  add z y
+
+example (c x y : Nat) :
+    dist (Hybrid.model [Addition Nat, Smul Nat]) (scaleAdd (D := .ideal) c x y) =
+      pure (c * x + y, [⟨1, c⟩, ⟨0, ()⟩]) := by
+  simp only [scaleAdd, smul, add, weft]
+  rfl
 
 private noncomputable def correlatedModel : Model bitOps .ideal PMF :=
   ⟨fun _ => (uniform Bool).map fun b => (b, b)⟩

@@ -2,7 +2,7 @@
 
 To prove a program private, we specify a functionality and prove that the program realises it.
 The specification fixes the output law and what may be disclosed.
-The proof must reproduce the program's view from the specification's event, jointly with its output.
+The proof must reproduce the program's view from the specification's declared leakage, jointly with its output.
 
 ## Events
 
@@ -10,7 +10,7 @@ The view contains one event per request.
 The definition in [Weft/Interface.lean](../Weft/Interface.lean) is:
 
 ```lean
-structure Event (ι : Interface) (D : Domain := .ideal) where
+structure Event (ι : Interface) where
   op : ι.Op
   leak : ι.leak op
 ```
@@ -34,20 +34,20 @@ Let `F` be the specification and `fs` the implementation's hybrid.
 
 ```lean
 structure Realization (F : Functionality) (fs : Hybrid) where
-  impl : (D : Domain) → (r : Req F.ops D) →
-    Prog fs.ops D (Resp F.ops D r.op)
-  Pre : Req F.ops .ideal → Prop := fun _ => True
-  Sim : Event F.ops → PMF (List (Event fs.ops))
+  impl : (D : Domain) → F.sig.Args D → Prog fs.ops D (F.sig.Resp D)
+  Pre : F.sig.Args .ideal → Prop := fun _ => True
+  Sim : F.sig.leak → PMF (List (Event fs.ops))
   real : ∀ r, Pre r → dist fs.model (impl .ideal r) = (do
     let (y, d) ← F.model.step r
-    let s ← Sim ⟨r.op, d⟩
+    let s ← Sim d
     pure (y, s))
 ```
 
 The left side is the real joint law of output and view.
-On the right, we sample the ideal response and disclosure, construct the ideal event, and give that event to the simulator.
+On the right, we sample the ideal response and disclosure and give the disclosure to the simulator.
 The full response `y` stays in the joint distribution;
-the simulator receives only the declared disclosure and the operation identifier.
+the simulator receives only the declared disclosure.
+The functionality has one fixed operation, so its simulator needs no selector.
 
 The equality holds for every request satisfying `Pre`.
 Hence correctness is exact: projecting the first component gives the ideal output law.
@@ -66,12 +66,12 @@ We proceed in four steps:
 
 1. Define the functionality independently of the implementation.
 2. Write an implementation generic in `D`, using only its hybrid's operations and clear computation. State any required `Pre`.
-3. Construct `Sim` from the ideal event. It must generate all concrete operation tags and declared disclosures.
+3. Construct `Sim` from the declared leakage. It must generate all concrete operation tags and declared disclosures.
 4. Prove `real` by identifying the joint distributions, and declare the certificate with `program` to check its implementation.
 
 For a small example, we specify multiplication with a public output.
 The implementation calls multiplication and then reveal.
-The ideal event contains the product, so the simulator can reconstruct both events.
+The declared leakage contains the product, so the simulator can reconstruct both events.
 Unfolding the two deterministic calls gives the required equality:
 
 ```lean
@@ -82,10 +82,8 @@ namespace ProductExample
 variable (F : Type) [Field F]
 
 abbrev OpenProduct : Functionality :=
-  .ofEval
-    ⟨Unit, fun _ => [.share F, .share F], fun _ => .clear F,
-      fun _ => F⟩
-    ⟨fun r => let p := r.args.1 * r.args.2.1; pure (p, p)⟩
+  .ofEval ⟨[.share F, .share F], .clear F, F⟩
+    ⟨fun (x, y, ()) => let p := x * y; pure (p, p)⟩
 
 def openProduct {fs : Hybrid} {D : Domain}
     [Has (Mult F) fs] [Has (Reveal F) fs]
@@ -94,11 +92,11 @@ def openProduct {fs : Hybrid} {D : Domain}
   reveal p
 
 program openProductReal : Realization (OpenProduct F) (Std F) where
-  impl D r := openProduct F r.args.1 r.args.2.1
+  impl D r := openProduct F r.1 r.2.1
   Sim e := pure
-    [⟨Std.mult F, ()⟩, ⟨Std.reveal F, e.leak⟩]
+    [⟨Std.mult F, ()⟩, ⟨Std.reveal F, e⟩]
   real r _ := by
-    obtain ⟨⟨⟩, a, b, ⟨⟩⟩ := r
+    obtain ⟨a, b, ⟨⟩⟩ := r
     simp only [openProduct, mul, reveal, weft, Functionality.ofEval_model]
     rfl
 
@@ -106,7 +104,7 @@ end ProductExample
 ```
 
 `Pre` defaults to `True` here.
-The simulator receives the public product in `e.leak`.
+The simulator receives the public product in `e`.
 The multiplication event has `Unit` leakage;
 the reveal event explicitly discloses the product.
 
@@ -162,7 +160,7 @@ f.Pre r ∧ Valid fs.model g.Pre (f.impl .ideal r)
 ```
 
 `Realization.incl F gs` realises `F` by calling its occurrence in `gs`.
-The simulator embeds the event at that position.
+The simulator embeds the declared leakage as an event at that position.
 This is the base case for a primitive supplied by the hybrid.
 `Realizations.incl` builds the corresponding family from an inclusion.
 
@@ -189,12 +187,12 @@ The acceptance and rejection examples are in [Examples/Checked.lean](../Examples
 ## Statistical Realisations
 
 [Weft/Statistical.lean](../Weft/Statistical.lean) defines `RealizationStat F fs`.
-It has `impl`, `Pre`, and `Sim` as above, plus `ε : F.ops.Op → ENNReal` and two proof fields:
+It has `impl`, `Pre`, and `Sim` as above, plus `ε : ENNReal` and two proof fields:
 
 | Field | Obligation under `Pre r` |
 |---|---|
 | `output` | The real output marginal equals `F.response r` exactly |
-| `close` | Total variation between the real and simulated joint laws is at most `ε r.op` |
+| `close` | Total variation between the real and simulated joint laws is at most `ε` |
 
 `F.response` is the response marginal of `F.model`.
 The error bounds privacy;

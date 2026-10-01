@@ -18,10 +18,10 @@ namespace Weft
 
 /-- Run `f`'s implementation under `T` to obtain a timed model of `F`. -/
 def Realization.timed {F : Functionality} {fs : Hybrid} (f : Realization F fs) (T : Model fs.ops .timed Sched) :
-    Model F.ops .timed Sched where
+    FunctionModel F.sig .timed Sched where
   step r := do
     let p ← run T CostModel.unit (f.impl .timed r)
-    pure (p.1, (F.eval.step ⟨r.op, r.args.untime⟩).run.2)
+    pure (p.1, (F.eval.step r.untime).run.2)
 
 /-- The MPC entry for `F` instantiated by `f` over the MPC `M`. -/
 abbrev MPC.derived (M : MPC) {F : Functionality} (f : Realization F M.hybrid) : MPC.Entry :=
@@ -57,11 +57,11 @@ theorem Realizations.runOut_timed {fs gs : Hybrid} (g : Realizations fs gs) (T :
 
 /-- Run one component's implementation and record the abstract request's event. -/
 theorem Realizations.run_opAt {fs gs : Hybrid} (g : Realizations fs gs) (T : Model gs.ops .timed Sched)
-    (i : Fin fs.length) (r : Req (fs.get i).ops .timed) (s : Clock) :
-    StateT.run (run (g.timed T) CostModel.unit (Prog.opAt fs i r)) s =
-      (((StateT.run (run T CostModel.unit ((g.get i).impl .timed r)) s).1.1,
-        ⟨(), [⟨⟨i, r.op⟩, ((fs.get i).eval.step ⟨r.op, r.args.untime⟩).run.2⟩]⟩),
-       (StateT.run (run T CostModel.unit ((g.get i).impl .timed r)) s).2) := by
+    (i : Fin fs.length) (a : (fs.get i).sig.Args .timed) (s : Clock) :
+    StateT.run (run (g.timed T) CostModel.unit (Prog.opAt fs i a)) s =
+      (((StateT.run (run T CostModel.unit ((g.get i).impl .timed a)) s).1.1,
+        ⟨(), [⟨i, ((fs.get i).eval.step a.untime).run.2⟩]⟩),
+       (StateT.run (run T CostModel.unit ((g.get i).impl .timed a)) s).2) := by
   simp only [Prog.opAt, run_call, run_pure, Realizations.timed, Realizations.impl, StateT.run_bind, StateT.run_pure,
     Trace.seq, Trace.zero]
   rfl

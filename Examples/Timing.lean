@@ -36,7 +36,7 @@ def chain3 [Has (Mult F) fs] (a b c d : D.share F) : Prog fs.ops D (D.share F) :
   mul y d
 
 /-- Propagate an opening's availability time through clear arithmetic and `const`. -/
-def revealThenUse [Has (Lin F) fs] [Has (Mult F) fs] [Has (Reveal F) fs] (a b c : D.share F) (k : D.clear F) :
+def revealThenUse [Has (Const F) fs] [Has (Mult F) fs] [Has (Reveal F) fs] (a b c : D.share F) (k : D.clear F) :
     Prog fs.ops D (D.share F) := do
   let p ← mul a b
   let v ← reveal p
@@ -58,7 +58,7 @@ def revealBothLook [Has (Reveal F) fs] (v₁ v₂ : D.share F) : Prog fs.ops D (
     pure (a, b)
 /-- Use the first opening as a scalar without reading it through `look`.
 The second opening remains independent. -/
-def revealUseReveal [Has (Lin F) fs] [Has (Reveal F) fs] (v₁ v₂ x : D.share F) : Prog fs.ops D (D.share F × D.clear F) := do
+def revealUseReveal [Has (Smul F) fs] [Has (Reveal F) fs] (v₁ v₂ x : D.share F) : Prog fs.ops D (D.share F × D.clear F) := do
   let a ← reveal v₁
   let b ← reveal v₂
   let y ← smul a x
@@ -89,18 +89,16 @@ end
 /-! ## Models of a compound operation -/
 
 namespace MulAdd
-inductive Op where | mulAdd
-abbrev ops (F : Type) : Interface where
-  Op := Op
-  dom _ := [.share F, .share F, .share F]
-  cod _ := .share F
-def eval (F : Type) [Add F] [Mul F] : Model (ops F) .ideal Id :=
-  .silent fun ⟨.mulAdd, (a, b, c, ())⟩ => a * b + c
+abbrev sig (F : Type) : Signature where
+  dom := [.share F, .share F, .share F]
+  cod := .share F
+def eval (F : Type) [Add F] [Mul F] : FunctionModel (sig F) .ideal Id :=
+  .silent fun (a, b, c, ()) => a * b + c
 /-- Input profile with multiplication latency from `a` and `b`,
 and zero latency from `c`; also take the maximum with the current clock. -/
-def profiled (F : Type) [Add F] [Mul F] (p : Price) : Model (ops F) .timed Sched :=
+def profiled (F : Type) [Add F] [Mul F] (p : Price) : FunctionModel (sig F) .timed Sched :=
   ⟨fun r s => match r with
-    | ⟨.mulAdd, (a, b, c, ())⟩ =>
+    | (a, b, c, ()) =>
       ((⟨a.val * b.val + c.val, max (a.time + p.delay) (max (b.time + p.delay) (max c.time s.clock))⟩, ()),
         s.pay p.comm)⟩
 end MulAdd
@@ -109,21 +107,21 @@ section Profiles
 variable (F : Type) [Add F] [Mul F] [Sub F] [Inhabited F]
 
 /-- Return a share of `a·b + c`. -/
-abbrev MulAdd : Functionality := .ofEval (MulAdd.ops F) (MulAdd.eval F)
+abbrev MulAdd : Functionality := .ofEval (MulAdd.sig F) (MulAdd.eval F)
 
 /-- Multiply `a` and `b`, then add `c`.
 Only the addition depends on `c`. -/
-def mulAddImpl {fs : Hybrid} {D : Domain} [Has (Lin F) fs] [Has (Mult F) fs] (a b c : D.share F) :
+def mulAddImpl {fs : Hybrid} {D : Domain} [Has (Addition F) fs] [Has (Mult F) fs] (a b c : D.share F) :
     Prog fs.ops D (D.share F) := do
   let p ← mul a b
   add p c
 
 /-- Realise `MulAdd` with a fixed view of one multiplication and one addition. -/
 program mulAddReal : Realization (MulAdd F) (Std F) where
-  impl D r := mulAddImpl F r.args.1 r.args.2.1 r.args.2.2.1
-  Sim _ := pure [⟨Std.mult F, ()⟩, ⟨Std.lin F .add, ()⟩]
+  impl D r := mulAddImpl F r.1 r.2.1 r.2.2.1
+  Sim _ := pure [⟨Std.mult F, ()⟩, ⟨Std.add F, ()⟩]
   real r _ := by
-    obtain ⟨⟨⟩, a, b, c, ⟨⟩⟩ := r
+    obtain ⟨a, b, c, ⟨⟩⟩ := r
     simp only [mulAddImpl, mul, add, weft, Functionality.ofEval_model, MulAdd.eval]
     rfl
 
@@ -131,20 +129,38 @@ program mulAddReal : Realization (MulAdd F) (Std F) where
 def caller {fs : Hybrid} {D : Domain} [Has (MulAdd F) fs] [Has (Mult F) fs] (a b x y : D.share F) :
     Prog fs.ops D (D.share F) := do
   let c ← mul x y
-  Prog.op (F := MulAdd F) ⟨.mulAdd, (a, b, c, ())⟩
+  Prog.op (F := MulAdd F) (a, b, c, ())
 /-- Inline `mulAddImpl` into the caller. -/
-def callerInlined {fs : Hybrid} {D : Domain} [Has (Lin F) fs] [Has (Mult F) fs] (a b x y : D.share F) :
+def callerInlined {fs : Hybrid} {D : Domain} [Has (Addition F) fs] [Has (Mult F) fs] (a b x y : D.share F) :
     Prog fs.ops D (D.share F) := do
   let c ← mul x y
   mulAddImpl F a b c
 
 /-- Compound multiply-add with linear operations and multiplication. -/
-abbrev Hyb : Hybrid := [MulAdd F, Lin F, Mult F]
+abbrev Hyb : Hybrid := [MulAdd F, Const F, Addition F, Subtraction F, Smul F, Mult F]
 
 /-- Fixed-price, profiled and implementation-derived models of the same hybrid. -/
-abbrev atomicMPC : MPC := [(MulAdd F).priced ⟨1, 2⟩, (Lin F).priced ⟨0, 0⟩, (Mult F).priced ⟨1, 2⟩]
-abbrev profiledMPC : MPC := [MPC.entry (MulAdd F) (MulAdd.profiled F ⟨1, 2⟩), (Lin F).priced ⟨0, 0⟩, (Mult F).priced ⟨1, 2⟩]
-noncomputable abbrev derivedMPC : MPC := [MPC.derived (Std.mpc F) (mulAddReal F), (Lin F).priced ⟨0, 0⟩, (Mult F).priced ⟨1, 2⟩]
+abbrev atomicMPC : MPC := [
+  (MulAdd F).priced ⟨1, 2⟩,
+  (Const F).priced ⟨0, 0⟩,
+  (Addition F).priced ⟨0, 0⟩,
+  (Subtraction F).priced ⟨0, 0⟩,
+  (Smul F).priced ⟨0, 0⟩,
+  (Mult F).priced ⟨1, 2⟩]
+abbrev profiledMPC : MPC := [
+  MPC.entry (MulAdd F) (MulAdd.profiled F ⟨1, 2⟩),
+  (Const F).priced ⟨0, 0⟩,
+  (Addition F).priced ⟨0, 0⟩,
+  (Subtraction F).priced ⟨0, 0⟩,
+  (Smul F).priced ⟨0, 0⟩,
+  (Mult F).priced ⟨1, 2⟩]
+noncomputable abbrev derivedMPC : MPC := [
+  MPC.derived (Std.mpc F) (mulAddReal F),
+  (Const F).priced ⟨0, 0⟩,
+  (Addition F).priced ⟨0, 0⟩,
+  (Subtraction F).priced ⟨0, 0⟩,
+  (Smul F).priced ⟨0, 0⟩,
+  (Mult F).priced ⟨1, 2⟩]
 
 -- The fixed-price model waits for `c` at round 1,
 -- then charges another multiplication round.
@@ -158,7 +174,7 @@ example (a b x y : F) : delayOn (Std.timed F) (callerInlined F (fs := Std F) (D 
 
 /-- Realise the hybrid over `Std F` for the timing composition theorem below. -/
 noncomputable def mulAddOverStd : Realizations (Hyb F) (Std F) :=
-  .cons (mulAddReal F) (Realizations.incl [Lin F, Mult F] (Std F))
+  .cons (mulAddReal F) (Realizations.incl [Const F, Addition F, Subtraction F, Smul F, Mult F] (Std F))
 example (a b x y : F) :
     delayOn ((mulAddOverStd F).timed (Std.timed F)) (caller F (fs := Hyb F) (D := .timed) ⟪a⟫ ⟪b⟫ ⟪x⟫ ⟪y⟫)
       = delayOn (Std.timed F) (Prog.handle ((mulAddOverStd F).impl .timed)

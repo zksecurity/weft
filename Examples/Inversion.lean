@@ -26,7 +26,7 @@ variable {F : Type} [Field F] [Fintype F] [DecidableEq F] {fs : Hybrid} {D : Dom
 
 /-- Open `x·s` for nonzero `s`,
 then scale `s` by the opened value's reciprocal. -/
-def invert [Has (Lin F) fs] [Has (Mult F) fs] [Has (Reveal F) fs] [Has (RandNZ F) fs] (x : D.share F) :
+def invert [Has (Smul F) fs] [Has (Mult F) fs] [Has (Reveal F) fs] [Has (RandNZ F) fs] (x : D.share F) :
     Prog fs.ops D (D.share F) := do
   let s ← randNZ F
   let v ← mul x s
@@ -34,7 +34,7 @@ def invert [Has (Lin F) fs] [Has (Mult F) fs] [Has (Reveal F) fs] [Has (RandNZ F
   smul m⁻¹ s
 
 /-- Divide by inverting the denominator, then multiplying by the numerator. -/
-def divide [Has (Lin F) fs] [Has (Mult F) fs] [Has (Reveal F) fs] [Has (RandNZ F) fs] (a b : D.share F) :
+def divide [Has (Smul F) fs] [Has (Mult F) fs] [Has (Reveal F) fs] [Has (RandNZ F) fs] (a b : D.share F) :
     Prog fs.ops D (D.share F) := do
   let bInv ← invert b
   mul a bInv
@@ -44,11 +44,25 @@ section
 variable (F : Type) [Field F] [Fintype F] [DecidableEq F]
 
 /-- Standard arithmetic with nonzero random shares. -/
-abbrev InvHyb : Hybrid := [Lin F, Mult F, Reveal F, RandNZ F]
+abbrev InvHyb : Hybrid := [Const F, Addition F, Subtraction F, Smul F, Mult F, Reveal F, RandNZ F]
 /-- Zero-cost nonzero masks; multiplication and reveal each take one round. -/
-abbrev invMPC : MPC := [(Lin F).priced ⟨0, 0⟩, (Mult F).priced ⟨1, 2⟩, (Reveal F).priced ⟨1, 1⟩, (RandNZ F).priced ⟨0, 0⟩]
+abbrev invMPC : MPC := [
+  (Const F).priced ⟨0, 0⟩,
+  (Addition F).priced ⟨0, 0⟩,
+  (Subtraction F).priced ⟨0, 0⟩,
+  (Smul F).priced ⟨0, 0⟩,
+  (Mult F).priced ⟨1, 2⟩,
+  (Reveal F).priced ⟨1, 1⟩,
+  (RandNZ F).priced ⟨0, 0⟩]
 /-- Charge one round for sampling a nonzero mask. -/
-abbrev invMPC' : MPC := [(Lin F).priced ⟨0, 0⟩, (Mult F).priced ⟨1, 2⟩, (Reveal F).priced ⟨1, 1⟩, (RandNZ F).priced ⟨1, 0⟩]
+abbrev invMPC' : MPC := [
+  (Const F).priced ⟨0, 0⟩,
+  (Addition F).priced ⟨0, 0⟩,
+  (Subtraction F).priced ⟨0, 0⟩,
+  (Smul F).priced ⟨0, 0⟩,
+  (Mult F).priced ⟨1, 2⟩,
+  (Reveal F).priced ⟨1, 1⟩,
+  (RandNZ F).priced ⟨1, 0⟩]
 
 -- Closed instances over `𝔽₇`, evaluated by the kernel.
 instance : Fact (Nat.Prime 7) := ⟨by decide⟩
@@ -67,7 +81,7 @@ example : delayOn (invMPC (ZMod 7)).timed (divide (F := ZMod 7) (fs := (invMPC (
 
 /-- The view of one inversion, as a function of the opened value. -/
 def invView (m : F) : List (Event (InvHyb F).ops) :=
-  [⟨⟨3, .randNZ⟩, ()⟩, ⟨⟨1, .mult⟩, ()⟩, ⟨⟨2, .reveal⟩, m⟩, ⟨⟨0, .smul⟩, (m⁻¹ : F)⟩]
+  [⟨6, ()⟩, ⟨4, ()⟩, ⟨5, m⟩, ⟨3, (m⁻¹ : F)⟩]
 
 /-- Sample nonzero `s`, reveal `x·s`, and output `s / (x·s)`. -/
 theorem invert_dist (x : F) :
@@ -88,18 +102,18 @@ theorem invert_correct (x : F) (hx : x ≠ 0) :
 
 /-- Return the inverse as a share without additional disclosure. -/
 abbrev Invert : Functionality :=
-  .ofEval ⟨Unit, fun _ => [.share F], fun _ => .share F, fun _ => Unit⟩
-    ⟨fun r => pure (r.args.1⁻¹, ())⟩
+  .ofEval ⟨[.share F], .share F, Unit⟩
+    ⟨fun r => pure (r.1⁻¹, ())⟩
 
 /-- Realise `Invert` for nonzero inputs.
 Multiplication by `x` permutes the nonzero elements,
 so the simulator can sample a fresh nonzero opening. -/
 program invertReal : Realization (Invert F) (InvHyb F) where
-  impl D r := invert r.args.1
-  Pre r := r.args.1 ≠ 0
+  impl D r := invert r.1
+  Pre r := r.1 ≠ 0
   Sim _ := (uniform {t : F // t ≠ 0}).map fun t => invView F t.1
   real r hx := by
-    obtain ⟨⟨⟩, x, ⟨⟩⟩ := r
+    obtain ⟨x, ⟨⟩⟩ := r
     show dist (InvHyb F).model (invert x) = _
     rw [invert_dist]
     -- Every nonzero mask gives the same output.
@@ -116,16 +130,16 @@ program invertReal : Realization (Invert F) (InvHyb F) where
 
 /-- Return `x⁻¹` as a share and disclose whether `x = 0`. -/
 abbrev InvertTotal : Functionality :=
-  .ofEval ⟨Unit, fun _ => [.share F], fun _ => .share F, fun _ => Bool⟩
-    ⟨fun r => pure (r.args.1⁻¹, decide (r.args.1 = 0))⟩
+  .ofEval ⟨[.share F], .share F, Bool⟩
+    ⟨fun r => pure (r.1⁻¹, decide (r.1 = 0))⟩
 
 /-- Simulate every input using the disclosed zero test.
 The opening is zero in the zero case and uniform nonzero otherwise. -/
 program invertTotalReal : Realization (InvertTotal F) (InvHyb F) where
-  impl D r := invert r.args.1
-  Sim e := if e.leak then pure (invView F 0) else (uniform {t : F // t ≠ 0}).map fun t => invView F t.1
+  impl D r := invert r.1
+  Sim e := if e then pure (invView F 0) else (uniform {t : F // t ≠ 0}).map fun t => invView F t.1
   real r _ := by
-    obtain ⟨⟨⟩, x, ⟨⟩⟩ := r
+    obtain ⟨x, ⟨⟩⟩ := r
     show dist (InvHyb F).model (invert x) = _
     rw [invert_dist]
     by_cases hx : x = 0
@@ -142,7 +156,7 @@ program invertTotalReal : Realization (InvertTotal F) (InvHyb F) where
 /-- Request inversion of a fresh nonzero share. -/
 def invertFresh {fs : Hybrid} {D : Domain} [Has (Invert F) fs] [Has (RandNZ F) fs] : Prog fs.ops D (D.share F) := do
   let r ← randNZ F
-  Prog.op (F := Invert F) ⟨(), (r, ())⟩
+  Prog.op (F := Invert F) (r, ())
 
 /-- Inversion and nonzero sampling. -/
 abbrev CallerHyb : Hybrid := [Invert F, RandNZ F]
@@ -151,13 +165,13 @@ abbrev CallerHyb : Hybrid := [Invert F, RandNZ F]
 since it comes from the support of `RandNZ`. -/
 theorem invertFresh_valid :
     Valid (CallerHyb F).model (fun r => match r with
-        | ⟨⟨⟨0, _⟩, _⟩, a⟩ => a.1 ≠ 0
+        | ⟨⟨0, _⟩, a⟩ => a.1 ≠ 0
         | _ => True)
       (invertFresh F (fs := CallerHyb F) (D := .ideal)) := by
   refine .call _ _ trivial fun z hz => ?_
   refine .call _ _ ?_ fun _ _ => .pure _
   -- Recover the nonzero witness from the sampling support.
-  have hz' : z ∈ ((RandNZ F).model.step ⟨.randNZ, ()⟩).support := hz
+  have hz' : z ∈ ((RandNZ F).model.step ()).support := hz
   rw [RandNZ.model_eq] at hz'
   simp only [RandNZ.model, PMF.support_map, PMF.support_uniformOfFintype, Set.mem_image] at hz'
   obtain ⟨t, -, rfl⟩ := hz'

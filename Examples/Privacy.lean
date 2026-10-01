@@ -13,7 +13,7 @@ with each abstract event replaced by its simulation.
 Its simulator receives the product and reconstructs the two events.
 Composing with `stdOverPre` gives the corresponding realisation over `Pre F`.
 
-Two counterexamples show why the simulator receives an event:
+Two counterexamples show why the simulator receives only declared leakage:
 revealing both operands discloses more than their product,
 and revealing a share discloses more than returning it as a share.
 -/
@@ -27,7 +27,11 @@ variable (F : Type) [Field F] [Fintype F] [Inhabited F]
 
 /-- Realise multiplication by Beaver and the remaining components by inclusion. -/
 noncomputable def stdOverPre : Realizations (Std F) (Pre F) :=
-  .cons (Realization.incl (Lin F) (Pre F)) (.cons (beaverMult F) (.cons (Realization.incl (Reveal F) (Pre F)) .nil))
+  .cons (Realization.incl (Const F) (Pre F))
+    (.cons (Realization.incl (Addition F) (Pre F))
+      (.cons (Realization.incl (Subtraction F) (Pre F))
+        (.cons (Realization.incl (Smul F) (Pre F))
+          (.cons (beaverMult F) (.cons (Realization.incl (Reveal F) (Pre F)) .nil)))))
 
 /-- Replace each event of `Std F` with its preprocessing simulation. -/
 theorem transport_std_pre {α : Type} (c : Prog (Std F).ops .ideal α) :
@@ -36,27 +40,29 @@ theorem transport_std_pre {α : Type} (c : Prog (Std F).ops .ideal α) :
       let s ← simList (stdOverPre F).Sim r.2
       pure (r.1, s)) :=
   handle_realizes (stdOverPre F) c (Valid.of_forall _ (fun r => by
-    obtain ⟨⟨⟨_ | _ | _ | n, h⟩, o⟩, a⟩ := r <;> trivial) c)
+    obtain ⟨i, a⟩ := r
+    fin_cases i <;> trivial) c)
 
 /-- The preprocessing implementation preserves the output distribution. -/
 theorem output_std_pre {α : Type} (c : Prog (Std F).ops .ideal α) :
     Prod.fst <$> dist (Pre F).model (Prog.handle ((stdOverPre F).impl .ideal) c) = Prod.fst <$> dist (Std F).model c :=
   output_transport (stdOverPre F) c (Valid.of_forall _ (fun r => by
-    obtain ⟨⟨⟨_ | _ | _ | n, h⟩, o⟩, a⟩ := r <;> trivial) c)
+    obtain ⟨i, a⟩ := r
+    fin_cases i <;> trivial) c)
 
 /-! ## Public multiplication output -/
 
 /-- Multiply two shared operands and return the product in the clear. -/
 abbrev OpenMul : Functionality :=
-  .ofEval ⟨Unit, fun _ => [.share F, .share F], fun _ => .clear F, fun _ => F⟩
-    ⟨fun r => let p := r.args.1 * r.args.2.1; pure (p, p)⟩
+  .ofEval ⟨[.share F, .share F], .clear F, F⟩
+    ⟨fun r => let p := r.1 * r.2.1; pure (p, p)⟩
 
 /-- Simulate `openMul` using the product in the ideal event. -/
 program openMulReal : Realization (OpenMul F) (Std F) where
-  impl D r := openMul r.args.1 r.args.2.1
-  Sim e := pure [⟨Std.mult F, ()⟩, ⟨Std.reveal F, e.leak⟩]
+  impl D r := openMul r.1 r.2.1
+  Sim e := pure [⟨Std.mult F, ()⟩, ⟨Std.reveal F, e⟩]
   real r _ := by
-    obtain ⟨⟨⟩, a, b, ⟨⟩⟩ := r
+    obtain ⟨a, b, ⟨⟩⟩ := r
     simp only [openMul, mul, reveal, weft, Functionality.ofEval_model]
     rfl
 
@@ -64,10 +70,10 @@ omit [Fintype F] [Inhabited F] in
 /-- Inputs `(0, 1)` and `(1, 0)` have the same product but different revealed operands.
 Hence their views cannot share a simulator for the `OpenMul` event. -/
 theorem leakyMul_not_realizes :
-    ¬ ∃ Sim : Event (OpenMul F).ops → PMF (List (Event (Std F).ops)),
+    ¬ ∃ Sim : (OpenMul F).sig.leak → PMF (List (Event (Std F).ops)),
       ∀ a b : F, dist (Std F).model (leakyMul (fs := Std F) (D := .ideal) a b) = (do
-        let p ← (OpenMul F).model.step ⟨(), (a, b, ())⟩
-        let s ← Sim ⟨(), p.2⟩
+        let p ← (OpenMul F).model.step (a, b, ())
+        let s ← Sim p.2
         pure (p.1, s)) := by
   rintro ⟨Sim, h⟩
   have h₁ := h 0 1
@@ -81,8 +87,8 @@ theorem leakyMul_not_realizes :
 
 /-- Return the input share without disclosure. -/
 abbrev Keep : Functionality :=
-  .ofEval ⟨Unit, fun _ => [.share F], fun _ => .share F, fun _ => Unit⟩
-    ⟨fun r => pure (r.args.1, ())⟩
+  .ofEval ⟨[.share F], .share F, Unit⟩
+    ⟨fun r => pure (r.1, ())⟩
 
 /-- Reveal the input, then return its original share. -/
 def openKeep {fs : Hybrid} {D : Domain} [Has (Reveal F) fs] (x : D.share F) : Prog fs.ops D (D.share F) := do
@@ -93,10 +99,10 @@ omit [Fintype F] [Inhabited F] in
 /-- `Keep` has the same event for every input,
 while `openKeep` reveals the input value. -/
 theorem openKeep_not_realizes :
-    ¬ ∃ Sim : Event (Keep F).ops → PMF (List (Event (Std F).ops)),
+    ¬ ∃ Sim : (Keep F).sig.leak → PMF (List (Event (Std F).ops)),
       ∀ x : F, dist (Std F).model (openKeep F (fs := Std F) (D := .ideal) x) = (do
-        let p ← (Keep F).model.step ⟨(), (x, ())⟩
-        let s ← Sim ⟨(), p.2⟩
+        let p ← (Keep F).model.step (x, ())
+        let s ← Sim p.2
         pure (p.1, s)) := by
   rintro ⟨Sim, h⟩
   have h₀ := h 0
@@ -119,7 +125,7 @@ noncomputable def openMulOverPre : Realization (OpenMul F) (Pre F) :=
 
 -- Unfolding the composition gives Beaver multiplication followed by reveal.
 example (a b : F) :
-    (openMulOverPre F).impl .ideal ⟨(), (a, b, ())⟩
+    (openMulOverPre F).impl .ideal (a, b, ())
       = Prog.handle ((stdOverPre F).impl .ideal) (openMul (fs := Std F) (D := .ideal) a b) := rfl
 end
 

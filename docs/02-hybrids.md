@@ -18,19 +18,19 @@ The interface of the whole hybrid dispatches by that position:
 
 ```lean
 def Hybrid.ops (fs : Hybrid) : Interface where
-  Op := (i : Fin fs.length) × (fs.get i).ops.Op
-  dom o := (fs.get o.1).ops.dom o.2
-  cod o := (fs.get o.1).ops.cod o.2
-  leak o := (fs.get o.1).ops.leak o.2
+  Op := Fin fs.length
+  dom i := (fs.get i).sig.dom
+  cod i := (fs.get i).sig.cod
+  leak i := (fs.get i).sig.leak
 ```
 
-An operation contains both the component index and the operation within that component.
-The index also appears in events.
+A request selects a functionality by its position.
+That position also appears in events. Each functionality has one operation.
 `fs.model` dispatches to the selected functionality's ideal model;
 `fs.eval` dispatches to its evaluation model.
 Hence the list fixes the meaning of every request.
 
-Two functionalities can have the same interface and different models.
+Two functionalities can have the same signature and different models.
 They remain different entries: being able to request a tuple of three shares does not establish that it is a Beaver triple.
 Membership names the functionality, including its specification.
 
@@ -94,13 +94,13 @@ it reindexes the simulator's events as well.
 
 | Hybrid | Entries, in order |
 |---|---|
-| `Std F` | `Lin F`, `Mult F`, `Reveal F` |
-| `Pre F` | `Lin F`, `Reveal F`, `MulTriple F` |
+| `Std F` | `Const F`, `Addition F`, `Subtraction F`, `Smul F`, `Mult F`, `Reveal F` |
+| `Pre F` | `Const F`, `Addition F`, `Subtraction F`, `Smul F`, `Reveal F`, `MulTriple F` |
 
-`Bool2`, from [Weft/Std/Boolean.lean](../Weft/Std/Boolean.lean), contains `Lin GF2` and `Mult GF2`.
+`Bool2`, from [Weft/Std/Boolean.lean](../Weft/Std/Boolean.lean), contains `Const GF2`, `Addition GF2`, `Subtraction GF2`, `Smul GF2`, and `Mult GF2`.
 It does not include opening.
 
-Helpers such as `Std.mult`, `Std.reveal`, and `Pre.triple` name the component operations when stating concrete views.
+Helpers such as `Std.mult`, `Std.reveal`, and `Pre.triple` name the functionality positions when stating concrete views.
 Each hybrid is an ordinary list;
 there is no central enumeration to extend when adding a new functionality.
 

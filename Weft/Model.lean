@@ -18,6 +18,44 @@ For randomised functionalities, the evaluation model fixes the coins.
 -/
 namespace Weft
 
+/-- A single function's joint response and disclosure for its operands. -/
+structure FunctionModel (σ : Signature) (D : Domain) (m : Type → Type) where
+  step : σ.Args D → m (σ.Resp D × σ.leak)
+
+namespace FunctionModel
+variable {σ : Signature} {D : Domain} {m : Type → Type}
+
+/-- Embed deterministic responses and disclosures in a monad. -/
+def det [Monad m] (f : σ.Args D → σ.Resp D) (leak : σ.Args D → σ.leak) : FunctionModel σ D m :=
+  ⟨fun a => pure (f a, leak a)⟩
+
+/-- A deterministic function with no value disclosure. -/
+def silent [Monad m] (f : σ.Args D → σ.Resp D) (h : σ.leak = Unit := by rfl) : FunctionModel σ D m :=
+  det f fun _ => h.symm ▸ ()
+
+/-- Embed an evaluation function in a monad. -/
+def lift (m : Type → Type) [Monad m] (M : FunctionModel σ D Id) : FunctionModel σ D m :=
+  ⟨fun a => pure (M.step a).run⟩
+
+/-- The response marginal. -/
+def response [Functor m] (M : FunctionModel σ D m) (a : σ.Args D) : m (σ.Resp D) :=
+  Prod.fst <$> M.step a
+
+/-- The disclosure marginal. -/
+def leakage [Functor m] (M : FunctionModel σ D m) (a : σ.Args D) : m σ.leak :=
+  Prod.snd <$> M.step a
+
+theorem ext {M N : FunctionModel σ D m} (h : ∀ a, M.step a = N.step a) : M = N := by
+  cases M; cases N; simp only [FunctionModel.mk.injEq]; exact funext h
+
+@[simp] theorem lift_step [Monad m] (M : FunctionModel σ D Id) (a : σ.Args D) :
+    (M.lift m).step a = pure (M.step a).run := rfl
+
+@[simp] theorem det_step [Monad m] (f : σ.Args D → σ.Resp D) (leak : σ.Args D → σ.leak) (a : σ.Args D) :
+    (det (m := m) f leak).step a = pure (f a, leak a) := rfl
+
+end FunctionModel
+
 /-- A joint response and disclosure for each request. -/
 structure Model (ι : Interface) (D : Domain) (m : Type → Type) where
   step : (r : Req ι D) → m (Resp ι D r.op × ι.leak r.op)
@@ -80,7 +118,7 @@ def CostModel.unit {ι : Interface} : CostModel ι Unit := ⟨fun _ => ()⟩
 /-- Accumulated cost and adversarial view. -/
 structure Trace (ι : Interface) (D : Domain) (C : Type) where
   cost : C
-  view : List (Event ι D)
+  view : List (Event ι)
 
 namespace Trace
 variable {ι : Interface} {D : Domain} {C : Type} [AddMonoid C]
@@ -116,12 +154,12 @@ variable {ι : Interface} {D : Domain} {C α : Type} [AddMonoid C] [Look D Id] [
 /-- Evaluation (`m := Id`): the output of one run. -/
 def output (M : Model ι D Id) (c : Prog ι D α) : α := (Id.run (run M CostModel.unit c)).1
 /-- Evaluation: the view of one run. -/
-def view (M : Model ι D Id) (c : Prog ι D α) : List (Event ι D) := (Id.run (run M CostModel.unit c)).2.view
+def view (M : Model ι D Id) (c : Prog ι D α) : List (Event ι) := (Id.run (run M CostModel.unit c)).2.view
 /-- Evaluation: the cost of one run. -/
 def cost (M : Model ι D Id) (K : CostModel ι C) (c : Prog ι D α) : C := (Id.run (run M K c)).2.cost
 
 /-- The joint distribution of output and adversarial view. -/
-noncomputable def dist (M : Model ι D PMF) (c : Prog ι D α) : PMF (α × List (Event ι D)) :=
+noncomputable def dist (M : Model ι D PMF) (c : Prog ι D α) : PMF (α × List (Event ι)) :=
   (fun p => (p.1, p.2.view)) <$> run M CostModel.unit c
 end Observables
 

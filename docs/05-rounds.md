@@ -33,7 +33,7 @@ Clear arithmetic propagates the latest input time through the applicative;
 it does not advance the control clock.
 `Shape.ready` finds the latest time in a structured value, and `Operands.ready` does the same for a request's operands.
 
-For the generic priced model `Model.timed E p`, an operation with latency $d$ returns its response at:
+For the generic priced model `FunctionModel.timed E p`, an operation with latency $d$ returns its response at:
 
 $$
 t_{\mathrm{out}} = \max(t_{\mathrm{operands}},t_{\mathrm{clock}}) + d
@@ -62,7 +62,7 @@ An MPC supplies one timed model per functionality.
 [Weft/MPC.lean](../Weft/MPC.lean) defines:
 
 ```lean
-abbrev MPC.Entry := (F : Functionality) × Model F.ops .timed Sched
+abbrev MPC.Entry := (F : Functionality) × FunctionModel F.sig .timed Sched
 abbrev MPC := List MPC.Entry
 ```
 
@@ -72,8 +72,7 @@ choosing a cost model does not redefine its semantics.
 
 | Construction | Timed model |
 |---|---|
-| `F.priced p` | `Model.timed F.eval` with the same price for every operation |
-| `F.pricedBy p` | `Model.timed F.eval` with a price per operation |
+| `F.priced p` | `FunctionModel.timed F.eval p` for that functionality |
 | `MPC.entry F T` | The supplied custom model `T` |
 | `MPC.derived M f` | Run the realisation `f` under `M.timed` |
 

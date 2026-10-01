@@ -23,16 +23,14 @@ open Weft.Examples.Basic
 /-! ### Abstract block function -/
 
 namespace AesF
-inductive Op where | enc
-abbrev ops (F : Type) : Interface where
-  Op := Op
-  dom _ := [.share F, .share F]
-  cod _ := .share F
-def eval (F : Type) (aes : F → F → F) : Model (ops F) .ideal Id := .silent fun ⟨.enc, (k, m, ())⟩ => aes k m
+abbrev sig (F : Type) : Signature where
+  dom := [.share F, .share F]
+  cod := .share F
+def eval (F : Type) (aes : F → F → F) : FunctionModel (sig F) .ideal Id := .silent fun (k, m, ()) => aes k m
 end AesF
 
 /-- Apply `aes` to shared key and message operands without disclosure. -/
-abbrev AES (F : Type) (aes : F → F → F) : Functionality := .ofEval (AesF.ops F) (AesF.eval F aes)
+abbrev AES (F : Type) (aes : F → F → F) : Functionality := .ofEval (AesF.sig F) (AesF.eval F aes)
 
 section
 variable {F : Type} [Add F] [Mul F] [Sub F] {fs : Hybrid} {D : Domain}
@@ -42,12 +40,12 @@ def toyAes (k m : F) : F := (m + k) * (m + k) * (m + k)
 
 /-- Request a block-function evaluation. -/
 def enc (aes : F → F → F) [Has (AES F aes) fs] (k m : D.share F) : Prog fs.ops D (D.share F) :=
-  Prog.op (F := AES F aes) ⟨.enc, (k, m, ())⟩
+  Prog.op (F := AES F aes) (k, m, ())
 
 /-! ### Protocol over the abstract function -/
 
 /-- Chain two block-function calls, adding the previous block before each call. -/
-def cbc2 (aes : F → F → F) [Has (AES F aes) fs] [Has (Lin F) fs] (k iv m₁ m₂ : D.share F) :
+def cbc2 (aes : F → F → F) [Has (AES F aes) fs] [Has (Addition F) fs] (k iv m₁ m₂ : D.share F) :
     Prog fs.ops D (D.share F × D.share F) := do
   let x₁ ← add iv m₁
   let c₁ ← enc aes k x₁
@@ -58,7 +56,7 @@ def cbc2 (aes : F → F → F) [Has (AES F aes) fs] [Has (Lin F) fs] (k iv m₁ 
 /-! ### Arithmetic implementation -/
 
 /-- Evaluate the toy function with one addition and two multiplications. -/
-def toyAesProg [Has (Lin F) fs] [Has (Mult F) fs] (k m : D.share F) : Prog fs.ops D (D.share F) := do
+def toyAesProg [Has (Addition F) fs] [Has (Mult F) fs] (k m : D.share F) : Prog fs.ops D (D.share F) := do
   let t ← add m k
   let t2 ← mul t t
   mul t2 t
@@ -68,14 +66,14 @@ section
 variable (F : Type) [Field F] [Inhabited F]
 
 /-- The toy block function alongside standard arithmetic. -/
-abbrev AesHybrid : Hybrid := [AES F (toyAes), Lin F, Mult F, Reveal F]
+abbrev AesHybrid : Hybrid := [AES F (toyAes), Const F, Addition F, Subtraction F, Smul F, Mult F, Reveal F]
 
 /-- Realise the toy function with an input-independent three-event view. -/
 program aesByProgram : Realization (AES F toyAes) (Std F) where
-  impl D r := toyAesProg r.args.1 r.args.2.1
-  Sim _ := pure [⟨Std.lin F .add, ()⟩, ⟨Std.mult F, ()⟩, ⟨Std.mult F, ()⟩]
+  impl D r := toyAesProg r.1 r.2.1
+  Sim _ := pure [⟨Std.add F, ()⟩, ⟨Std.mult F, ()⟩, ⟨Std.mult F, ()⟩]
   real r _ := by
-    obtain ⟨⟨⟩, k, m, ⟨⟩⟩ := r
+    obtain ⟨k, m, ⟨⟩⟩ := r
     simp only [toyAesProg, toyAes, add, mul, weft, Functionality.ofEval_model, AesF.eval]
     rfl
 
@@ -83,7 +81,7 @@ program aesByProgram : Realization (AES F toyAes) (Std F) where
 
 /-- Implement the block function and retain the standard components by inclusion. -/
 noncomputable def hybridOverStd : Realizations (AesHybrid F) (Std F) :=
-  .cons (aesByProgram F) (Realizations.incl [Lin F, Mult F, Reveal F] (Std F))
+  .cons (aesByProgram F) (Realizations.incl (Std F) (Std F))
 
 /-- Inline the block-function implementation into `cbc2`. -/
 noncomputable def cbc2Plain (k iv m₁ m₂ : F) : Prog (Std F).ops .ideal (F × F) :=
@@ -99,27 +97,41 @@ theorem cbc2Plain_output (k iv m₁ m₂ : F) :
     Prod.fst <$> dist (Std F).model (cbc2Plain F k iv m₁ m₂)
       = Prod.fst <$> dist (AesHybrid F).model (cbc2 (fs := AesHybrid F) (D := .ideal) toyAes k iv m₁ m₂) :=
   output_transport (hybridOverStd F) _ (Valid.of_forall _ (fun r => by
-    obtain ⟨⟨⟨_ | _ | _ | _ | n, h⟩, o⟩, a⟩ := r <;> trivial) _)
+    obtain ⟨i, a⟩ := r
+    fin_cases i <;> trivial) _)
 
 -- The hybrid view is a fixed list of four operation records.
 example (k iv m₁ m₂ : F) :
     view (AesHybrid F).eval (cbc2 (fs := AesHybrid F) (D := .ideal) toyAes k iv m₁ m₂)
-      = [⟨⟨1, .add⟩, ()⟩, ⟨⟨0, .enc⟩, ()⟩, ⟨⟨1, .add⟩, ()⟩, ⟨⟨0, .enc⟩, ()⟩] := rfl
+      = [⟨2, ()⟩, ⟨0, ()⟩, ⟨2, ()⟩, ⟨0, ()⟩] := rfl
 
 -- The fixed price assigns one round to each block-function call.
 -- The arithmetic implementation uses two dependent multiplications,
 -- so the derived cost is two rounds per call.
-abbrev aesMPC : MPC := [(AES F toyAes).priced ⟨1, 10⟩, (Lin F).priced ⟨0, 0⟩, (Mult F).priced ⟨1, 2⟩, (Reveal F).priced ⟨1, 1⟩]
+abbrev aesMPC : MPC := [
+  (AES F toyAes).priced ⟨1, 10⟩,
+  (Const F).priced ⟨0, 0⟩,
+  (Addition F).priced ⟨0, 0⟩,
+  (Subtraction F).priced ⟨0, 0⟩,
+  (Smul F).priced ⟨0, 0⟩,
+  (Mult F).priced ⟨1, 2⟩,
+  (Reveal F).priced ⟨1, 1⟩]
 abbrev stdMPC : MPC := Std.mpc F
 /-- Derive the block-function cost from its arithmetic implementation. -/
 noncomputable abbrev aesDerived : MPC :=
-  [MPC.derived (stdMPC F) (aesByProgram F), (Lin F).priced ⟨0, 0⟩, (Mult F).priced ⟨1, 2⟩, (Reveal F).priced ⟨1, 1⟩]
+  [MPC.derived (stdMPC F) (aesByProgram F),
+    (Const F).priced ⟨0, 0⟩,
+    (Addition F).priced ⟨0, 0⟩,
+    (Subtraction F).priced ⟨0, 0⟩,
+    (Smul F).priced ⟨0, 0⟩,
+    (Mult F).priced ⟨1, 2⟩,
+    (Reveal F).priced ⟨1, 1⟩]
 end
 
 -- Closed instances over `𝔽₇`, evaluated by the kernel.
 instance : Fact (Nat.Prime 7) := ⟨by decide⟩
 /-- A fixed two-block instance over `ZMod 7`. -/
-abbrev cbcAt (M : MPC) [Has (AES (ZMod 7) toyAes) M.hybrid] [Has (Lin (ZMod 7)) M.hybrid] :
+abbrev cbcAt (M : MPC) [Has (AES (ZMod 7) toyAes) M.hybrid] [Has (Addition (ZMod 7)) M.hybrid] :
     Prog M.hybrid.ops .timed (Timed (ZMod 7) × Timed (ZMod 7)) :=
   cbc2 (F := ZMod 7) (fs := M.hybrid) (D := .timed) toyAes ⟪3⟫ ⟪1⟫ ⟪4⟫ ⟪5⟫
 -- Two calls cost two rounds at the fixed price and four under the implementation.
@@ -147,17 +159,17 @@ example (k iv m₁ m₂ : F) :
 
 /-- Specify the two-block output using `toyAes`. -/
 abbrev CBC : Functionality :=
-  .ofEval ⟨Unit, fun _ => [.share F, .share F, .share F, .share F], fun _ => .prod (.share F) (.share F), fun _ => Unit⟩
-    ⟨fun r => pure ((toyAes r.args.1 (r.args.2.1 + r.args.2.2.1),
-      toyAes r.args.1 (toyAes r.args.1 (r.args.2.1 + r.args.2.2.1) + r.args.2.2.2.1)), ())⟩
+  .ofEval ⟨[.share F, .share F, .share F, .share F], .prod (.share F) (.share F), Unit⟩
+    ⟨fun r => pure ((toyAes r.1 (r.2.1 + r.2.2.1),
+      toyAes r.1 (toyAes r.1 (r.2.1 + r.2.2.1) + r.2.2.2.1)), ())⟩
 
 /-- Realise the protocol in the block-function hybrid.
 The simulator returns its four fixed operation records. -/
 program cbcOverHybrid : Realization (CBC F) (AesHybrid F) where
-  impl D r := cbc2 toyAes r.args.1 r.args.2.1 r.args.2.2.1 r.args.2.2.2.1
-  Sim _ := pure [⟨⟨1, .add⟩, ()⟩, ⟨⟨0, .enc⟩, ()⟩, ⟨⟨1, .add⟩, ()⟩, ⟨⟨0, .enc⟩, ()⟩]
+  impl D r := cbc2 toyAes r.1 r.2.1 r.2.2.1 r.2.2.2.1
+  Sim _ := pure [⟨2, ()⟩, ⟨0, ()⟩, ⟨2, ()⟩, ⟨0, ()⟩]
   real r _ := by
-    obtain ⟨⟨⟩, k, iv, m₁, m₂, ⟨⟩⟩ := r
+    obtain ⟨k, iv, m₁, m₂, ⟨⟩⟩ := r
     simp only [cbc2, enc, add, weft, Functionality.ofEval_model, AesF.eval]
     rfl
 
@@ -166,14 +178,15 @@ noncomputable def cbcOverStd : Realization (CBC F) (Std F) :=
   (cbcOverHybrid F).comp (hybridOverStd F)
 
 -- The composed implementation unfolds to `cbc2Plain`.
-example (k iv m₁ m₂ : F) : (cbcOverStd F).impl .ideal ⟨(), (k, iv, m₁, m₂, ())⟩ = cbc2Plain F k iv m₁ m₂ := rfl
+example (k iv m₁ m₂ : F) : (cbcOverStd F).impl .ideal (k, iv, m₁, m₂, ()) = cbc2Plain F k iv m₁ m₂ := rfl
 
 -- The outer precondition and all inner preconditions are trivial.
 -- Hence every request satisfies the composite precondition.
 omit [Inhabited F] in
-theorem cbcOverStd_pre (r : Req (CBC F).ops .ideal) : (cbcOverStd F).Pre r :=
+theorem cbcOverStd_pre (r : (CBC F).sig.Args .ideal) : (cbcOverStd F).Pre r :=
   ⟨trivial, Valid.of_forall _ (fun r => by
-    obtain ⟨⟨⟨_ | _ | _ | _ | n, h⟩, o⟩, a⟩ := r <;> trivial) _⟩
+    obtain ⟨i, a⟩ := r
+    fin_cases i <;> trivial) _⟩
 end
 
 end Weft.Examples.Aes

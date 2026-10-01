@@ -35,60 +35,54 @@ instance {n : ℕ} [NeZero n] : Encodable (ZMod n) where
 /-! ### Conversion and correlated randomness -/
 
 namespace SwitchF
-inductive Op where | switch
-abbrev ops (F G : Type) : Interface where
-  Op := Op
-  dom _ := [.share F]
-  cod _ := .share G
+abbrev sig (F G : Type) : Signature where
+  dom := [.share F]
+  cod := .share G
 /-- Cast the source's `Encodable` code into the target.
 For `ZMod`, use the canonical representative,
 reduced modulo the target modulus. -/
-def eval (F G : Type) [Encodable F] [NatCast G] : Model (ops F G) .ideal Id :=
-  .silent fun ⟨.switch, (x, ())⟩ => ((Encodable.encode x : ℕ) : G)
+def eval (F G : Type) [Encodable F] [NatCast G] : FunctionModel (sig F G) .ideal Id :=
+  .silent fun (x, ()) => ((Encodable.encode x : ℕ) : G)
 end SwitchF
 
 /-- Share conversion from `F` to `G`. -/
-abbrev Switch (F G : Type) [Encodable F] [NatCast G] : Functionality := .ofEval (SwitchF.ops F G) (SwitchF.eval F G)
+abbrev Switch (F G : Type) [Encodable F] [NatCast G] : Functionality := .ofEval (SwitchF.sig F G) (SwitchF.eval F G)
 
 namespace EdaBitF
-inductive Op where | get
-abbrev ops (F : Type) (m : Nat) : Interface where
-  Op := Op
-  dom _ := []
-  cod _ := .prod (.share F) (.vec m (.share GF2))
+abbrev sig (F : Type) (m : Nat) : Signature where
+  dom := []
+  cod := .prod (.share F) (.vec m (.share GF2))
 /-- Sample uniform `r < 2^m` and return its cast in `F` with its bits. -/
-noncomputable def model (F : Type) [NatCast F] (m : Nat) : Model (ops F m) .ideal PMF :=
+noncomputable def model (F : Type) [NatCast F] (m : Nat) : FunctionModel (sig F m) .ideal PMF :=
   ⟨fun _ => (uniform (Fin (2 ^ m))).map fun r => ((((r.val : ℕ) : F), bitsOf m r.val), ())⟩
 /-- Fix the mask to `coin % 2^m`. -/
-def eval (F : Type) [NatCast F] (m : Nat) (coin : Nat) : Model (ops F m) .ideal Id :=
+def eval (F : Type) [NatCast F] (m : Nat) (coin : Nat) : FunctionModel (sig F m) .ideal Id :=
   ⟨fun _ => let r := coin % 2 ^ m; pure ((((r : ℕ) : F), bitsOf m r), ())⟩
 end EdaBitF
 
 /-- Sample `r < 2^m`, sharing its cast in `F` and its bits in `𝔽₂`.
 Bits are least significant first; `coin` fixes the mask used for evaluation. -/
 abbrev EdaBit (F : Type) [NatCast F] (m : Nat) (coin : Nat := 0) : Functionality :=
-  ⟨EdaBitF.ops F m, EdaBitF.eval F m coin, (· = EdaBitF.model F m), Functionality.unique_eq _⟩
+  ⟨EdaBitF.sig F m, EdaBitF.eval F m coin, (· = EdaBitF.model F m), Functionality.unique_eq _⟩
 
 @[simp, weft] theorem EdaBit.model_eq (F : Type) [NatCast F] (m coin : Nat) :
     (EdaBit F m coin).model = EdaBitF.model F m := Functionality.model_eq rfl
 
 namespace DaBitF
-inductive Op where | get
-abbrev ops (F : Type) : Interface where
-  Op := Op
-  dom _ := []
-  cod _ := .prod (.share F) (.share GF2)
+abbrev sig (F : Type) : Signature where
+  dom := []
+  cod := .prod (.share F) (.share GF2)
 /-- Share one uniform bit in both arithmetic types. -/
-noncomputable def model (F : Type) [NatCast F] : Model (ops F) .ideal PMF :=
+noncomputable def model (F : Type) [NatCast F] : FunctionModel (sig F) .ideal PMF :=
   ⟨fun _ => (uniform GF2).map fun (b : ZMod 2) => ((((b.val : ℕ) : F), (b : GF2)), ())⟩
-def eval (F : Type) [NatCast F] (coin : Nat) : Model (ops F) .ideal Id :=
+def eval (F : Type) [NatCast F] (coin : Nat) : FunctionModel (sig F) .ideal Id :=
   ⟨fun _ => let b := coin % 2; pure ((((b : ℕ) : F), (b : GF2)), ())⟩
 end DaBitF
 
 /-- A daBit: one uniform bit shared in `F` and `𝔽₂`.
 Used for Boolean-to-arithmetic conversion (Rotaru–Wood, ePrint 2019/207). -/
 abbrev DaBit (F : Type) [NatCast F] (coin : Nat := 0) : Functionality :=
-  ⟨DaBitF.ops F, DaBitF.eval F coin, (· = DaBitF.model F), Functionality.unique_eq _⟩
+  ⟨DaBitF.sig F, DaBitF.eval F coin, (· = DaBitF.model F), Functionality.unique_eq _⟩
 
 @[simp, weft] theorem DaBit.model_eq (F : Type) [NatCast F] (coin : Nat) :
     (DaBit F coin).model = DaBitF.model F := Functionality.model_eq rfl
@@ -96,12 +90,12 @@ abbrev DaBit (F : Type) [NatCast F] (coin : Nat := 0) : Functionality :=
 section Ops
 variable {fs : Hybrid} {D : Domain}
 def switch {F : Type} (G : Type) [Encodable F] [NatCast G] [Has (Switch F G) fs] (a : D.share F) : Prog fs.ops D (D.share G) :=
-  Prog.op (F := Switch F G) ⟨.switch, (a, ())⟩
+  Prog.op (F := Switch F G) (a, ())
 def edabit (F : Type) [NatCast F] (m : Nat) (coin : Nat := 0) [Has (EdaBit F m coin) fs] :
     Prog fs.ops D (D.share F × (Fin m → D.share GF2)) :=
-  Prog.op (F := EdaBit F m coin) ⟨.get, ()⟩
+  Prog.op (F := EdaBit F m coin) ()
 def dabit (F : Type) [NatCast F] (coin : Nat := 0) [Has (DaBit F coin) fs] : Prog fs.ops D (D.share F × D.share GF2) :=
-  Prog.op (F := DaBit F coin) ⟨.get, ()⟩
+  Prog.op (F := DaBit F coin) ()
 end Ops
 
 /-! ## Multiplication and comparison across types -/
@@ -127,8 +121,18 @@ instance : Fact (1 < 17) := ⟨by decide⟩
 
 /-- Arithmetic over `𝔽₇` and `ℤ/16`, with conversion in both directions. -/
 abbrev twoField : MPC := [
-  (Lin (ZMod 7)).priced ⟨0, 0⟩, (Mult (ZMod 7)).priced ⟨1, 2⟩, (Reveal (ZMod 7)).priced ⟨1, 1⟩,
-  (Lin (ZMod 16)).priced ⟨0, 0⟩, (Mult (ZMod 16)).priced ⟨1, 2⟩, (Cmp (ZMod 16)).priced ⟨2, 6⟩,
+  (Const (ZMod 7)).priced ⟨0, 0⟩,
+  (Addition (ZMod 7)).priced ⟨0, 0⟩,
+  (Subtraction (ZMod 7)).priced ⟨0, 0⟩,
+  (Smul (ZMod 7)).priced ⟨0, 0⟩,
+  (Mult (ZMod 7)).priced ⟨1, 2⟩,
+  (Reveal (ZMod 7)).priced ⟨1, 1⟩,
+  (Const (ZMod 16)).priced ⟨0, 0⟩,
+  (Addition (ZMod 16)).priced ⟨0, 0⟩,
+  (Subtraction (ZMod 16)).priced ⟨0, 0⟩,
+  (Smul (ZMod 16)).priced ⟨0, 0⟩,
+  (Mult (ZMod 16)).priced ⟨1, 2⟩,
+  (Cmp (ZMod 16)).priced ⟨2, 6⟩,
   (Switch (ZMod 7) (ZMod 16)).priced ⟨3, 8⟩, (Switch (ZMod 16) (ZMod 7)).priced ⟨2, 4⟩]
 
 -- The conversion of `c` overlaps the product and its conversion.
@@ -148,7 +152,7 @@ variable {fs : Hybrid} {D : Domain}
 
 /-- Ripple-carry addition of public bits to shared bits.
 Each carry uses one AND; XOR and multiplication by a public bit use linear operations. -/
-def addPublic [Has (Lin GF2) fs] [Has (Mult GF2) fs] :
+def addPublic [Has (Const GF2) fs] [Has (Addition GF2) fs] [Has (Smul GF2) fs] [Has (Mult GF2) fs] :
     (m : Nat) → D.clear (Fin m → GF2) → (Fin m → D.share GF2) → D.share GF2 → Prog fs.ops D (Fin m → D.share GF2)
   | 0, _, _, _ => pure fun i => i.elim0
   | m + 1, c, r, carry => do
@@ -165,7 +169,8 @@ def addPublic [Has (Lin GF2) fs] [Has (Mult GF2) fs] :
 This example omits correction for wraparound in `F`;
 the concrete check below uses a subtraction that does not wrap. -/
 def a2b (F : Type) [CommRing F] [Encodable F] (m : Nat) (coin : Nat := 0)
-    [Has (EdaBit F m coin) fs] [Has (Lin F) fs] [Has (Reveal F) fs] [Has (Lin GF2) fs] [Has (Mult GF2) fs]
+    [Has (EdaBit F m coin) fs] [Has (Subtraction F) fs] [Has (Reveal F) fs] [Has (Const GF2) fs]
+    [Has (Addition GF2) fs] [Has (Smul GF2) fs] [Has (Mult GF2) fs]
     (x : D.share F) : Prog fs.ops D (Fin m → D.share GF2) := do
   let (r, rbits) ← edabit F m coin
   let d ← sub x r
@@ -177,14 +182,23 @@ end A2B
 /-- `𝔽₁₇` and `𝔽₂` with precomputed four-bit edaBits.
 The evaluation model fixes the mask to 3. -/
 abbrev mixed : MPC := [
-  (Lin (ZMod 17)).priced ⟨0, 0⟩, (Mult (ZMod 17)).priced ⟨1, 2⟩, (Reveal (ZMod 17)).priced ⟨1, 1⟩,
-  (Lin GF2).priced ⟨0, 0⟩, (Mult GF2).priced ⟨1, 1⟩,
+  (Const (ZMod 17)).priced ⟨0, 0⟩,
+  (Addition (ZMod 17)).priced ⟨0, 0⟩,
+  (Subtraction (ZMod 17)).priced ⟨0, 0⟩,
+  (Smul (ZMod 17)).priced ⟨0, 0⟩,
+  (Mult (ZMod 17)).priced ⟨1, 2⟩,
+  (Reveal (ZMod 17)).priced ⟨1, 1⟩,
+  (Const GF2).priced ⟨0, 0⟩,
+  (Addition GF2).priced ⟨0, 0⟩,
+  (Subtraction GF2).priced ⟨0, 0⟩,
+  (Smul GF2).priced ⟨0, 0⟩,
+  (Mult GF2).priced ⟨1, 1⟩,
   (EdaBit (ZMod 17) 4 3).priced ⟨0, 0⟩]
 
 /-- The values opened by a run over `mixed`. -/
 def openedMixed : List (Event mixed.hybrid.ops) → List (ZMod 17) :=
   List.filterMap fun e => match e with
-    | ⟨⟨⟨2, _⟩, .reveal⟩, out⟩ => some out
+    | ⟨⟨5, _⟩, out⟩ => some out
     | _ => none
 
 -- Evaluate the opening with mask `r = 3`.
@@ -215,7 +229,9 @@ section DaBits
 variable {fs : Hybrid} {D : Domain} (F : Type) [CommRing F]
 
 /-- Boolean → arithmetic with one daBit. -/
-def b2a (coin : Nat := 0) [Has (DaBit F coin) fs] [Has (Lin GF2) fs] [Has (Reveal GF2) fs] [Has (Lin F) fs]
+def b2a (coin : Nat := 0)
+    [Has (DaBit F coin) fs] [Has (Addition GF2) fs] [Has (Reveal GF2) fs] [Has (Const F) fs]
+    [Has (Addition F) fs] [Has (Subtraction F) fs] [Has (Smul F) fs]
     (x : D.share GF2) : Prog fs.ops D (D.share F) := do
   let (bF, b₂) ← dabit F coin
   let m ← add x b₂                    -- Mask in `𝔽₂`.
@@ -227,7 +243,9 @@ def b2a (coin : Nat := 0) [Has (DaBit F coin) fs] [Has (Lin GF2) fs] [Has (Revea
 
 /-- Convert each bit and sum in `F`.
 The conversions are independent; the count is represented in `F`. -/
-def hammingWeight (coin : Nat := 0) [Has (DaBit F coin) fs] [Has (Lin GF2) fs] [Has (Reveal GF2) fs] [Has (Lin F) fs]
+def hammingWeight (coin : Nat := 0)
+    [Has (DaBit F coin) fs] [Has (Addition GF2) fs] [Has (Reveal GF2) fs] [Has (Const F) fs]
+    [Has (Addition F) fs] [Has (Subtraction F) fs] [Has (Smul F) fs]
     (xs : List (D.share GF2)) : Prog fs.ops D (D.share F) := do
   let ys ← xs.mapM (b2a F coin)
   sumAll ys
@@ -236,8 +254,17 @@ end DaBits
 /-- `𝔽₁₇` and `𝔽₂` with precomputed daBits.
 The evaluation model fixes the shared bit to 1. -/
 abbrev withDaBits : MPC := [
-  (Lin (ZMod 17)).priced ⟨0, 0⟩, (Mult (ZMod 17)).priced ⟨1, 2⟩, (Reveal (ZMod 17)).priced ⟨1, 1⟩,
-  (Lin GF2).priced ⟨0, 0⟩, (Reveal GF2).priced ⟨1, 1⟩,
+  (Const (ZMod 17)).priced ⟨0, 0⟩,
+  (Addition (ZMod 17)).priced ⟨0, 0⟩,
+  (Subtraction (ZMod 17)).priced ⟨0, 0⟩,
+  (Smul (ZMod 17)).priced ⟨0, 0⟩,
+  (Mult (ZMod 17)).priced ⟨1, 2⟩,
+  (Reveal (ZMod 17)).priced ⟨1, 1⟩,
+  (Const GF2).priced ⟨0, 0⟩,
+  (Addition GF2).priced ⟨0, 0⟩,
+  (Subtraction GF2).priced ⟨0, 0⟩,
+  (Smul GF2).priced ⟨0, 0⟩,
+  (Reveal GF2).priced ⟨1, 1⟩,
   (DaBit (ZMod 17) 1).priced ⟨0, 0⟩]
 
 -- Evaluate both Boolean inputs with daBit `b = 1`.
@@ -257,12 +284,14 @@ example : (Sched.output withDaBits.timed
 /-! ### Boolean-to-arithmetic privacy -/
 
 /-- Linear operations in both fields, Boolean reveal and daBits. -/
-abbrev DaHyb : Hybrid := [Lin (ZMod 17), Lin GF2, Reveal GF2, DaBit (ZMod 17) 1]
+abbrev DaHyb : Hybrid :=
+  [Const (ZMod 17), Addition (ZMod 17), Subtraction (ZMod 17), Smul (ZMod 17),
+    Const GF2, Addition GF2, Subtraction GF2, Smul GF2, Reveal GF2, DaBit (ZMod 17) 1]
 
 /-- The view of one conversion, as a function of the opened bit. -/
 def b2aView (c : GF2) : List (Event DaHyb.ops) :=
-  [⟨⟨3, .get⟩, ()⟩, ⟨⟨1, .add⟩, ()⟩, ⟨⟨2, .reveal⟩, c⟩, ⟨⟨0, .const⟩, (c.toNat : ZMod 17)⟩,
-   ⟨⟨0, .add⟩, ()⟩, ⟨⟨0, .smul⟩, 2 * (c.toNat : ZMod 17)⟩, ⟨⟨0, .sub⟩, ()⟩]
+  [⟨9, ()⟩, ⟨5, ()⟩, ⟨8, c⟩, ⟨0, (c.toNat : ZMod 17)⟩,
+   ⟨1, ()⟩, ⟨3, 2 * (c.toNat : ZMod 17)⟩, ⟨2, ()⟩]
 
 /-- Sample uniform `b`, open `x + b`, and reconstruct `x` in `ZMod 17`. -/
 theorem b2a_dist (x : GF2) :
@@ -280,16 +309,16 @@ theorem b2a_dist (x : GF2) :
 
 /-- Convert a shared Boolean to a share in `ZMod 17` without disclosure. -/
 abbrev B2A : Functionality :=
-  .ofEval ⟨Unit, fun _ => [.share GF2], fun _ => .share (ZMod 17), fun _ => Unit⟩
-    ⟨fun r => pure ((GF2.toNat r.args.1 : ZMod 17), ())⟩
+  .ofEval ⟨[.share GF2], .share (ZMod 17), Unit⟩
+    ⟨fun r => pure ((GF2.toNat r.1 : ZMod 17), ())⟩
 
 /-- Simulate the opening with a uniform bit.
 Addition by `x` permutes `𝔽₂`, so the real opening has the same distribution. -/
 program b2aReal : Realization B2A DaHyb where
-  impl D r := b2a (ZMod 17) 1 r.args.1
+  impl D r := b2a (ZMod 17) 1 r.1
   Sim _ := (uniform GF2).map b2aView
   real r _ := by
-    obtain ⟨⟨⟩, x, ⟨⟩⟩ := r
+    obtain ⟨x, ⟨⟩⟩ := r
     show dist DaHyb.model (b2a (ZMod 17) 1 x) = _
     rw [b2a_dist]
     simp only [weft, Functionality.ofEval_model]

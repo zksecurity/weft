@@ -3,10 +3,10 @@ import Weft.Std.Hybrids
 /-!
 # Realisations and composition
 
-A realisation implements each operation of `F` over a hybrid `fs`.
+A realisation implements the function specified by `F` over a hybrid `fs`.
 For requests satisfying `Pre`, the real and simulated joint distributions agree.
 The simulated distribution pairs the ideal response with the simulator's view.
-The simulator receives `F`'s event: the operation and declared disclosure.
+The simulator receives only `F`'s declared disclosure.
 
 We retain the full response in the joint distribution.
 A shared response may be opened later,
@@ -85,12 +85,12 @@ theorem Valid.bind {ι : Interface} {M : Model ι .ideal PMF} {P : Req ι .ideal
 `impl` is polymorphic in the domain;
 `Weft.Program` provides the implementation check. -/
 structure Realization (F : Functionality) (fs : Hybrid) where
-  impl : (D : Domain) → (r : Req F.ops D) → Prog fs.ops D (Resp F.ops D r.op)
-  Pre : Req F.ops .ideal → Prop := fun _ => True
-  Sim : Event F.ops → PMF (List (Event fs.ops))
+  impl : (D : Domain) → F.sig.Args D → Prog fs.ops D (F.sig.Resp D)
+  Pre : F.sig.Args .ideal → Prop := fun _ => True
+  Sim : F.sig.leak → PMF (List (Event fs.ops))
   real : ∀ r, Pre r → dist fs.model (impl .ideal r) = (do
     let (y, d) ← F.model.step r
-    let s ← Sim ⟨r.op, d⟩
+    let s ← Sim d
     pure (y, s))
 
 /-- Realisations of every component of a hybrid over another. -/
@@ -108,23 +108,23 @@ def get : {fs : Hybrid} → Realizations fs gs → (i : Fin fs.length) → Reali
 
 /-- Dispatch each request to its component's implementation. -/
 def impl (g : Realizations fs gs) (D : Domain) (r : Req fs.ops D) : Prog gs.ops D (Resp fs.ops D r.op) :=
-  (g.get r.op.1).impl D ⟨r.op.2, r.args⟩
+  (g.get r.op).impl D r.args
 
 /-- The precondition, per request of the hybrid. -/
 def Pre (g : Realizations fs gs) (r : Req fs.ops .ideal) : Prop :=
-  (g.get r.op.1).Pre ⟨r.op.2, r.args⟩
+  (g.get r.op).Pre r.args
 
 /-- The simulator, per event of the hybrid. -/
 noncomputable def Sim (g : Realizations fs gs) (e : Event fs.ops) : PMF (List (Event gs.ops)) :=
-  (g.get e.op.1).Sim ⟨e.op.2, e.leak⟩
+  (g.get e.op).Sim e.leak
 
 theorem real (g : Realizations fs gs) (r : Req fs.ops .ideal) (h : g.Pre r) :
     dist gs.model (g.impl .ideal r) = (do
       let (y, d) ← fs.model.step r
       let s ← g.Sim ⟨r.op, d⟩
       pure (y, s)) := by
-  obtain ⟨⟨i, o⟩, a⟩ := r
-  exact (g.get i).real ⟨o, a⟩ h
+  obtain ⟨i, a⟩ := r
+  exact (g.get i).real a h
 
 end Realizations
 

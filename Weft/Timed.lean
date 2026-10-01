@@ -150,6 +150,19 @@ def Model.timed {ι : Interface} (E : Model ι .ideal Id) (p : ι.Op → Price) 
     match (E.step ⟨r.op, r.args.untime⟩).run with
     | (y, d) => Shape.withTimed (r.base s + (p r.op).delay) (ι.cod r.op) y fun y' => ((y', d), s.pay (p r.op).comm)
 
+/-- Give a single function a latency and communication price. -/
+def FunctionModel.timed {σ : Signature} (E : FunctionModel σ .ideal Id) (p : Price) : FunctionModel σ .timed Sched where
+  step a := fun s =>
+    match (E.step a.untime).run with
+    | (y, d) => Shape.withTimed (max a.ready s.clock + p.delay) σ.cod y fun y' => ((y', d), s.pay p.comm)
+
+theorem FunctionModel.timed_step {σ : Signature} (E : FunctionModel σ .ideal Id) (p : Price)
+    (a : σ.Args .timed) (s : Clock) :
+    (E.timed p).step a s =
+      ((σ.cod.retime (max a.ready s.clock + p.delay) (E.step a.untime).run.1,
+        (E.step a.untime).run.2), s.pay p.comm) := by
+  simp only [FunctionModel.timed, Shape.withTimed_eq]
+
 /-- Response, disclosure and state update of a priced step. -/
 theorem Model.timed_step {ι : Interface} (E : Model ι .ideal Id) (p : ι.Op → Price) (r : Req ι .timed) (s : Clock) :
     (Model.timed E p).step r s =

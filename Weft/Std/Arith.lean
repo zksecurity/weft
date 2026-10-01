@@ -4,143 +4,106 @@ import Weft.MPC
 /-!
 # Arithmetic functionalities
 
-Linear operations, multiplication, reveal, comparison and inversion.
-Each functionality specifies an interface and a deterministic evaluation model,
-which is lifted to `PMF` for the ideal semantics.
-
-Costs are assigned by an MPC, e.g. `(Mult F).priced ⟨1, 2⟩`.
+Each functionality has one operation with a fixed input/output/leakage signature.
+Constants and scalar multiplication explicitly disclose their public operands;
+reveal returns and discloses its opened value.
 -/
 namespace Weft
 
-/-! ## Linear operations -/
+namespace Const
+abbrev sig (F : Type) : Signature := ⟨[.clear F], .share F, F⟩
+def eval (F : Type) : FunctionModel (sig F) .ideal Id := ⟨fun (c, ()) => pure (c, c)⟩
+end Const
 
-namespace Lin
-/-- Constants and scalars are explicitly disclosed by their models. -/
-inductive Op where
-  | const
-  | add
-  | sub
-  | smul
+/-- Share a public constant and disclose that constant. -/
+abbrev Const (F : Type) : Functionality := .ofEval (Const.sig F) (Const.eval F)
+@[simp, weft] theorem Const.model_eq (F : Type) : (Const F).model = (Const.eval F).lift PMF :=
+  Functionality.ofEval_model _ _
 
-abbrev ops (F : Type) : Interface where
-  Op := Op
-  dom | .const => [.clear F] | .add => [.share F, .share F] | .sub => [.share F, .share F] | .smul => [.clear F, .share F]
-  cod _ := .share F
-  leak | .const | .smul => F | .add | .sub => Unit
-def eval (F : Type) [Add F] [Mul F] [Sub F] : Model (ops F) .ideal Id :=
-  .det (fun
-    | ⟨.const, (c, ())⟩ => c
-    | ⟨.add, (a, b, ())⟩ => a + b
-    | ⟨.sub, (a, b, ())⟩ => a - b
-    | ⟨.smul, (c, a, ())⟩ => c * a)
-    (fun
-      | ⟨.const, (c, ())⟩ => c
-      | ⟨.add, _⟩ => ()
-      | ⟨.sub, _⟩ => ()
-      | ⟨.smul, (c, _, ())⟩ => c)
-end Lin
+namespace Addition
+abbrev sig (F : Type) : Signature := ⟨[.share F, .share F], .share F, Unit⟩
+def eval (F : Type) [Add F] : FunctionModel (sig F) .ideal Id := .silent fun (a, b, ()) => a + b
+end Addition
 
-/-- Linear operations. -/
-abbrev Lin (F : Type) [Add F] [Mul F] [Sub F] : Functionality := .ofEval (Lin.ops F) (Lin.eval F)
+/-- Add two shares without value disclosure. -/
+abbrev Addition (F : Type) [Add F] : Functionality := .ofEval (Addition.sig F) (Addition.eval F)
+@[simp, weft] theorem Addition.model_eq (F : Type) [Add F] : (Addition F).model = (Addition.eval F).lift PMF :=
+  Functionality.ofEval_model _ _
 
-@[simp, weft] theorem Lin.model_eq (F : Type) [Add F] [Mul F] [Sub F] :
-    (Lin F).model = (Lin.eval F).lift PMF := Functionality.ofEval_model _ _
+namespace Subtraction
+abbrev sig (F : Type) : Signature := ⟨[.share F, .share F], .share F, Unit⟩
+def eval (F : Type) [Sub F] : FunctionModel (sig F) .ideal Id := .silent fun (a, b, ()) => a - b
+end Subtraction
 
-/-! ## Multiplication -/
+/-- Subtract two shares without value disclosure. -/
+abbrev Subtraction (F : Type) [Sub F] : Functionality := .ofEval (Subtraction.sig F) (Subtraction.eval F)
+@[simp, weft] theorem Subtraction.model_eq (F : Type) [Sub F] : (Subtraction F).model = (Subtraction.eval F).lift PMF :=
+  Functionality.ofEval_model _ _
+
+namespace Smul
+abbrev sig (F : Type) : Signature := ⟨[.clear F, .share F], .share F, F⟩
+def eval (F : Type) [Mul F] : FunctionModel (sig F) .ideal Id := ⟨fun (c, a, ()) => pure (c * a, c)⟩
+end Smul
+
+/-- Multiply a share by a public scalar and disclose the scalar. -/
+abbrev Smul (F : Type) [Mul F] : Functionality := .ofEval (Smul.sig F) (Smul.eval F)
+@[simp, weft] theorem Smul.model_eq (F : Type) [Mul F] : (Smul F).model = (Smul.eval F).lift PMF :=
+  Functionality.ofEval_model _ _
 
 namespace Mult
-inductive Op where | mult
-abbrev ops (F : Type) : Interface where
-  Op := Op
-  dom _ := [.share F, .share F]
-  cod _ := .share F
-def eval (F : Type) [Mul F] : Model (ops F) .ideal Id := .silent fun ⟨.mult, (a, b, ())⟩ => a * b
+abbrev sig (F : Type) : Signature := ⟨[.share F, .share F], .share F, Unit⟩
+def eval (F : Type) [Mul F] : FunctionModel (sig F) .ideal Id := .silent fun (a, b, ()) => a * b
 end Mult
 
-/-- Multiply shared operands and return a share. -/
-abbrev Mult (F : Type) [Mul F] : Functionality := .ofEval (Mult.ops F) (Mult.eval F)
-
-@[simp, weft] theorem Mult.model_eq (F : Type) [Mul F] :
-    (Mult F).model = (Mult.eval F).lift PMF := Functionality.ofEval_model _ _
-
-/-! ## Revealing shares -/
+/-- Multiply two shares without value disclosure. -/
+abbrev Mult (F : Type) [Mul F] : Functionality := .ofEval (Mult.sig F) (Mult.eval F)
+@[simp, weft] theorem Mult.model_eq (F : Type) [Mul F] : (Mult F).model = (Mult.eval F).lift PMF :=
+  Functionality.ofEval_model _ _
 
 namespace Reveal
-inductive Op where | reveal
-abbrev ops (F : Type) : Interface where
-  Op := Op
-  dom _ := [.share F]
-  cod _ := .clear F
-  leak _ := F
-def eval (F : Type) : Model (ops F) .ideal Id := ⟨fun ⟨.reveal, (x, ())⟩ => pure (x, x)⟩
+abbrev sig (F : Type) : Signature := ⟨[.share F], .clear F, F⟩
+def eval (F : Type) : FunctionModel (sig F) .ideal Id := ⟨fun (x, ()) => pure (x, x)⟩
 end Reveal
 
-/-- Return a share's value as a clear response and explicitly disclose it. -/
-abbrev Reveal (F : Type) : Functionality := .ofEval (Reveal.ops F) (Reveal.eval F)
-
-@[simp, weft] theorem Reveal.model_eq (F : Type) :
-    (Reveal F).model = (Reveal.eval F).lift PMF := Functionality.ofEval_model _ _
-
-/-! ## Comparison -/
+/-- Return a share's value in the clear and explicitly disclose it. -/
+abbrev Reveal (F : Type) : Functionality := .ofEval (Reveal.sig F) (Reveal.eval F)
+@[simp, weft] theorem Reveal.model_eq (F : Type) : (Reveal F).model = (Reveal.eval F).lift PMF :=
+  Functionality.ofEval_model _ _
 
 namespace Cmp
-inductive Op where | lt
-abbrev ops (F : Type) : Interface where
-  Op := Op
-  dom _ := [.share F, .share F]
-  cod _ := .share F
-def eval (F : Type) [LT F] [DecidableRel (α := F) (· < ·)] [Zero F] [One F] : Model (ops F) .ideal Id :=
-  .silent fun ⟨.lt, (a, b, ())⟩ => (if a < b then 1 else 0 : F)
+abbrev sig (F : Type) : Signature := ⟨[.share F, .share F], .share F, Unit⟩
+def eval (F : Type) [LT F] [DecidableRel (α := F) (· < ·)] [Zero F] [One F] : FunctionModel (sig F) .ideal Id :=
+  .silent fun (a, b, ()) => (if a < b then 1 else 0 : F)
 end Cmp
 
-/-- Return the comparison indicator `[a < b]` as a share. -/
+/-- Return the shared indicator `[a < b]` without disclosure. -/
 abbrev Cmp (F : Type) [LT F] [DecidableRel (α := F) (· < ·)] [Zero F] [One F] : Functionality :=
-  .ofEval (Cmp.ops F) (Cmp.eval F)
-
+  .ofEval (Cmp.sig F) (Cmp.eval F)
 @[simp, weft] theorem Cmp.model_eq (F : Type) [LT F] [DecidableRel (α := F) (· < ·)] [Zero F] [One F] :
     (Cmp F).model = (Cmp.eval F).lift PMF := Functionality.ofEval_model _ _
 
-/-! ## Native inversion -/
-
 namespace Inversion
-inductive Op where | inv
-abbrev ops (F : Type) : Interface where
-  Op := Op
-  dom _ := [.share F]
-  cod _ := .share F
-def eval (F : Type) [Inv F] : Model (ops F) .ideal Id := .silent fun ⟨.inv, (x, ())⟩ => (x⁻¹ : F)
+abbrev sig (F : Type) : Signature := ⟨[.share F], .share F, Unit⟩
+def eval (F : Type) [Inv F] : FunctionModel (sig F) .ideal Id := .silent fun (x, ()) => (x⁻¹ : F)
 end Inversion
 
-/-- Apply the underlying inverse operation to a share.
-For fields, Mathlib uses `0⁻¹ = 0`. -/
-abbrev Inversion (F : Type) [Inv F] : Functionality := .ofEval (Inversion.ops F) (Inversion.eval F)
-
+/-- Return a shared inverse without disclosure. -/
+abbrev Inversion (F : Type) [Inv F] : Functionality := .ofEval (Inversion.sig F) (Inversion.eval F)
 @[simp, weft] theorem Inversion.model_eq (F : Type) [Inv F] :
     (Inversion F).model = (Inversion.eval F).lift PMF := Functionality.ofEval_model _ _
-
-/-! ## Program operations -/
 
 section Ops
 variable {F : Type} {fs : Hybrid} {D : Domain}
 
-def const [Add F] [Mul F] [Sub F] [Has (Lin F) fs] (c : D.clear F) : Prog fs.ops D (D.share F) :=
-  Prog.op (F := Lin F) ⟨.const, (c, ())⟩
-def add [Add F] [Mul F] [Sub F] [Has (Lin F) fs] (a b : D.share F) : Prog fs.ops D (D.share F) :=
-  Prog.op (F := Lin F) ⟨.add, (a, b, ())⟩
-def sub [Add F] [Mul F] [Sub F] [Has (Lin F) fs] (a b : D.share F) : Prog fs.ops D (D.share F) :=
-  Prog.op (F := Lin F) ⟨.sub, (a, b, ())⟩
-def smul [Add F] [Mul F] [Sub F] [Has (Lin F) fs] (c : D.clear F) (a : D.share F) : Prog fs.ops D (D.share F) :=
-  Prog.op (F := Lin F) ⟨.smul, (c, a, ())⟩
-def mul [Mul F] [Has (Mult F) fs] (a b : D.share F) : Prog fs.ops D (D.share F) :=
-  Prog.op (F := Mult F) ⟨.mult, (a, b, ())⟩
-def reveal [Has (Reveal F) fs] (x : D.share F) : Prog fs.ops D (D.clear F) :=
-  Prog.op (F := Reveal F) ⟨.reveal, (x, ())⟩
+def const [Has (Const F) fs] (c : D.clear F) : Prog fs.ops D (D.share F) := Prog.op (F := Const F) (c, ())
+def add [Add F] [Has (Addition F) fs] (a b : D.share F) : Prog fs.ops D (D.share F) := Prog.op (F := Addition F) (a, b, ())
+def sub [Sub F] [Has (Subtraction F) fs] (a b : D.share F) : Prog fs.ops D (D.share F) := Prog.op (F := Subtraction F) (a, b, ())
+def smul [Mul F] [Has (Smul F) fs] (c : D.clear F) (a : D.share F) : Prog fs.ops D (D.share F) := Prog.op (F := Smul F) (c, a, ())
+def mul [Mul F] [Has (Mult F) fs] (a b : D.share F) : Prog fs.ops D (D.share F) := Prog.op (F := Mult F) (a, b, ())
+def reveal [Has (Reveal F) fs] (x : D.share F) : Prog fs.ops D (D.clear F) := Prog.op (F := Reveal F) (x, ())
 def lt [LT F] [DecidableRel (α := F) (· < ·)] [Zero F] [One F] [Has (Cmp F) fs] (a b : D.share F) :
-    Prog fs.ops D (D.share F) :=
-  Prog.op (F := Cmp F) ⟨.lt, (a, b, ())⟩
-def nativeInv [Inv F] [Has (Inversion F) fs] (x : D.share F) : Prog fs.ops D (D.share F) :=
-  Prog.op (F := Inversion F) ⟨.inv, (x, ())⟩
+    Prog fs.ops D (D.share F) := Prog.op (F := Cmp F) (a, b, ())
+def nativeInv [Inv F] [Has (Inversion F) fs] (x : D.share F) : Prog fs.ops D (D.share F) := Prog.op (F := Inversion F) (x, ())
 
 end Ops
-
 end Weft

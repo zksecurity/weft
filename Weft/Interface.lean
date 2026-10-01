@@ -13,6 +13,18 @@ The interpreter does not infer disclosure from operand or response shapes.
 -/
 namespace Weft
 
+/-- The input, response and disclosure types of a single operation. -/
+structure Signature where
+  dom : List Shape
+  cod : Shape
+  leak : Type := Unit
+
+/-- The operands of a single operation in a domain. -/
+abbrev Signature.Args (σ : Signature) (D : Domain) : Type := Operands D σ.dom
+
+/-- The response of a single operation in a domain. -/
+abbrev Signature.Resp (σ : Signature) (D : Domain) : Type := σ.cod.interp D
+
 /-- Operations with operand shapes, response shapes and disclosure types.
 The model supplies the disclosure value; `Unit` denotes no value disclosure. -/
 structure Interface where
@@ -29,9 +41,8 @@ structure Req (ι : Interface) (D : Domain) where
   op : ι.Op
   args : Operands D (ι.dom op)
 
-/-- The adversary's record of a request: its operation and declared disclosure.
-The domain parameter does not change the disclosure type. -/
-structure Event (ι : Interface) (D : Domain := .ideal) where
+/-- The adversary's record of a request: its operation and declared disclosure. -/
+structure Event (ι : Interface) where
   op : ι.Op
   leak : ι.leak op
 

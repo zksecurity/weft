@@ -18,23 +18,21 @@ open Weft.Examples.Basic
 /-! ### Random-combination functionality -/
 
 namespace RC
-inductive Op where | rc
-abbrev ops (F : Type) : Interface where
-  Op := Op
-  dom _ := [.share F, .share F]
-  cod _ := .share F
-  leak _ := F
+abbrev sig (F : Type) : Signature where
+  dom := [.share F, .share F]
+  cod := .share F
+  leak := F
 /-- The joint step: draw `r`, return `x₀ + r·x₁`, disclose `r`. -/
-noncomputable def model (F : Type) [Add F] [Mul F] [Fintype F] [Inhabited F] : Model (ops F) .ideal PMF :=
-  ⟨fun r => (uniform F).map fun c => (r.args.1 + c * r.args.2.1, c)⟩
+noncomputable def model (F : Type) [Add F] [Mul F] [Fintype F] [Inhabited F] : FunctionModel (sig F) .ideal PMF :=
+  ⟨fun r => (uniform F).map fun c => (r.1 + c * r.2.1, c)⟩
 /-- Evaluate with the coin fixed to `default`. -/
-def eval (F : Type) [Add F] [Mul F] [Inhabited F] : Model (ops F) .ideal Id :=
-  ⟨fun r => pure (r.args.1 + default * r.args.2.1, default)⟩
+def eval (F : Type) [Add F] [Mul F] [Inhabited F] : FunctionModel (sig F) .ideal Id :=
+  ⟨fun r => pure (r.1 + default * r.2.1, default)⟩
 end RC
 
 /-- Return a shared random combination and disclose its coefficient. -/
 abbrev RandComb (F : Type) [Add F] [Mul F] [Fintype F] [Inhabited F] : Functionality :=
-  ⟨RC.ops F, RC.eval F, (· = RC.model F), Functionality.unique_eq _⟩
+  ⟨RC.sig F, RC.eval F, (· = RC.model F), Functionality.unique_eq _⟩
 
 @[simp, weft] theorem RandComb.model_eq (F : Type) [Add F] [Mul F] [Fintype F] [Inhabited F] :
     (RandComb F).model = RC.model F := Functionality.model_eq rfl
@@ -43,21 +41,21 @@ section
 variable (F : Type) [Field F] [Fintype F] [Inhabited F]
 
 /-- Compute `x₀ + r·x₁` using a public coin. -/
-def randComb2 {fs : Hybrid} {D : Domain} [Has (Lin F) fs] [Has (PubCoin F) fs] (x₀ x₁ : D.share F) :
+def randComb2 {fs : Hybrid} {D : Domain} [Has (Addition F) fs] [Has (Smul F) fs] [Has (PubCoin F) fs] (x₀ x₁ : D.share F) :
     Prog fs.ops D (D.share F) := do
   let r ← coin F
   let t ← smul r x₁
   add x₀ t
 
 /-- Linear operations and public coins. -/
-abbrev CoinHyb : Hybrid := [Lin F, PubCoin F]
+abbrev CoinHyb : Hybrid := [Const F, Addition F, Subtraction F, Smul F, PubCoin F]
 
 /-- Simulate the coin, scalar multiplication and addition events using the disclosed coefficient. -/
 program randComb2Real : Realization (RandComb F) (CoinHyb F) where
-  impl D r := randComb2 F r.args.1 r.args.2.1
-  Sim e := pure [⟨⟨1, .coin⟩, e.leak⟩, ⟨⟨0, .smul⟩, e.leak⟩, ⟨⟨0, .add⟩, ()⟩]
+  impl D r := randComb2 F r.1 r.2.1
+  Sim e := pure [⟨4, e⟩, ⟨3, e⟩, ⟨1, ()⟩]
   real r _ := by
-    obtain ⟨⟨⟩, x₀, x₁, ⟨⟩⟩ := r
+    obtain ⟨x₀, x₁, ⟨⟩⟩ := r
     simp only [randComb2, coin, smul, add, weft, RC.model]
     rfl
 end

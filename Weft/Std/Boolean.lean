@@ -50,16 +50,21 @@ end GF2
 def bitsOf (m : Nat) (n : Nat) : Fin m → GF2 := fun i => if n.testBit i then 1 else 0
 
 /-- Linear operations and multiplication over `𝔽₂`. -/
-abbrev Bool2 : Hybrid := [Lin GF2, Mult GF2]
+abbrev Bool2 : Hybrid := [Const GF2, Addition GF2, Subtraction GF2, Smul GF2, Mult GF2]
 
 namespace Bool2
 
 /-- Component indices used when stating views. -/
-abbrev lin (o : Lin.Op) : Bool2.ops.Op := ⟨0, o⟩
-abbrev mult : Bool2.ops.Op := ⟨1, .mult⟩
+abbrev const : Bool2.ops.Op := 0
+abbrev add : Bool2.ops.Op := 1
+abbrev sub : Bool2.ops.Op := 2
+abbrev smul : Bool2.ops.Op := 3
+abbrev mult : Bool2.ops.Op := 4
 
 /-- Zero-cost linear operations; one round and one unit per AND by default. -/
-abbrev mpc (pMult : Price := ⟨1, 1⟩) : MPC := [(Lin GF2).priced ⟨0, 0⟩, (Mult GF2).priced pMult]
+abbrev mpc (pMult : Price := ⟨1, 1⟩) : MPC :=
+  [(Const GF2).priced ⟨0, 0⟩, (Addition GF2).priced ⟨0, 0⟩,
+    (Subtraction GF2).priced ⟨0, 0⟩, (Smul GF2).priced ⟨0, 0⟩, (Mult GF2).priced pMult]
 
 /-- Timed Boolean model at the supplied AND price. -/
 def timed (pMult : Price := ⟨1, 1⟩) : Model Bool2.ops .timed Sched := (mpc pMult).timed
@@ -69,9 +74,12 @@ theorem model_eq : Bool2.model = Bool2.eval.lift PMF := by
   apply Hybrid.model_lift
   intro i
   match i with
-  | ⟨0, _⟩ => exact Lin.model_eq GF2
-  | ⟨1, _⟩ => exact Mult.model_eq GF2
-  | ⟨n + 2, h⟩ => exact absurd h (by simp)
+  | ⟨0, _⟩ => exact Const.model_eq GF2
+  | ⟨1, _⟩ => exact Addition.model_eq GF2
+  | ⟨2, _⟩ => exact Subtraction.model_eq GF2
+  | ⟨3, _⟩ => exact Smul.model_eq GF2
+  | ⟨4, _⟩ => exact Mult.model_eq GF2
+  | ⟨n + 5, h⟩ => exact absurd h (by simp)
 
 end Bool2
 

@@ -34,7 +34,7 @@ The library interprets the program to obtain its semantics and costs;
 it does not recover a circuit graph from arbitrary Lean functions.
 
 `Prog.req` issues a raw interface request.
-`Prog.op` uses `Has` to issue a request to a component of a hybrid.
+`Prog.op` takes a functionality's operands and uses `Has` to select its position in a hybrid.
 Most code uses the typed helpers `mul`, `reveal`, `rand`, etc., which construct those requests.
 
 ## Writing a Program
@@ -104,7 +104,7 @@ Given a model `M` and an additive cost model `K`, it returns the output and a tr
 ```lean
 structure Trace (ι : Interface) (D : Domain) (C : Type) where
   cost : C
-  view : List (Event ι D)
+  view : List (Event ι)
 ```
 
 At each `call`, `run` samples `M.step r`, records one event, and runs the continuation on the response.

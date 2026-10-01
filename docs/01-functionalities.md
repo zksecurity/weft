@@ -5,8 +5,9 @@ For multiplication, the response is a share of the product;
 for opening, it is a clear value.
 These are different contracts, even when both evaluate to the same underlying field element.
 
-We separate the *interface*, which specifies the available requests, from the *model*, which gives them meaning.
-A functionality fixes an interface and one ideal model.
+A *signature* specifies the input, response, and leakage types of one function;
+a *model* gives that function meaning.
+A functionality fixes one signature and one ideal model.
 Its definition contains no price or scheduling policy.
 
 ## Domains and Shapes
@@ -58,9 +59,35 @@ A list of shares still reveals its length after blanking;
 `Shape.Hidden` means that a shape has no clear components, not that its structure is secret.
 These are representation utilities; the interpreter does not use them to construct events.
 
-## Interfaces and Requests
+## Signatures and Requests
 
-The central definitions from [Weft/Interface.lean](../Weft/Interface.lean) are:
+Each functionality has one operation with a fixed signature.
+The definitions from [Weft/Interface.lean](../Weft/Interface.lean) are:
+
+```lean
+structure Signature where
+  dom : List Shape
+  cod : Shape
+  leak : Type := Unit
+
+abbrev Signature.Args (σ : Signature) (D : Domain) : Type :=
+  Operands D σ.dom
+
+abbrev Signature.Resp (σ : Signature) (D : Domain) : Type :=
+  σ.cod.interp D
+```
+
+`dom` and `cod` give the operand and response shapes.
+`leak` specifies the type of explicit disclosure; `Unit` denotes no value disclosure.
+For example, `Mult.sig F` has two shared operands and one shared response.
+Its ideal operands are `(x, y, ())`, with no operation selector.
+`Reveal.sig F` has one shared operand, a clear response, and leakage type `F`.
+Its model returns `(x, x)`, explicitly disclosing the opened value.
+`Const F` and `Smul F` explicitly disclose their public constant or scalar.
+The interpreter does not derive disclosure from `.clear` shapes.
+
+A [hybrid](02-hybrids.md) offers several functionalities.
+Its interface selects a functionality by position and obtains the types from its signature:
 
 ```lean
 structure Interface where
@@ -77,56 +104,46 @@ structure Req (ι : Interface) (D : Domain) where
   args : Operands D (ι.dom op)
 ```
 
-`Op` identifies the operation;
-`dom` and `cod` give its operand and response shapes.
-`leak` specifies the type of explicit disclosure.
-It may depend on the operation.
-`Unit` denotes no value disclosure.
-
-For example, `Mult.ops F` has one operation, two shared operands, and one shared response.
-A request at the ideal domain is `⟨.mult, (x, y, ())⟩`.
-`Reveal.ops F` instead has one shared operand, a clear response, and leakage type `F`.
-Its model returns `(x, x)`, explicitly disclosing the opened value.
-Likewise, `Lin.const` and `Lin.smul` explicitly disclose their public constant or scalar.
-The interpreter does not derive disclosure from `.clear` shapes.
-
-The operation identifier is public too.
-Secret data belongs in shared operand shapes;
-putting it in `Op` makes it part of the view.
+The selected position is public and appears in the view.
+Secret data belongs in shared operand shapes; putting it in `Op` makes it public.
+There is no selector within an individual functionality.
 
 ## Models
 
-A model supplies a joint response and disclosure for each request.
+A function model supplies a joint response and disclosure for each operand tuple.
 Its definition is in [Weft/Model.lean](../Weft/Model.lean):
 
 ```lean
-structure Model (ι : Interface) (D : Domain) (m : Type → Type) where
-  step : (r : Req ι D) → m (Resp ι D r.op × ι.leak r.op)
+structure FunctionModel (σ : Signature) (D : Domain) (m : Type → Type) where
+  step : σ.Args D → m (σ.Resp D × σ.leak)
 ```
 
 The joint step matters when response and disclosure share randomness.
 Sampling them independently would specify a different functionality.
-`Model.response` projects the response marginal from `step`;
-`Model.leakage` projects the disclosure marginal.
+`FunctionModel.response` projects the response marginal from `step`;
+`FunctionModel.leakage` projects the disclosure marginal.
 These accessors do not override either value or let a simulator program randomness.
 Use `step` when both components are needed together: independently sampling the marginals does not preserve their correlation.
 
 | Constructor | Meaning |
 |---|---|
-| `Model.det` | Deterministic response and disclosure, lifted into a monad |
-| `Model.silent` | Deterministic response with `Unit` disclosure |
-| `Model.lift` | An `Id` model lifted into another monad |
+| `FunctionModel.det` | Deterministic response and disclosure, lifted into a monad |
+| `FunctionModel.silent` | Deterministic response with `Unit` disclosure |
+| `FunctionModel.lift` | An `Id` model lifted into another monad |
 
 An ideal model uses `D := .ideal` and `m := PMF`.
 It can inspect the underlying operands to implement the specification.
 An evaluation model uses `Id`.
 Models in other domains support other interpretations, e.g. the scheduling model used to count rounds.
 
-`Model.silent` still produces request events, containing the operation identifier and `()`.
+Calling a `FunctionModel.silent` functionality still produces an event containing its hybrid position and `()`.
 Operand and response shapes do not add observations.
 Each functionality declares its intended disclosure explicitly:
 `Reveal` returns and discloses its operand, and `PubCoin` returns and discloses its sampled coin.
 Their `.leakage` marginals therefore describe those values.
+
+The hybrid interpreter uses `Model ι D m`, whose `step` takes a `Req ι D`.
+For a hybrid, it dispatches to the selected functionality's `FunctionModel.step` with the request's operands.
 
 ## Fixing the Meaning
 
@@ -135,9 +152,9 @@ The definition from [Weft/Functionality.lean](../Weft/Functionality.lean) is:
 
 ```lean
 structure Functionality where
-  ops : Interface
-  eval : Model ops .ideal Id
-  IsModel : Model ops .ideal PMF → Prop
+  sig : Signature
+  eval : FunctionModel sig .ideal Id
+  IsModel : FunctionModel sig .ideal PMF → Prop
   isModel_unique : ∃! M, IsModel M
 ```
 
@@ -156,7 +173,7 @@ The predicate keeps the value computable while fixing its semantics exactly.
 Randomised functionalities supply fixed dummy coins here;
 an evaluation run is not a probabilistic correctness or privacy proof.
 The structure does not require `eval` to agree with `model`.
-For deterministic functionalities, `Functionality.ofEval ι E` fixes the ideal model to `E.lift PMF`, making that agreement explicit.
+For deterministic functionalities, `Functionality.ofEval σ E` fixes the ideal model to `E.lift PMF`, making that agreement explicit.
 
 Here is a complete deterministic specification for returning a product in the clear:
 
@@ -165,10 +182,8 @@ import Weft
 open Weft
 
 abbrev OpenProduct (F : Type) [Mul F] : Functionality :=
-  .ofEval
-    ⟨Unit, fun _ => [.share F, .share F], fun _ => .clear F,
-      fun _ => F⟩
-    ⟨fun r => let p := r.args.1 * r.args.2.1; pure (p, p)⟩
+  .ofEval ⟨[.share F, .share F], .clear F, F⟩
+    ⟨fun (x, y, ()) => let p := x * y; pure (p, p)⟩
 ```
 
 The specification is total.
@@ -179,9 +194,12 @@ Restrictions needed by a particular implementation belong to its [realisation](0
 The arithmetic operations are in [Weft/Std/Arith.lean](../Weft/Std/Arith.lean);
 randomness is in [Weft/Std/Random.lean](../Weft/Std/Random.lean).
 
-| Functionality | Response or operations |
+| Functionality | Response |
 |---|---|
-| `Lin F` | Constants, addition, subtraction, and multiplication by a clear scalar |
+| `Const F` | A share of a public constant; discloses that constant |
+| `Addition F` | A shared sum |
+| `Subtraction F` | A shared difference |
+| `Smul F` | A share scaled by a clear scalar; discloses that scalar |
 | `Mult F` | A shared product |
 | `Reveal F` | A share's value in the clear |
 | `Cmp F` | A shared indicator for the supplied order on `F` |

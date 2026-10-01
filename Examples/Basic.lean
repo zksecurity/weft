@@ -13,7 +13,7 @@ section Programs
 variable {F : Type} [Add F] [Mul F] [Sub F] {fs : Hybrid} {D : Domain}
 
 /-- Sum shares using linear operations. -/
-def sumAll [Has (Lin F) fs] [OfNat F 0] : List (D.share F) → Prog fs.ops D (D.share F)
+def sumAll [Has (Const F) fs] [Has (Addition F) fs] [OfNat F 0] : List (D.share F) → Prog fs.ops D (D.share F)
   | [] => const 0
   | [x] => pure x
   | x :: xs => do let s ← sumAll xs; add x s
@@ -21,7 +21,7 @@ def sumAll [Has (Lin F) fs] [OfNat F 0] : List (D.share F) → Prog fs.ops D (D.
 /-- Multiply corresponding entries and sum the products.
 The multiplications are independent;
 `zip` truncates to the shorter input list. -/
-def inner [Has (Lin F) fs] [Has (Mult F) fs] [OfNat F 0] (xs ys : List (D.share F)) : Prog fs.ops D (D.share F) := do
+def inner [Has (Const F) fs] [Has (Addition F) fs] [Has (Mult F) fs] [OfNat F 0] (xs ys : List (D.share F)) : Prog fs.ops D (D.share F) := do
   let ps ← (xs.zip ys).mapM fun p => mul p.1 p.2
   sumAll ps
 
@@ -55,21 +55,21 @@ def leakyMul [Has (Reveal F) fs] (a b : D.share F) : Prog fs.ops D (D.clear F) :
   pure (x * y)
 
 /-- Reveal the divisor and scale the shared numerator by its public reciprocal. -/
-def divByOpened [Has (Lin F) fs] [Has (Reveal F) fs] [Div F] [OfNat F 1] (x d : D.share F) : Prog fs.ops D (D.share F) := do
+def divByOpened [Has (Smul F) fs] [Has (Reveal F) fs] [Div F] [OfNat F 1] (x d : D.share F) : Prog fs.ops D (D.share F) := do
   let dv ← reveal d          -- The divisor is disclosed.
   smul (1 / dv) x            -- Scalar multiplication waits for the reciprocal.
 
 /-- Compute `a + [a < b] · (b - a)`.
 The multiplication depends on the comparison result. -/
 def maxOf [LT F] [DecidableRel (α := F) (· < ·)] [Zero F] [One F]
-    [Has (Lin F) fs] [Has (Mult F) fs] [Has (Cmp F) fs] (a b : D.share F) : Prog fs.ops D (D.share F) := do
+    [Has (Addition F) fs] [Has (Subtraction F) fs] [Has (Mult F) fs] [Has (Cmp F) fs] (a b : D.share F) : Prog fs.ops D (D.share F) := do
   let c ← lt a b
   let d ← sub b a
   let e ← mul c d
   add a e
 
 /-- Add a public constant to an inner product. -/
-def dotPlus [Has (Lin F) fs] [Has (Mult F) fs] [OfNat F 0] (xs ys : List (D.share F)) (c : F) :
+def dotPlus [Has (Const F) fs] [Has (Addition F) fs] [Has (Mult F) fs] [OfNat F 0] (xs ys : List (D.share F)) (c : F) :
     Prog fs.ops D (D.share F) := do
   let ps ← (xs.zip ys).mapM fun p => mul p.1 p.2
   let s ← sumAll ps
@@ -79,7 +79,7 @@ def dotPlus [Has (Lin F) fs] [Has (Mult F) fs] [OfNat F 0] (xs ys : List (D.shar
 /-- Horner evaluation with coefficients in increasing degree order.
 This implementation uses one dependent multiplication per coefficient,
 including the multiplication by the initial zero. -/
-def horner [Has (Lin F) fs] [Has (Mult F) fs] [OfNat F 0] (x : D.share F) : List (D.share F) → Prog fs.ops D (D.share F)
+def horner [Has (Const F) fs] [Has (Addition F) fs] [Has (Mult F) fs] [OfNat F 0] (x : D.share F) : List (D.share F) → Prog fs.ops D (D.share F)
   | [] => const 0
   | a :: as => do
     let r ← horner x as
@@ -95,7 +95,7 @@ def tripleFromRand [Fintype F] [Inhabited F] [Has (Rand F) fs] [Has (Mult F) fs]
   pure (a, b, c)
 
 /-- Combine shares with successive powers of a public random challenge. -/
-def randomCombination [Fintype F] [Inhabited F] [OfNat F 0] [Has (Lin F) fs] [Has (PubCoin F) fs]
+def randomCombination [Fintype F] [Inhabited F] [OfNat F 0] [Has (Const F) fs] [Has (Addition F) fs] [Has (Smul F) fs] [Has (PubCoin F) fs]
     (xs : List (D.share F)) : Prog fs.ops D (D.share F) := do
   let r ← coin F
   let rec go (p : D.clear F) : List (D.share F) → Prog fs.ops D (D.share F)
@@ -113,7 +113,13 @@ section Theorems
 variable (F : Type) [Add F] [Mul F] [Sub F] [Inhabited F]
 
 /-- Standard prices: multiplication `(1, 2)`, reveal `(1, 1)`, linear operations `(0, 0)`. -/
-abbrev abb : MPC := [(Lin F).priced ⟨0, 0⟩, (Mult F).priced ⟨1, 2⟩, (Reveal F).priced ⟨1, 1⟩]
+abbrev abb : MPC := [
+  (Const F).priced ⟨0, 0⟩,
+  (Addition F).priced ⟨0, 0⟩,
+  (Subtraction F).priced ⟨0, 0⟩,
+  (Smul F).priced ⟨0, 0⟩,
+  (Mult F).priced ⟨1, 2⟩,
+  (Reveal F).priced ⟨1, 1⟩]
 
 -- Output evaluation.
 example (a b c : F) : output (Std F).eval (mul3 (fs := Std F) (D := .ideal) a b c) = a * b * c := rfl
@@ -148,8 +154,8 @@ example : delayOn (Std.timed (Fin 7)) (horner (F := Fin 7) (fs := Std (Fin 7)) (
   decide +kernel
 example (x a₀ a₁ a₂ : F) :
     view (Std F).eval (horner (fs := Std F) (D := .ideal) x [a₀, a₁, a₂])
-      = [⟨Std.lin F .const, (0 : F)⟩, ⟨Std.mult F, ()⟩, ⟨Std.lin F .add, ()⟩, ⟨Std.mult F, ()⟩,
-         ⟨Std.lin F .add, ()⟩, ⟨Std.mult F, ()⟩, ⟨Std.lin F .add, ()⟩] := rfl
+      = [⟨Std.const F, (0 : F)⟩, ⟨Std.mult F, ()⟩, ⟨Std.add F, ()⟩, ⟨Std.mult F, ()⟩,
+         ⟨Std.add F, ()⟩, ⟨Std.mult F, ()⟩, ⟨Std.add F, ()⟩] := rfl
 example : commOn (abb (Fin 7)).timed (horner (F := Fin 7) (fs := (abb (Fin 7)).hybrid) (D := .timed) ⟪3⟫ [⟪1⟫, ⟪2⟫, ⟪4⟫])
     = 6 := by decide +kernel
 end
@@ -157,7 +163,13 @@ end
 /-! ### Generating a triple from random shares -/
 section
 variable [Fintype F]
-abbrev offline : MPC := [(Lin F).priced ⟨0, 0⟩, (Mult F).priced ⟨1, 2⟩, (Rand F).priced ⟨0, 0⟩]
+abbrev offline : MPC := [
+  (Const F).priced ⟨0, 0⟩,
+  (Addition F).priced ⟨0, 0⟩,
+  (Subtraction F).priced ⟨0, 0⟩,
+  (Smul F).priced ⟨0, 0⟩,
+  (Mult F).priced ⟨1, 2⟩,
+  (Rand F).priced ⟨0, 0⟩]
 example : (Sched.output (offline F).timed (tripleFromRand (F := F) (fs := (offline F).hybrid) (D := .timed))).2.2.time = 1 := rfl
 example : commOn (offline F).timed (tripleFromRand (F := F) (fs := (offline F).hybrid) (D := .timed)) = 2 := rfl
 end

@@ -13,7 +13,7 @@ The latter gives a distribution over costs when ideal randomness affects the cal
 
 `Clock.comm` accumulates the communication charged during a scheduled run.
 `Clock.pay c` adds `c` to that counter and leaves the control clock unchanged.
-The generic `Model.timed E p` charges `(p r.op).comm` at each request.
+The priced function model `FunctionModel.timed E p` charges `p.comm` at each call.
 `commOn M c` extracts the final counter from `Sched.run M c`.
 The definitions are in [Weft/Timed.lean](../Weft/Timed.lean).
 
