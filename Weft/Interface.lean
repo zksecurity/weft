@@ -7,15 +7,14 @@ An interface specifies operations, operand and response shapes,
 and a disclosure type for each operation.
 A request supplies the operands of one operation.
 
-An event records the operation, clear operands, clear response components,
-and the model's declared disclosure.
-The interpreter derives the clear components from their shapes,
-so they are recorded independently of the declared disclosure.
+An event records the operation and the model's declared disclosure.
+Each model specifies what it discloses, including any public operands or responses.
+The interpreter does not infer disclosure from operand or response shapes.
 -/
 namespace Weft
 
 /-- Operations with operand shapes, response shapes and disclosure types.
-The model supplies the disclosure value; `Unit` denotes no additional disclosure. -/
+The model supplies the disclosure value; `Unit` denotes no value disclosure. -/
 structure Interface where
   Op : Type
   dom : Op → List Shape
@@ -30,13 +29,10 @@ structure Req (ι : Interface) (D : Domain) where
   op : ι.Op
   args : Operands D (ι.dom op)
 
-/-- The adversary's record of a request.
-Shared operands and response components are erased;
-clear components retain their representation in `D`. -/
+/-- The adversary's record of a request: its operation and declared disclosure.
+The domain parameter does not change the disclosure type. -/
 structure Event (ι : Interface) (D : Domain := .ideal) where
   op : ι.Op
-  args : Operands D.erase (ι.dom op)
-  out : Resp ι D.erase op
   leak : ι.leak op
 
 end Weft

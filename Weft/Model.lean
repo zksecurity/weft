@@ -30,8 +30,8 @@ def det [Monad m] (program : (r : Req ι D) → Resp ι D r.op)
     (leak : (r : Req ι D) → ι.leak r.op) : Model ι D m :=
   ⟨fun r => pure (program r, leak r)⟩
 
-/-- A deterministic model with no declared disclosure.
-Operations and clear values are still recorded by the interpreter. -/
+/-- A deterministic model with no value disclosure.
+The interpreter still records the operation identifier. -/
 def silent [Monad m] (program : (r : Req ι D) → Resp ι D r.op)
     (h : ∀ o, ι.leak o = Unit := by intro o; rfl) : Model ι D m :=
   det program fun r => (h r.op).symm ▸ ()
@@ -44,7 +44,7 @@ def lift (m : Type → Type) [Monad m] (M : Model ι D Id) : Model ι D m :=
 def response [Functor m] (M : Model ι D m) (r : Req ι D) : m (Resp ι D r.op) :=
   Prod.fst <$> M.step r
 
-/-- The declared-leakage marginal, not the full event recorded by the interpreter.
+/-- The disclosure marginal. Events also record the operation identifier.
 Use `step` to retain its correlation with the response. -/
 def leakage [Functor m] (M : Model ι D m) (r : Req ι D) : m (ι.leak r.op) :=
   Prod.snd <$> M.step r
@@ -105,7 +105,7 @@ def run {ι : Interface} {D : Domain} {C α : Type} [AddMonoid C] {m : Type → 
   | .call r k => do
     let p ← M.step r
     let res ← run M K (k p.1)
-    pure (res.1, Trace.seq ⟨K.op r.op, [⟨r.op, r.args.blank, (ι.cod r.op).blank p.1, p.2⟩]⟩ res.2)
+    pure (res.1, Trace.seq ⟨K.op r.op, [⟨r.op, p.2⟩]⟩ res.2)
   | .look c k => do
     let v ← Look.look c
     run M K (k v)
@@ -142,7 +142,7 @@ theorem run_call (M : Model ι D m) (K : CostModel ι C) (r : Req ι D) (k : Res
     run M K (.call r k) = (do
       let p ← M.step r
       let res ← run M K (k p.1)
-      pure (res.1, Trace.seq ⟨K.op r.op, [⟨r.op, r.args.blank, (ι.cod r.op).blank p.1, p.2⟩]⟩ res.2)) := rfl
+      pure (res.1, Trace.seq ⟨K.op r.op, [⟨r.op, p.2⟩]⟩ res.2)) := rfl
 
 omit [Look D PMF] in
 theorem run_look (M : Model ι D m) (K : CostModel ι C) {T : Type} (c : D.clear T) (k : T → Prog ι D α) :
@@ -197,7 +197,7 @@ theorem dist_call (M : Model ι D PMF) (r : Req ι D) (k : Resp ι D r.op → Pr
     dist M (.call r k) = (do
       let p ← M.step r
       let res ← dist M (k p.1)
-      pure (res.1, ⟨r.op, r.args.blank, (ι.cod r.op).blank p.1, p.2⟩ :: res.2)) := by
+      pure (res.1, ⟨r.op, p.2⟩ :: res.2)) := by
   simp [dist, run_call, Trace.seq]
 
 theorem dist_bind (M : Model ι D PMF) (c : Prog ι D α) (k : α → Prog ι D β) :

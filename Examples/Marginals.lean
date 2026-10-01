@@ -31,6 +31,19 @@ private def fixedModel : Model bitOps .ideal Id :=
 example : fixedModel.response ⟨(), ()⟩ = true := rfl
 example : fixedModel.leakage ⟨(), ()⟩ = false := rfl
 
+private abbrev clearOps : Interface :=
+  ⟨Unit, fun _ => [.clear Bool], fun _ => .clear Bool, fun _ => Unit⟩
+
+private def undisclosedClear : Model clearOps .ideal Id :=
+  .silent fun r => r.args.1
+
+-- Clear input and response shapes do not create implicit disclosure.
+example (b : Bool) : view undisclosedClear (Prog.req ⟨(), (b, ())⟩) = [⟨(), ()⟩] := rfl
+example (b : Bool) : output undisclosedClear (Prog.req ⟨(), (b, ())⟩) = b := rfl
+
+-- Reveal explicitly discloses the same value it returns.
+example (F : Type) (x : F) : (Reveal.eval F).step ⟨.reveal, (x, ())⟩ = pure (x, x) := rfl
+
 private noncomputable def correlatedModel : Model bitOps .ideal PMF :=
   ⟨fun _ => (uniform Bool).map fun b => (b, b)⟩
 

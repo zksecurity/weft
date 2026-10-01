@@ -59,7 +59,7 @@ abbrev ofEval (ι : Interface) (E : Model ι .ideal Id) : Functionality :=
 noncomputable abbrev response (F : Functionality) (r : Req F.ops .ideal) : PMF (Resp F.ops .ideal r.op) :=
   F.model.response r
 
-/-- The declared-leakage marginal of the semantics, not the full public event.
+/-- The disclosure marginal. Events also record the operation identifier.
 Use `model.step` for the joint response/leakage law. -/
 noncomputable abbrev leakage (F : Functionality) (r : Req F.ops .ideal) : PMF (F.ops.leak r.op) :=
   F.model.leakage r
@@ -148,7 +148,7 @@ instance Has.there (F G : Functionality) (fs : Hybrid) [h : Has F fs] : Has F (G
 
 /-- Shift an event's component index after prepending a functionality. -/
 def Event.shift {fs : Hybrid} (G : Functionality) (e : Event fs.ops) : Event (Hybrid.ops (G :: fs)) :=
-  ⟨⟨Hybrid.next G fs e.op.1, e.op.2⟩, e.args, e.out, e.leak⟩
+  ⟨⟨Hybrid.next G fs e.op.1, e.op.2⟩, e.leak⟩
 
 namespace Has
 variable {F : Functionality} {fs : Hybrid} [h : Has F fs]
@@ -160,11 +160,11 @@ def op (o : F.ops.Op) : fs.ops.Op :=
 /-- Embed an event at `F`'s position in the hybrid.
 Used by the inclusion realisation's simulator. -/
 def event (e : Event F.ops) : Event fs.ops :=
-  h.eq.rec (motive := fun G _ => Event G.ops → Event fs.ops) (fun e => ⟨⟨h.i, e.op⟩, e.args, e.out, e.leak⟩) e
+  h.eq.rec (motive := fun G _ => Event G.ops → Event fs.ops) (fun e => ⟨⟨h.i, e.op⟩, e.leak⟩) e
 
 omit h in
 @[simp] theorem event_here (e : Event F.ops) :
-    event (fs := F :: fs) (h := Has.here F fs) e = ⟨⟨Hybrid.head F fs, e.op⟩, e.args, e.out, e.leak⟩ := rfl
+    event (fs := F :: fs) (h := Has.here F fs) e = ⟨⟨Hybrid.head F fs, e.op⟩, e.leak⟩ := rfl
 
 @[simp] theorem event_there (G : Functionality) (e : Event F.ops) :
     event (fs := G :: fs) (h := Has.there F G fs) e = (event (h := h) e).shift G := by
@@ -255,7 +255,7 @@ theorem output_op (r : Req F.ops .ideal) :
 /-- A request records the selected functionality's event. -/
 theorem view_op (r : Req F.ops .ideal) :
     view fs.eval (Prog.op r)
-      = [Has.event ⟨r.op, r.args.blank, (F.ops.cod r.op).blank (F.eval.step r).run.1, (F.eval.step r).run.2⟩] := by
+      = [Has.event ⟨r.op, (F.eval.step r).run.2⟩] := by
   obtain ⟨i, e⟩ := h
   subst e
   rfl
@@ -264,7 +264,7 @@ theorem view_op (r : Req F.ops .ideal) :
 theorem dist_op (r : Req F.ops .ideal) :
     dist fs.model (Prog.op r) = (do
       let (y, d) ← F.model.step r
-      pure (y, [Has.event ⟨r.op, r.args.blank, (F.ops.cod r.op).blank y, d⟩])) := by
+      pure (y, [Has.event ⟨r.op, d⟩])) := by
   obtain ⟨i, e⟩ := h
   subst e
   simp [dist, Prog.op, Prog.opAt, Has.event, run, Trace.seq]

@@ -67,10 +67,10 @@ variable (F : Type) [Add F] [Mul F] [Sub F] [Fintype F] [Inhabited F]
 
 /-- The view of one Beaver multiplication, as a function of the two opened values. -/
 def beaverView (q : F × F) : List (Event (Pre F).ops) :=
-  [⟨Pre.triple F, (), ((), (), ()), ()⟩, ⟨Pre.lin F .sub, ((), (), ()), (), ()⟩, ⟨Pre.reveal F, ((), ()), q.1, ()⟩, ⟨Pre.lin F .sub, ((), (), ()), (), ()⟩,
-   ⟨Pre.reveal F, ((), ()), q.2, ()⟩, ⟨Pre.lin F .smul, (q.1, (), ()), (), ()⟩, ⟨Pre.lin F .smul, (q.2, (), ()), (), ()⟩,
-   ⟨Pre.lin F .add, ((), (), ()), (), ()⟩, ⟨Pre.lin F .add, ((), (), ()), (), ()⟩, ⟨Pre.lin F .const, (q.1 * q.2, ()), (), ()⟩,
-   ⟨Pre.lin F .add, ((), (), ()), (), ()⟩]
+  [⟨Pre.triple F, ()⟩, ⟨Pre.lin F .sub, ()⟩, ⟨Pre.reveal F, q.1⟩, ⟨Pre.lin F .sub, ()⟩,
+   ⟨Pre.reveal F, q.2⟩, ⟨Pre.lin F .smul, q.1⟩, ⟨Pre.lin F .smul, q.2⟩,
+   ⟨Pre.lin F .add, ()⟩, ⟨Pre.lin F .add, ()⟩, ⟨Pre.lin F .const, q.1 * q.2⟩,
+   ⟨Pre.lin F .add, ()⟩]
 
 -- `mulBeaver_dist` samples the two masked inputs,
 -- then applies `beaverView` to obtain the view.
@@ -177,10 +177,10 @@ def mulBeaverBad (x y : F) : Prog (BadPre F).ops .ideal F :=
 
 /-- Event list for the correlated-mask implementation. -/
 def badView (q : F × F) : List (Event (BadPre F).ops) :=
-  [⟨⟨⟨2, by simp⟩, .get⟩, (), ((), (), ()), ()⟩, ⟨⟨⟨0, by simp⟩, .sub⟩, ((), (), ()), (), ()⟩, ⟨⟨⟨1, by simp⟩, .reveal⟩, ((), ()), q.1, ()⟩,
-   ⟨⟨⟨0, by simp⟩, .sub⟩, ((), (), ()), (), ()⟩, ⟨⟨⟨1, by simp⟩, .reveal⟩, ((), ()), q.2, ()⟩, ⟨⟨⟨0, by simp⟩, .smul⟩, (q.1, (), ()), (), ()⟩,
-   ⟨⟨⟨0, by simp⟩, .smul⟩, (q.2, (), ()), (), ()⟩, ⟨⟨⟨0, by simp⟩, .add⟩, ((), (), ()), (), ()⟩, ⟨⟨⟨0, by simp⟩, .add⟩, ((), (), ()), (), ()⟩,
-   ⟨⟨⟨0, by simp⟩, .const⟩, (q.1 * q.2, ()), (), ()⟩, ⟨⟨⟨0, by simp⟩, .add⟩, ((), (), ()), (), ()⟩]
+  [⟨⟨⟨2, by simp⟩, .get⟩, ()⟩, ⟨⟨⟨0, by simp⟩, .sub⟩, ()⟩, ⟨⟨⟨1, by simp⟩, .reveal⟩, q.1⟩,
+   ⟨⟨⟨0, by simp⟩, .sub⟩, ()⟩, ⟨⟨⟨1, by simp⟩, .reveal⟩, q.2⟩, ⟨⟨⟨0, by simp⟩, .smul⟩, q.1⟩,
+   ⟨⟨⟨0, by simp⟩, .smul⟩, q.2⟩, ⟨⟨⟨0, by simp⟩, .add⟩, ()⟩, ⟨⟨⟨0, by simp⟩, .add⟩, ()⟩,
+   ⟨⟨⟨0, by simp⟩, .const⟩, q.1 * q.2⟩, ⟨⟨⟨0, by simp⟩, .add⟩, ()⟩]
 
 omit [Fintype F] [Inhabited F] in
 theorem badBeaver_correct (x y a : F) :
@@ -199,7 +199,7 @@ theorem mulBeaver_bad_dist (x y : F) :
 /-- Extract the openings from a `BadPre` view. -/
 def opened : List (Event (BadPre F).ops) → List F :=
   List.filterMap fun e => match e with
-    | ⟨⟨⟨1, _⟩, .reveal⟩, _, out, _⟩ => some out
+    | ⟨⟨⟨1, _⟩, .reveal⟩, out⟩ => some out
     | _ => none
 
 /-- Correlated masks prevent simulation from the multiplication event.
@@ -209,7 +209,7 @@ theorem mulBeaver_bad_not_realizes :
     ¬ ∃ Sim : Event (Mult F).ops → PMF (List (Event (BadPre F).ops)),
       ∀ x y : F, dist (BadPre F).model (mulBeaverBad F x y) = (do
         let p ← (Mult F).model.step ⟨.mult, (x, y, ())⟩
-        let s ← Sim ⟨.mult, ((), (), ()), (), p.2⟩
+        let s ← Sim ⟨.mult, p.2⟩
         pure (p.1, s)) := by
   rintro ⟨Sim, h⟩
   have h₀ := h 0 0

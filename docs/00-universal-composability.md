@@ -28,9 +28,9 @@ The construction is in [Examples/Privacy.lean](../Examples/Privacy.lean).
 
 ## What the Simulator Must Reproduce
 
-The adversary sees an event for every request: its operation, clear operands, clear response components, and declared disclosure.
-Shared components are erased;
-public structure, including list lengths, remains.
+The adversary sees an event for every request: its operation and declared disclosure.
+Each functionality explicitly specifies the values it discloses,
+including list lengths or other structure when those are intended to be public.
 
 A realisation consists of an implementation and a simulator.
 The simulator receives the ideal functionality's event and produces the implementation's view.

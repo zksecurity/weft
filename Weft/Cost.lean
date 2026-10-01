@@ -60,9 +60,7 @@ theorem Realizations.run_opAt {fs gs : Hybrid} (g : Realizations fs gs) (T : Mod
     (i : Fin fs.length) (r : Req (fs.get i).ops .timed) (s : Clock) :
     StateT.run (run (g.timed T) CostModel.unit (Prog.opAt fs i r)) s =
       (((StateT.run (run T CostModel.unit ((g.get i).impl .timed r)) s).1.1,
-        ⟨(), [⟨⟨i, r.op⟩, r.args.blank,
-          ((fs.get i).ops.cod r.op).blank (StateT.run (run T CostModel.unit ((g.get i).impl .timed r)) s).1.1,
-          ((fs.get i).eval.step ⟨r.op, r.args.untime⟩).run.2⟩]⟩),
+        ⟨(), [⟨⟨i, r.op⟩, ((fs.get i).eval.step ⟨r.op, r.args.untime⟩).run.2⟩]⟩),
        (StateT.run (run T CostModel.unit ((g.get i).impl .timed r)) s).2) := by
   simp only [Prog.opAt, run_call, run_pure, Realizations.timed, Realizations.impl, StateT.run_bind, StateT.run_pure,
     Trace.seq, Trace.zero]

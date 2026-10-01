@@ -73,7 +73,7 @@ abbrev AesHybrid : Hybrid := [AES F (toyAes), Lin F, Mult F, Reveal F]
 /-- Realise the toy function with an input-independent three-event view. -/
 program aesByProgram : Realization (AES F toyAes) (Std F) where
   impl D r := toyAesProg r.args.1 r.args.2.1
-  Sim _ := pure [⟨Std.lin F .add, ((), (), ()), (), ()⟩, ⟨Std.mult F, ((), (), ()), (), ()⟩, ⟨Std.mult F, ((), (), ()), (), ()⟩]
+  Sim _ := pure [⟨Std.lin F .add, ()⟩, ⟨Std.mult F, ()⟩, ⟨Std.mult F, ()⟩]
   real r _ := by
     obtain ⟨⟨⟩, k, m, ⟨⟩⟩ := r
     simp only [toyAesProg, toyAes, add, mul, weft, Functionality.ofEval_model, AesF.eval]
@@ -104,7 +104,7 @@ theorem cbc2Plain_output (k iv m₁ m₂ : F) :
 -- The hybrid view is a fixed list of four operation records.
 example (k iv m₁ m₂ : F) :
     view (AesHybrid F).eval (cbc2 (fs := AesHybrid F) (D := .ideal) toyAes k iv m₁ m₂)
-      = [⟨⟨1, .add⟩, ((), (), ()), (), ()⟩, ⟨⟨0, .enc⟩, ((), (), ()), (), ()⟩, ⟨⟨1, .add⟩, ((), (), ()), (), ()⟩, ⟨⟨0, .enc⟩, ((), (), ()), (), ()⟩] := rfl
+      = [⟨⟨1, .add⟩, ()⟩, ⟨⟨0, .enc⟩, ()⟩, ⟨⟨1, .add⟩, ()⟩, ⟨⟨0, .enc⟩, ()⟩] := rfl
 
 -- The fixed price assigns one round to each block-function call.
 -- The arithmetic implementation uses two dependent multiplications,
@@ -155,7 +155,7 @@ abbrev CBC : Functionality :=
 The simulator returns its four fixed operation records. -/
 program cbcOverHybrid : Realization (CBC F) (AesHybrid F) where
   impl D r := cbc2 toyAes r.args.1 r.args.2.1 r.args.2.2.1 r.args.2.2.2.1
-  Sim _ := pure [⟨⟨1, .add⟩, ((), (), ()), (), ()⟩, ⟨⟨0, .enc⟩, ((), (), ()), (), ()⟩, ⟨⟨1, .add⟩, ((), (), ()), (), ()⟩, ⟨⟨0, .enc⟩, ((), (), ()), (), ()⟩]
+  Sim _ := pure [⟨⟨1, .add⟩, ()⟩, ⟨⟨0, .enc⟩, ()⟩, ⟨⟨1, .add⟩, ()⟩, ⟨⟨0, .enc⟩, ()⟩]
   real r _ := by
     obtain ⟨⟨⟩, k, iv, m₁, m₂, ⟨⟩⟩ := r
     simp only [cbc2, enc, add, weft, Functionality.ofEval_model, AesF.eval]

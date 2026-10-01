@@ -15,7 +15,7 @@ namespace Weft
 /-! ## Linear operations -/
 
 namespace Lin
-/-- Constants and scalars are clear operands and appear in request events. -/
+/-- Constants and scalars are explicitly disclosed by their models. -/
 inductive Op where
   | const
   | add
@@ -26,12 +26,18 @@ abbrev ops (F : Type) : Interface where
   Op := Op
   dom | .const => [.clear F] | .add => [.share F, .share F] | .sub => [.share F, .share F] | .smul => [.clear F, .share F]
   cod _ := .share F
+  leak | .const | .smul => F | .add | .sub => Unit
 def eval (F : Type) [Add F] [Mul F] [Sub F] : Model (ops F) .ideal Id :=
-  .silent fun
+  .det (fun
     | ⟨.const, (c, ())⟩ => c
     | ⟨.add, (a, b, ())⟩ => a + b
     | ⟨.sub, (a, b, ())⟩ => a - b
-    | ⟨.smul, (c, a, ())⟩ => c * a
+    | ⟨.smul, (c, a, ())⟩ => c * a)
+    (fun
+      | ⟨.const, (c, ())⟩ => c
+      | ⟨.add, _⟩ => ()
+      | ⟨.sub, _⟩ => ()
+      | ⟨.smul, (c, _, ())⟩ => c)
 end Lin
 
 /-- Linear operations. -/
@@ -65,11 +71,11 @@ abbrev ops (F : Type) : Interface where
   Op := Op
   dom _ := [.share F]
   cod _ := .clear F
-def eval (F : Type) : Model (ops F) .ideal Id := .silent fun ⟨.reveal, (x, ())⟩ => x
+  leak _ := F
+def eval (F : Type) : Model (ops F) .ideal Id := ⟨fun ⟨.reveal, (x, ())⟩ => pure (x, x)⟩
 end Reveal
 
-/-- Return a share's value as a clear response.
-The event records it without an additional disclosure field. -/
+/-- Return a share's value as a clear response and explicitly disclose it. -/
 abbrev Reveal (F : Type) : Functionality := .ofEval (Reveal.ops F) (Reveal.eval F)
 
 @[simp, weft] theorem Reveal.model_eq (F : Type) :

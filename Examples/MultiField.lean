@@ -184,7 +184,7 @@ abbrev mixed : MPC := [
 /-- The values opened by a run over `mixed`. -/
 def openedMixed : List (Event mixed.hybrid.ops) → List (ZMod 17) :=
   List.filterMap fun e => match e with
-    | ⟨⟨⟨2, _⟩, .reveal⟩, _, out, _⟩ => some out
+    | ⟨⟨⟨2, _⟩, .reveal⟩, out⟩ => some out
     | _ => none
 
 -- Evaluate the opening with mask `r = 3`.
@@ -261,8 +261,8 @@ abbrev DaHyb : Hybrid := [Lin (ZMod 17), Lin GF2, Reveal GF2, DaBit (ZMod 17) 1]
 
 /-- The view of one conversion, as a function of the opened bit. -/
 def b2aView (c : GF2) : List (Event DaHyb.ops) :=
-  [⟨⟨3, .get⟩, (), ((), ()), ()⟩, ⟨⟨1, .add⟩, ((), (), ()), (), ()⟩, ⟨⟨2, .reveal⟩, ((), ()), c, ()⟩, ⟨⟨0, .const⟩, ((c.toNat : ZMod 17), ()), (), ()⟩,
-   ⟨⟨0, .add⟩, ((), (), ()), (), ()⟩, ⟨⟨0, .smul⟩, (2 * (c.toNat : ZMod 17), (), ()), (), ()⟩, ⟨⟨0, .sub⟩, ((), (), ()), (), ()⟩]
+  [⟨⟨3, .get⟩, ()⟩, ⟨⟨1, .add⟩, ()⟩, ⟨⟨2, .reveal⟩, c⟩, ⟨⟨0, .const⟩, (c.toNat : ZMod 17)⟩,
+   ⟨⟨0, .add⟩, ()⟩, ⟨⟨0, .smul⟩, 2 * (c.toNat : ZMod 17)⟩, ⟨⟨0, .sub⟩, ()⟩]
 
 /-- Sample uniform `b`, open `x + b`, and reconstruct `x` in `ZMod 17`. -/
 theorem b2a_dist (x : GF2) :

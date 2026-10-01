@@ -67,9 +67,10 @@ abbrev ops (F : Type) : Interface where
   Op := Op
   dom _ := []
   cod _ := .clear F
+  leak _ := F
 noncomputable def model (F : Type) [Fintype F] [Nonempty F] : Model (ops F) .ideal PMF :=
-  ⟨fun _ => (uniform F).map fun x => (x, ())⟩
-def eval (F : Type) [Inhabited F] : Model (ops F) .ideal Id := ⟨fun _ => pure ((default : F), ())⟩
+  ⟨fun _ => (uniform F).map fun x => (x, x)⟩
+def eval (F : Type) [Inhabited F] : Model (ops F) .ideal Id := ⟨fun _ => pure ((default : F), default)⟩
 end PubCoin
 
 /-- Sample a uniform clear value, recorded in the event. -/

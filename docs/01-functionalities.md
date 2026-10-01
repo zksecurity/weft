@@ -56,6 +56,7 @@ inductive Shape where
 `Operands.blank` does the same for an operand tuple.
 A list of shares still reveals its length after blanking;
 `Shape.Hidden` means that a shape has no clear components, not that its structure is secret.
+These are representation utilities; the interpreter does not use them to construct events.
 
 ## Interfaces and Requests
 
@@ -78,14 +79,16 @@ structure Req (ι : Interface) (D : Domain) where
 
 `Op` identifies the operation;
 `dom` and `cod` give its operand and response shapes.
-`leak` specifies the type of additional disclosure.
+`leak` specifies the type of explicit disclosure.
 It may depend on the operation.
-`Unit` denotes no additional disclosure.
+`Unit` denotes no value disclosure.
 
 For example, `Mult.ops F` has one operation, two shared operands, and one shared response.
 A request at the ideal domain is `⟨.mult, (x, y, ())⟩`.
-`Reveal.ops F` instead has one shared operand and a clear response.
-A public scalar passed to `Lin.smul` is a `.clear F` operand, so it is recorded in the request event.
+`Reveal.ops F` instead has one shared operand, a clear response, and leakage type `F`.
+Its model returns `(x, x)`, explicitly disclosing the opened value.
+Likewise, `Lin.const` and `Lin.smul` explicitly disclose their public constant or scalar.
+The interpreter does not derive disclosure from `.clear` shapes.
 
 The operation identifier is public too.
 Secret data belongs in shared operand shapes;
@@ -104,7 +107,7 @@ structure Model (ι : Interface) (D : Domain) (m : Type → Type) where
 The joint step matters when response and disclosure share randomness.
 Sampling them independently would specify a different functionality.
 `Model.response` projects the response marginal from `step`;
-`Model.leakage` projects the declared-leakage marginal.
+`Model.leakage` projects the disclosure marginal.
 These accessors do not override either value or let a simulator program randomness.
 Use `step` when both components are needed together: independently sampling the marginals does not preserve their correlation.
 
@@ -119,10 +122,11 @@ It can inspect the underlying operands to implement the specification.
 An evaluation model uses `Id`.
 Models in other domains support other interpretations, e.g. the scheduling model used to count rounds.
 
-`Model.silent` still produces request events.
-Clear operands and clear responses are recorded by the interpreter independently of the model's disclosure field.
-In particular, `Reveal` uses a silent model: its clear response already says what was opened.
-Its `.leakage` marginal is therefore a point mass at `()`, not a distribution over the full public event.
+`Model.silent` still produces request events, containing the operation identifier and `()`.
+Operand and response shapes do not add observations.
+Each functionality declares its intended disclosure explicitly:
+`Reveal` returns and discloses its operand, and `PubCoin` returns and discloses its sampled coin.
+Their `.leakage` marginals therefore describe those values.
 
 ## Fixing the Meaning
 
@@ -163,8 +167,8 @@ open Weft
 abbrev OpenProduct (F : Type) [Mul F] : Functionality :=
   .ofEval
     ⟨Unit, fun _ => [.share F, .share F], fun _ => .clear F,
-      fun _ => Unit⟩
-    ⟨fun r => pure (r.args.1 * r.args.2.1, ())⟩
+      fun _ => F⟩
+    ⟨fun r => let p := r.args.1 * r.args.2.1; pure (p, p)⟩
 ```
 
 The specification is total.

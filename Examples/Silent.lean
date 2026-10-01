@@ -4,12 +4,13 @@ import Examples.Basic
 /-!
 # Privacy with a fixed public trace
 
-Linear operations and multiplication return shares without additional disclosure.
-Their events still record the operation and clear operands.
+Addition, subtraction and multiplication return shares without value disclosure.
+Constants and scalar multiplication explicitly disclose their public operands.
+Events record the operation and its declared leakage.
 If this event list is independent of the secret input,
 a simulator can replay it.
 
-`arith_private` requires equality of the full view, including clear operands.
+`arith_private` requires equality of the full view, including declared leakage.
 Deterministic arithmetic alone does not imply this hypothesis.
 -/
 namespace Weft.Examples.Silent
@@ -43,7 +44,7 @@ theorem arith_private {I α : Type} (c : I → Prog (Arith F).ops .ideal α) (op
 example (a b c : F) : output (Arith F).eval (mul3 (fs := Arith F) (D := .ideal) a b c) = a * b * c := rfl
 -- The view consists of two multiplication records for every input.
 example (a b c : F) : view (Arith F).eval (mul3 (fs := Arith F) (D := .ideal) a b c)
-    = [⟨⟨1, .mult⟩, ((), (), ()), (), ()⟩, ⟨⟨1, .mult⟩, ((), (), ()), (), ()⟩] := rfl
+    = [⟨⟨1, .mult⟩, ()⟩, ⟨⟨1, .mult⟩, ()⟩] := rfl
 end
 
 end Weft.Examples.Silent

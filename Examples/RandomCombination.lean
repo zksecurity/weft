@@ -55,7 +55,7 @@ abbrev CoinHyb : Hybrid := [Lin F, PubCoin F]
 /-- Simulate the coin, scalar multiplication and addition events using the disclosed coefficient. -/
 program randComb2Real : Realization (RandComb F) (CoinHyb F) where
   impl D r := randComb2 F r.args.1 r.args.2.1
-  Sim e := pure [⟨⟨1, .coin⟩, (), e.leak, ()⟩, ⟨⟨0, .smul⟩, (e.leak, (), ()), (), ()⟩, ⟨⟨0, .add⟩, ((), (), ()), (), ()⟩]
+  Sim e := pure [⟨⟨1, .coin⟩, e.leak⟩, ⟨⟨0, .smul⟩, e.leak⟩, ⟨⟨0, .add⟩, ()⟩]
   real r _ := by
     obtain ⟨⟨⟩, x₀, x₁, ⟨⟩⟩ := r
     simp only [randComb2, coin, smul, add, weft, RC.model]

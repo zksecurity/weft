@@ -48,13 +48,13 @@ theorem output_std_pre {α : Type} (c : Prog (Std F).ops .ideal α) :
 
 /-- Multiply two shared operands and return the product in the clear. -/
 abbrev OpenMul : Functionality :=
-  .ofEval ⟨Unit, fun _ => [.share F, .share F], fun _ => .clear F, fun _ => Unit⟩
-    ⟨fun r => pure (r.args.1 * r.args.2.1, ())⟩
+  .ofEval ⟨Unit, fun _ => [.share F, .share F], fun _ => .clear F, fun _ => F⟩
+    ⟨fun r => let p := r.args.1 * r.args.2.1; pure (p, p)⟩
 
 /-- Simulate `openMul` using the product in the ideal event. -/
 program openMulReal : Realization (OpenMul F) (Std F) where
   impl D r := openMul r.args.1 r.args.2.1
-  Sim e := pure [⟨Std.mult F, ((), (), ()), (), ()⟩, ⟨Std.reveal F, ((), ()), e.out, ()⟩]
+  Sim e := pure [⟨Std.mult F, ()⟩, ⟨Std.reveal F, e.leak⟩]
   real r _ := by
     obtain ⟨⟨⟩, a, b, ⟨⟩⟩ := r
     simp only [openMul, mul, reveal, weft, Functionality.ofEval_model]
@@ -67,7 +67,7 @@ theorem leakyMul_not_realizes :
     ¬ ∃ Sim : Event (OpenMul F).ops → PMF (List (Event (Std F).ops)),
       ∀ a b : F, dist (Std F).model (leakyMul (fs := Std F) (D := .ideal) a b) = (do
         let p ← (OpenMul F).model.step ⟨(), (a, b, ())⟩
-        let s ← Sim ⟨(), ((), (), ()), p.1, p.2⟩
+        let s ← Sim ⟨(), p.2⟩
         pure (p.1, s)) := by
   rintro ⟨Sim, h⟩
   have h₁ := h 0 1
@@ -77,7 +77,7 @@ theorem leakyMul_not_realizes :
   have same := congrArg PMF.support (h₁.trans h₂.symm)
   simp only [PMF.support_pure, Set.singleton_eq_singleton_iff, Prod.mk.injEq, List.cons.injEq,
     Event.mk.injEq, heq_eq_eq, true_and] at same
-  exact one_ne_zero same.2.1.1
+  exact zero_ne_one same.1
 
 /-- Return the input share without disclosure. -/
 abbrev Keep : Functionality :=
@@ -96,7 +96,7 @@ theorem openKeep_not_realizes :
     ¬ ∃ Sim : Event (Keep F).ops → PMF (List (Event (Std F).ops)),
       ∀ x : F, dist (Std F).model (openKeep F (fs := Std F) (D := .ideal) x) = (do
         let p ← (Keep F).model.step ⟨(), (x, ())⟩
-        let s ← Sim ⟨(), ((), ()), (), p.2⟩
+        let s ← Sim ⟨(), p.2⟩
         pure (p.1, s)) := by
   rintro ⟨Sim, h⟩
   have h₀ := h 0
@@ -109,7 +109,7 @@ theorem openKeep_not_realizes :
   have same := congrArg PMF.support (s₀.trans s₁.symm)
   simp only [PMF.support_pure, Set.singleton_eq_singleton_iff, List.cons.injEq, Event.mk.injEq, heq_eq_eq,
     true_and] at same
-  exact zero_ne_one same.1.1
+  exact zero_ne_one same.1
 
 /-! ## Composition over preprocessing -/
 

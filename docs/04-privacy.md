@@ -12,22 +12,20 @@ The definition in [Weft/Interface.lean](../Weft/Interface.lean) is:
 ```lean
 structure Event (ι : Interface) (D : Domain := .ideal) where
   op : ι.Op
-  args : Operands D.erase (ι.dom op)
-  out : Resp ι D.erase op
   leak : ι.leak op
 ```
 
 The interpreter constructs an event from the request `r` and the sampled response/disclosure pair `(y, d)` as follows:
 
 ```lean
-⟨r.op, r.args.blank, (ι.cod r.op).blank y, d⟩
+⟨r.op, d⟩
 ```
 
-Shared components are erased.
-Operation identifiers, clear operands, clear response components, and container structure remain.
-The model's declared disclosure is additional information;
-setting it to `Unit` does not suppress the rest of the event.
-Calls are observable even when their operands and responses contain only shares.
+Only the operation identifier and the model's explicit disclosure are recorded.
+The interpreter does not inspect operand or response shapes to determine observations.
+Public operands, responses, or container lengths must be included in the model's
+declared leakage when the functionality intends to disclose them.
+Calls remain observable even when their leakage is `Unit`.
 
 ## The Realisation Equation
 
@@ -42,14 +40,14 @@ structure Realization (F : Functionality) (fs : Hybrid) where
   Sim : Event F.ops → PMF (List (Event fs.ops))
   real : ∀ r, Pre r → dist fs.model (impl .ideal r) = (do
     let (y, d) ← F.model.step r
-    let s ← Sim ⟨r.op, r.args.blank, (F.ops.cod r.op).blank y, d⟩
+    let s ← Sim ⟨r.op, d⟩
     pure (y, s))
 ```
 
 The left side is the real joint law of output and view.
 On the right, we sample the ideal response and disclosure, construct the ideal event, and give that event to the simulator.
 The full response `y` stays in the joint distribution;
-the simulator receives only its public part.
+the simulator receives only the declared disclosure and the operation identifier.
 
 The equality holds for every request satisfying `Pre`.
 Hence correctness is exact: projecting the first component gives the ideal output law.
@@ -68,7 +66,7 @@ We proceed in four steps:
 
 1. Define the functionality independently of the implementation.
 2. Write an implementation generic in `D`, using only its hybrid's operations and clear computation. State any required `Pre`.
-3. Construct `Sim` from the ideal event. It must generate all concrete events, including operation tags and clear operands.
+3. Construct `Sim` from the ideal event. It must generate all concrete operation tags and declared disclosures.
 4. Prove `real` by identifying the joint distributions, and declare the certificate with `program` to check its implementation.
 
 For a small example, we specify multiplication with a public output.
@@ -86,8 +84,8 @@ variable (F : Type) [Field F]
 abbrev OpenProduct : Functionality :=
   .ofEval
     ⟨Unit, fun _ => [.share F, .share F], fun _ => .clear F,
-      fun _ => Unit⟩
-    ⟨fun r => pure (r.args.1 * r.args.2.1, ())⟩
+      fun _ => F⟩
+    ⟨fun r => let p := r.args.1 * r.args.2.1; pure (p, p)⟩
 
 def openProduct {fs : Hybrid} {D : Domain}
     [Has (Mult F) fs] [Has (Reveal F) fs]
@@ -98,8 +96,7 @@ def openProduct {fs : Hybrid} {D : Domain}
 program openProductReal : Realization (OpenProduct F) (Std F) where
   impl D r := openProduct F r.args.1 r.args.2.1
   Sim e := pure
-    [⟨Std.mult F, ((), (), ()), (), ()⟩,
-     ⟨Std.reveal F, ((), ()), e.out, ()⟩]
+    [⟨Std.mult F, ()⟩, ⟨Std.reveal F, e.leak⟩]
   real r _ := by
     obtain ⟨⟨⟩, a, b, ⟨⟩⟩ := r
     simp only [openProduct, mul, reveal, weft, Functionality.ofEval_model]
@@ -109,9 +106,9 @@ end ProductExample
 ```
 
 `Pre` defaults to `True` here.
-The simulator receives the public product in `e.out`, but neither operand.
-The multiplication event has a shared output, erased to `()`;
-the reveal event contains the product.
+The simulator receives the public product in `e.leak`.
+The multiplication event has `Unit` leakage;
+the reveal event explicitly discloses the product.
 
 For randomised implementations, unfolding yields a distribution over coins.
 In [Examples/Beaver.lean](../Examples/Beaver.lean), the algebra proves that every mask pair produces the product.
