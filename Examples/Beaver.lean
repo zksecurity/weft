@@ -27,7 +27,11 @@ variable {F : Type} [Add F] [Mul F] [Sub F] [Fintype F] [Inhabited F] {fs : Hybr
 Correctness requires `c = a·b`;
 privacy additionally requires independent uniform masks. -/
 def mulBeaverFrom
-    [Has (Const F) fs] [Has (Addition F) fs] [Has (Subtraction F) fs] [Has (Smul F) fs] [Has (Reveal F) fs]
+    [Has (Const F) fs]
+    [Has (Addition F) fs]
+    [Has (Subtraction F) fs]
+    [Has (Smul F) fs]
+    [Has (Reveal F) fs]
     (triple : Prog fs.ops D (D.share F × D.share F × D.share F))
     (x y : D.share F) : Prog fs.ops D (D.share F) := do
   let (a, b, c) ← triple
@@ -45,14 +49,24 @@ def mulBeaverFrom
 
 /-- Use the independent masks supplied by `MulTriple`. -/
 def mulBeaver
-    [Has (Const F) fs] [Has (Addition F) fs] [Has (Subtraction F) fs] [Has (Smul F) fs] [Has (Reveal F) fs]
-    [Has (MulTriple F) fs] (x y : D.share F) : Prog fs.ops D (D.share F) :=
+    [Has (Const F) fs]
+    [Has (Addition F) fs]
+    [Has (Subtraction F) fs]
+    [Has (Smul F) fs]
+    [Has (Reveal F) fs]
+    [Has (MulTriple F) fs]
+    (x y : D.share F) : Prog fs.ops D (D.share F) :=
   mulBeaverFrom (mulTriple F) x y
 
 /-- Multiply three shares using two triples. -/
 def mul3Beaver
-    [Has (Const F) fs] [Has (Addition F) fs] [Has (Subtraction F) fs] [Has (Smul F) fs] [Has (Reveal F) fs]
-    [Has (MulTriple F) fs] (x y z : D.share F) :
+    [Has (Const F) fs]
+    [Has (Addition F) fs]
+    [Has (Subtraction F) fs]
+    [Has (Smul F) fs]
+    [Has (Reveal F) fs]
+    [Has (MulTriple F) fs]
+    (x y z : D.share F) :
     Prog fs.ops D (D.share F) := do
   let xy ← mulBeaver x y
   mulBeaver xy z
