@@ -31,27 +31,27 @@ noncomputable def peek {fs : Hybrid} {D : Domain} [Has (Const F) fs] (x : D.shar
 -- Reject the noncomputable implementation.
 /--
 error: program: the implementation uses `Weft.Examples.Checked.peek`, which is noncomputable
----
-warning: declaration uses `sorry`
 -/
 #guard_msgs in
 program peekReal : Realization (Keep F) (Std F) where
   impl D r := peek F r.1
   Sim _ := pure []
-  real := sorry
+  real r _ := by
+    obtain ⟨x, ⟨⟩⟩ := r
+    simp [peek, weft]
 
 -- Reject a parameter that supplies share inspection.
 /--
 error: program: parameter `peekAt` mentions a domain; its type is `(D : Domain) → D.share F → Bool`.
 A certificate's implementation must be generic in the domain and may not receive anything that inspects shares.
----
-warning: declaration uses `sorry`
 -/
 #guard_msgs in
 program peekParam (peekAt : (D : Domain) → D.share F → Bool) : Realization (Keep F) (Std F) where
   impl D r := if peekAt D r.1 then pure r.1 else pure r.1
   Sim _ := pure []
-  real := sorry
+  real r _ := by
+    obtain ⟨x, ⟨⟩⟩ := r
+    simp [weft]
 
 -- Accept the direct identity implementation.
 /-- info: program: `Weft.Examples.Checked.keepReal` certified; its implementation is a computable, domain-generic program. -/

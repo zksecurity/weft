@@ -214,6 +214,7 @@ The Lean definition uses truncated subtraction in `ENNReal`.
 `budget M ε c` is the expected sum of per-request errors along the ideal execution.
 It is zero at `pure`, adds `ε r.op` and the expected continuation budget at `call`, and follows the selected continuation at `look`.
 The composition theorem bounding a caller's error by this budget remains unproved.
-The existing statistical example in [Examples/Statistical.lean](../Examples/Statistical.lean) is the zero-error conversion of Beaver multiplication.
+[Examples/Beaver.lean](../Examples/Beaver.lean) contains Beaver multiplication's zero-error statistical certificate and its proof.
+[Examples/Statistical.lean](../Examples/Statistical.lean) demonstrates the bind-distance bound and a two-request error budget.
 
 [Previous: Programs](03-programs.md) · [Next: Rounds](05-rounds.md)

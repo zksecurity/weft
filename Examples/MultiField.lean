@@ -1,5 +1,4 @@
 import Weft
-import Examples.Basic
 import Mathlib.Data.ZMod.Basic
 import Mathlib.Logic.Encodable.Basic
 import Mathlib.Data.Fin.Tuple.Basic
@@ -20,7 +19,6 @@ The edaBit example omits modular correction;
 the daBit example includes a Boolean-to-arithmetic realisation proof.
 -/
 namespace Weft.Examples.MultiField
-open Weft.Examples.Basic
 
 /-! ### Order and encoding for `ZMod n` -/
 
@@ -224,6 +222,16 @@ Since `c` is public, reconstruction uses only linear operations.
 
 Independent conversions can share a reveal round.
 Summing their outputs gives a Hamming weight modulo the characteristic of `F`. -/
+
+/-- Sum converted shares, avoiding an extra addition for a singleton list. -/
+private def sumAll {F : Type} [Add F] [OfNat F 0] {fs : Hybrid} {D : Domain}
+    [Has (Const F) fs]
+    [Has (Addition F) fs] : List (D.share F) → Prog fs.ops D (D.share F)
+  | [] => const 0
+  | [x] => pure x
+  | x :: xs => do
+    let s ← sumAll xs
+    add x s
 
 section DaBits
 variable {fs : Hybrid} {D : Domain} (F : Type) [CommRing F]

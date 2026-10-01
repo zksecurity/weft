@@ -1,5 +1,4 @@
 import Weft
-import Examples.Basic
 
 /-!
 # Joint sampling of response and disclosure
@@ -13,7 +12,6 @@ The implementation draws a public coin and performs linear operations.
 Its simulator uses the disclosed coin to reproduce the event list.
 -/
 namespace Weft.Examples.RandCombination
-open Weft.Examples.Basic
 
 /-! ### Random-combination functionality -/
 

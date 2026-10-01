@@ -1,5 +1,4 @@
 import Weft
-import Examples.Basic
 import Mathlib.Data.ZMod.Basic
 import Mathlib.Algebra.Field.ZMod
 
@@ -17,7 +16,6 @@ it is not an implementation or security proof of AES encryption.
 The cost examples compare a fixed price per call with the cost derived from its implementation.
 -/
 namespace Weft.Examples.Aes
-open Weft.Examples.Basic
 
 /-! ### Abstract block function -/
 

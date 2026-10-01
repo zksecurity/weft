@@ -1,5 +1,4 @@
 import Weft
-import Examples.Basic
 
 /-!
 # Data and control dependencies
@@ -18,7 +17,6 @@ The derived model runs the implementation with the caller's scheduling state.
 a custom profile needs a separate correctness argument for the states in which it is used.
 -/
 namespace Weft.Examples.Timing
-open Weft.Examples.Basic
 
 section Programs
 variable {F : Type} [Add F] [Mul F] [Sub F] {fs : Hybrid} {D : Domain}

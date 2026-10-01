@@ -5,7 +5,6 @@ import Weft
 
 Programs parameterised by their domain and required functionalities,
 with examples of output evaluation, timing, communication and views.
-The Beaver realisation proof is in `Examples.Beaver`.
 -/
 namespace Weft.Examples.Basic
 

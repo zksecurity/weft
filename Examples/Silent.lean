@@ -1,5 +1,4 @@
 import Weft
-import Examples.Basic
 
 /-!
 # Privacy with a fixed public trace
@@ -14,7 +13,12 @@ a simulator can replay it.
 Deterministic arithmetic alone does not imply this hypothesis.
 -/
 namespace Weft.Examples.Silent
-open Weft.Examples.Basic
+
+/-- Multiply three shares with two dependent multiplication calls. -/
+private def mul3 {F : Type} [Mul F] {fs : Hybrid} {D : Domain}
+    [Has (Mult F) fs] (a b c : D.share F) : Prog fs.ops D (D.share F) := do
+  let ab ← mul a b
+  mul ab c
 
 section
 variable (F : Type) [Add F] [Mul F] [Sub F]
