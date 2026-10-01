@@ -103,7 +103,10 @@ structure Model (ι : Interface) (D : Domain) (m : Type → Type) where
 
 The joint step matters when response and disclosure share randomness.
 Sampling them independently would specify a different functionality.
-`Model.program` projects the response marginal from `step`.
+`Model.response` projects the response marginal from `step`;
+`Model.leakage` projects the declared-leakage marginal.
+These accessors do not override either value or let a simulator program randomness.
+Use `step` when both components are needed together: independently sampling the marginals does not preserve their correlation.
 
 | Constructor | Meaning |
 |---|---|
@@ -119,6 +122,7 @@ Models in other domains support other interpretations, e.g. the scheduling model
 `Model.silent` still produces request events.
 Clear operands and clear responses are recorded by the interpreter independently of the model's disclosure field.
 In particular, `Reveal` uses a silent model: its clear response already says what was opened.
+Its `.leakage` marginal is therefore a point mass at `()`, not a distribution over the full public event.
 
 ## Fixing the Meaning
 
@@ -136,6 +140,8 @@ structure Functionality where
 `F.model` selects the unique model satisfying `F.IsModel`.
 For a known model `M`, the usual definition is `IsModel := (· = M)`;
 `Functionality.unique_eq` supplies uniqueness and `Functionality.model_eq` identifies the selected model.
+`F.response r` and `F.leakage r` expose the two marginals of that model;
+`F.model.step r` retains their joint distribution.
 
 Why use a predicate?
 `PMF` models are generally noncomputable.

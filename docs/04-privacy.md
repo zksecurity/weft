@@ -196,10 +196,10 @@ It has `impl`, `Pre`, and `Sim` as above, plus `ε : F.ops.Op → ENNReal` and t
 
 | Field | Obligation under `Pre r` |
 |---|---|
-| `output` | The real output marginal equals `F.program r` exactly |
+| `output` | The real output marginal equals `F.response r` exactly |
 | `close` | Total variation between the real and simulated joint laws is at most `ε r.op` |
 
-`F.program` is the response marginal of `F.model`.
+`F.response` is the response marginal of `F.model`.
 The error bounds privacy;
 it does not permit an erroneous output distribution.
 `Realization.toStat` turns a perfect certificate into a statistical one with zero error.
