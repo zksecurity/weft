@@ -19,14 +19,18 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
 
-      - name: Build with Mathlib cache
-        uses: leanprover/lean-action@v1
+      - name: Build library and examples without warnings
+        uses: leanprover/lean-action@50fcf42d2e460296f1a34b402e990d1b24f8b596 # v1
         with:
           auto-config: false
           build: true
+          # Fail on Lean compiler and linter warnings.
           build-args: --wfail
           use-mathlib-cache: true
+
+      - name: Audit library and example axioms
+        run: lake env lean -DwarningAsError=true scripts/CheckAxioms.lean

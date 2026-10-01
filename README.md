@@ -20,5 +20,12 @@ and [Communication](docs/06-communication.md).
 
 ```
 lake exe cache get   # Mathlib's cache, once
-lake build           # the library and the examples
+lake build --wfail   # library and examples; warnings fail the build, as in CI
+```
+
+CI also checks that library and example declarations depend only on the standard
+axioms `propext`, `Classical.choice`, and `Quot.sound`:
+
+```
+lake env lean -DwarningAsError=true scripts/CheckAxioms.lean
 ```
