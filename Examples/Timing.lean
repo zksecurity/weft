@@ -91,7 +91,7 @@ abbrev sig (F : Type) : Signature where
   dom := [.share F, .share F, .share F]
   cod := .share F
 def eval (F : Type) [Add F] [Mul F] : FunctionModel (sig F) .ideal Id :=
-  .silent fun (a, b, c, ()) => a * b + c
+  ⟨fun (a, b, c, ()) => pure (a * b + c, ())⟩
 /-- Input profile with multiplication latency from `a` and `b`,
 and zero latency from `c`; also take the maximum with the current clock. -/
 def profiled (F : Type) [Add F] [Mul F] (p : Price) : FunctionModel (sig F) .timed Sched :=

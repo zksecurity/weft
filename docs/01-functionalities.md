@@ -118,6 +118,14 @@ structure FunctionModel (σ : Signature) (D : Domain) (m : Type → Type) where
   step : σ.Args D → m (σ.Resp D × σ.leak)
 ```
 
+A deterministic evaluation model specifies both the response and disclosure explicitly.
+For addition, the response is the sum and the disclosure is `()`:
+
+```lean
+def addEval (F : Type) [Add F] : FunctionModel (Addition.sig F) .ideal Id :=
+  ⟨fun (a, b, ()) => pure (a + b, ())⟩
+```
+
 The joint step matters when response and disclosure share randomness.
 Sampling them independently would specify a different functionality.
 `FunctionModel.response` projects the response marginal from `step`;
@@ -128,7 +136,6 @@ Use `step` when both components are needed together: independently sampling the 
 | Constructor | Meaning |
 |---|---|
 | `FunctionModel.det` | Deterministic response and disclosure, lifted into a monad |
-| `FunctionModel.silent` | Deterministic response with `Unit` disclosure |
 | `FunctionModel.lift` | An `Id` model lifted into another monad |
 
 An ideal model uses `D := .ideal` and `m := PMF`.
@@ -136,7 +143,7 @@ It can inspect the underlying operands to implement the specification.
 An evaluation model uses `Id`.
 Models in other domains support other interpretations, e.g. the scheduling model used to count rounds.
 
-Calling a `FunctionModel.silent` functionality still produces an event containing its hybrid position and `()`.
+Calling a functionality with `Unit` disclosure still produces an event containing its hybrid position and `()`.
 Operand and response shapes do not add observations.
 Each functionality declares its intended disclosure explicitly:
 `Reveal` returns and discloses its operand, and `PubCoin` returns and discloses its sampled coin.

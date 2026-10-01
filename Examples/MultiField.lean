@@ -40,7 +40,7 @@ abbrev sig (F G : Type) : Signature where
 For `ZMod`, use the canonical representative,
 reduced modulo the target modulus. -/
 def eval (F G : Type) [Encodable F] [NatCast G] : FunctionModel (sig F G) .ideal Id :=
-  .silent fun (x, ()) => ((Encodable.encode x : ℕ) : G)
+  ⟨fun (x, ()) => pure (((Encodable.encode x : ℕ) : G), ())⟩
 end SwitchF
 
 /-- Share conversion from `F` to `G`. -/

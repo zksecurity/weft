@@ -23,7 +23,8 @@ namespace AesF
 abbrev sig (F : Type) : Signature where
   dom := [.share F, .share F]
   cod := .share F
-def eval (F : Type) (aes : F → F → F) : FunctionModel (sig F) .ideal Id := .silent fun (k, m, ()) => aes k m
+def eval (F : Type) (aes : F → F → F) : FunctionModel (sig F) .ideal Id :=
+  ⟨fun (k, m, ()) => pure (aes k m, ())⟩
 end AesF
 
 /-- Apply `aes` to shared key and message operands without disclosure. -/

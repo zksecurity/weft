@@ -119,7 +119,7 @@ The probability lemmas are in [Weft/PMF.lean](../Weft/PMF.lean).
 ## Preconditions and Composition
 
 The specification remains total even if a particular implementation needs a precondition.
-For example, masking-based inversion realises a silent inverse for $x \ne 0$.
+For example, masking-based inversion realises an inverse without value disclosure for $x \ne 0$.
 Its implementation can also realise a total functionality that discloses whether $x = 0$;
 these are different contracts.
 Both proofs are in [Examples/Inversion.lean](../Examples/Inversion.lean).

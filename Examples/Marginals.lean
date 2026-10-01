@@ -35,7 +35,7 @@ private abbrev clearOps : Interface :=
   ⟨Unit, fun _ => [.clear Bool], fun _ => .clear Bool, fun _ => Unit⟩
 
 private def undisclosedClear : Model clearOps .ideal Id :=
-  .silent fun r => r.args.1
+  ⟨fun r => pure (r.args.1, ())⟩
 
 -- Clear input and response shapes do not create implicit disclosure.
 example (b : Bool) : view undisclosedClear (Prog.req ⟨(), (b, ())⟩) = [⟨(), ()⟩] := rfl

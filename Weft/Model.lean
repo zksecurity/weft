@@ -29,10 +29,6 @@ variable {σ : Signature} {D : Domain} {m : Type → Type}
 def det [Monad m] (f : σ.Args D → σ.Resp D) (leak : σ.Args D → σ.leak) : FunctionModel σ D m :=
   ⟨fun a => pure (f a, leak a)⟩
 
-/-- A deterministic function with no value disclosure. -/
-def silent [Monad m] (f : σ.Args D → σ.Resp D) (h : σ.leak = Unit := by rfl) : FunctionModel σ D m :=
-  det f fun _ => h.symm ▸ ()
-
 /-- Embed an evaluation function in a monad. -/
 def lift (m : Type → Type) [Monad m] (M : FunctionModel σ D Id) : FunctionModel σ D m :=
   ⟨fun a => pure (M.step a).run⟩
@@ -67,12 +63,6 @@ variable {ι : Interface} {D : Domain} {m : Type → Type}
 def det [Monad m] (program : (r : Req ι D) → Resp ι D r.op)
     (leak : (r : Req ι D) → ι.leak r.op) : Model ι D m :=
   ⟨fun r => pure (program r, leak r)⟩
-
-/-- A deterministic model with no value disclosure.
-The interpreter still records the operation identifier. -/
-def silent [Monad m] (program : (r : Req ι D) → Resp ι D r.op)
-    (h : ∀ o, ι.leak o = Unit := by intro o; rfl) : Model ι D m :=
-  det program fun r => (h r.op).symm ▸ ()
 
 /-- Embed an evaluation model in `m`. -/
 def lift (m : Type → Type) [Monad m] (M : Model ι D Id) : Model ι D m :=

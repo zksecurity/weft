@@ -22,7 +22,8 @@ abbrev Const (F : Type) : Functionality := .ofEval (Const.sig F) (Const.eval F)
 
 namespace Addition
 abbrev sig (F : Type) : Signature := ⟨[.share F, .share F], .share F, Unit⟩
-def eval (F : Type) [Add F] : FunctionModel (sig F) .ideal Id := .silent fun (a, b, ()) => a + b
+def eval (F : Type) [Add F] : FunctionModel (sig F) .ideal Id :=
+  ⟨fun (a, b, ()) => pure (a + b, ())⟩
 end Addition
 
 /-- Add two shares without value disclosure. -/
@@ -32,7 +33,8 @@ abbrev Addition (F : Type) [Add F] : Functionality := .ofEval (Addition.sig F) (
 
 namespace Subtraction
 abbrev sig (F : Type) : Signature := ⟨[.share F, .share F], .share F, Unit⟩
-def eval (F : Type) [Sub F] : FunctionModel (sig F) .ideal Id := .silent fun (a, b, ()) => a - b
+def eval (F : Type) [Sub F] : FunctionModel (sig F) .ideal Id :=
+  ⟨fun (a, b, ()) => pure (a - b, ())⟩
 end Subtraction
 
 /-- Subtract two shares without value disclosure. -/
@@ -52,7 +54,8 @@ abbrev Smul (F : Type) [Mul F] : Functionality := .ofEval (Smul.sig F) (Smul.eva
 
 namespace Mult
 abbrev sig (F : Type) : Signature := ⟨[.share F, .share F], .share F, Unit⟩
-def eval (F : Type) [Mul F] : FunctionModel (sig F) .ideal Id := .silent fun (a, b, ()) => a * b
+def eval (F : Type) [Mul F] : FunctionModel (sig F) .ideal Id :=
+  ⟨fun (a, b, ()) => pure (a * b, ())⟩
 end Mult
 
 /-- Multiply two shares without value disclosure. -/
@@ -73,7 +76,7 @@ abbrev Reveal (F : Type) : Functionality := .ofEval (Reveal.sig F) (Reveal.eval 
 namespace Cmp
 abbrev sig (F : Type) : Signature := ⟨[.share F, .share F], .share F, Unit⟩
 def eval (F : Type) [LT F] [DecidableRel (α := F) (· < ·)] [Zero F] [One F] : FunctionModel (sig F) .ideal Id :=
-  .silent fun (a, b, ()) => (if a < b then 1 else 0 : F)
+  ⟨fun (a, b, ()) => pure ((if a < b then 1 else 0 : F), ())⟩
 end Cmp
 
 /-- Return the shared indicator `[a < b]` without disclosure. -/
@@ -84,7 +87,8 @@ abbrev Cmp (F : Type) [LT F] [DecidableRel (α := F) (· < ·)] [Zero F] [One F]
 
 namespace Inversion
 abbrev sig (F : Type) : Signature := ⟨[.share F], .share F, Unit⟩
-def eval (F : Type) [Inv F] : FunctionModel (sig F) .ideal Id := .silent fun (x, ()) => (x⁻¹ : F)
+def eval (F : Type) [Inv F] : FunctionModel (sig F) .ideal Id :=
+  ⟨fun (x, ()) => pure ((x⁻¹ : F), ())⟩
 end Inversion
 
 /-- Return a shared inverse without disclosure. -/
