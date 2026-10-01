@@ -119,8 +119,8 @@ theorem mulBeaver_dist (x y : F) :
     dist (Pre F).model (mulBeaver (fs := Pre F) (D := .ideal) x y)
       = (uniform (Fin 2 → F)).bind fun v =>
           pure (x * y, beaverView F (x - v 0, y - v 1)) := by
+  unfold mulBeaver
   simp only [
-    mulBeaver,
     beaverView,
     mulTriple,
     sub,
