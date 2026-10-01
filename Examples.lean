@@ -3,7 +3,6 @@ import Examples.Beaver
 import Examples.Inversion
 import Examples.AesHybrid
 import Examples.RandomCombination
-import Examples.Silent
 import Examples.Timing
 import Examples.MultiField
 import Examples.Checked
