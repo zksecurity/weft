@@ -132,8 +132,10 @@ theorem beaver_correct (x y : F) (v : Fin 2 → F) :
 The view is determined by the openings `(x − v 0, y − v 1)`. -/
 theorem mulBeaver_dist (x y : F) :
     dist (Pre F).model (mulBeaver (fs := Pre F) (D := .ideal) x y)
-      = (uniform (Fin 2 → F)).bind fun v => pure (x * y, beaverView F (x - v 0, y - v 1)) := by
-  simp only [mulBeaver, mulBeaverFrom, beaverView, mulTriple, sub, reveal, smul, add, const, weft]
+      = (uniform (Fin 2 → F)).bind fun v =>
+          pure (x * y, beaverView F (x - v 0, y - v 1)) := by
+  simp only [mulBeaver, mulBeaverFrom, beaverView, mulTriple, sub, reveal,
+    smul, add, const, weft]
   congr 1
   funext v
   rw [beaver_correct]
