@@ -33,4 +33,6 @@ jobs:
           use-mathlib-cache: true
 
       - name: Audit library and example axioms
-        run: lake env lean -DwarningAsError=true scripts/CheckAxioms.lean
+        run: |
+          lake --wfail exe axiom-audit --root Weft
+          lake --wfail exe axiom-audit --root Examples
