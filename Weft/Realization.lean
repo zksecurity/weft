@@ -27,8 +27,15 @@ noncomputable def simList {ι κ : Interface} (Sim : Event ι → PMF (List (Eve
     let t ← simList Sim es
     pure (s ++ t)
 
-@[simp] theorem simList_nil {ι κ : Interface} (Sim : Event ι → PMF (List (Event κ))) : simList Sim [] = pure [] := rfl
-@[simp] theorem simList_cons {ι κ : Interface} (Sim : Event ι → PMF (List (Event κ))) (e : Event ι) (es : List (Event ι)) :
+@[simp] theorem simList_nil
+    {ι κ : Interface}
+    (Sim : Event ι → PMF (List (Event κ))) :
+    simList Sim [] = pure [] := rfl
+@[simp] theorem simList_cons
+    {ι κ : Interface}
+    (Sim : Event ι → PMF (List (Event κ)))
+    (e : Event ι)
+    (es : List (Event ι)) :
     simList Sim (e :: es) = (do let s ← Sim e; let t ← simList Sim es; pure (s ++ t)) := rfl
 
 /-- Every request reachable under `M` satisfies `P`.
@@ -44,8 +51,14 @@ inductive Valid {ι : Interface} (M : Model ι .ideal PMF) (P : Req ι .ideal �
 attribute [simp] Valid.pure
 
 /-- A universally satisfied precondition is valid for every program. -/
-theorem Valid.of_forall {ι : Interface} (M : Model ι .ideal PMF) {P : Req ι .ideal → Prop} (hP : ∀ r, P r)
-    {α : Type} (c : Prog ι .ideal α) : Valid M P c := by
+theorem Valid.of_forall
+    {ι : Interface}
+    (M : Model ι .ideal PMF)
+    {P : Req ι .ideal → Prop}
+    (hP : ∀ r, P r)
+    {α : Type}
+    (c : Prog ι .ideal α) :
+    Valid M P c := by
   induction c with
   | pure a => exact .pure a
   | call r k ih => exact .call r k (hP r) fun z _ => ih z.1
@@ -107,7 +120,11 @@ def get : {fs : Hybrid} → Realizations fs gs → (i : Fin fs.length) → Reali
   | _, .cons _ rs, ⟨n + 1, h⟩ => rs.get ⟨n, Nat.lt_of_succ_lt_succ h⟩
 
 /-- Dispatch each request to its component's implementation. -/
-def impl (g : Realizations fs gs) (D : Domain) (r : Req fs.ops D) : Prog gs.ops D (Resp fs.ops D r.op) :=
+def impl
+    (g : Realizations fs gs)
+    (D : Domain)
+    (r : Req fs.ops D) :
+    Prog gs.ops D (Resp fs.ops D r.op) :=
   (g.get r.op).impl D r.args
 
 /-- The precondition, per request of the hybrid. -/
@@ -133,7 +150,11 @@ The caller must satisfy the realisations' preconditions.
 
 Induct on the caller and apply the realisation equation at each request.
 The simulator's fresh coins commute with the continuation's draws. -/
-theorem handle_realizes {fs gs : Hybrid} (g : Realizations fs gs) {α : Type} (c : Prog fs.ops .ideal α)
+theorem handle_realizes
+    {fs gs : Hybrid}
+    (g : Realizations fs gs)
+    {α : Type}
+    (c : Prog fs.ops .ideal α)
     (hc : Valid fs.model g.Pre c) :
     dist gs.model (Prog.handle (g.impl .ideal) c) = (do
       let r ← dist fs.model c
@@ -156,7 +177,11 @@ theorem handle_realizes {fs gs : Hybrid} (g : Realizations fs gs) {α : Type} (c
     | look _ _ hk => rw [Prog.handle_look, dist_look, dist_look]; exact ih c hk
 
 /-- Inlining valid realisations preserves the output distribution. -/
-theorem output_transport {fs gs : Hybrid} (g : Realizations fs gs) {α : Type} (c : Prog fs.ops .ideal α)
+theorem output_transport
+    {fs gs : Hybrid}
+    (g : Realizations fs gs)
+    {α : Type}
+    (c : Prog fs.ops .ideal α)
     (hc : Valid fs.model g.Pre c) :
     Prod.fst <$> dist gs.model (Prog.handle (g.impl .ideal) c) = Prod.fst <$> dist fs.model c := by
   rw [handle_realizes g c hc]
@@ -168,14 +193,22 @@ namespace Realization
 
 /-- Realise `F` by calling it in a hybrid containing it.
 The simulator embeds the event at `F`'s position. -/
-noncomputable def incl (F : Functionality) (gs : Hybrid) [h : Has F gs] : Realization F gs where
+noncomputable def incl
+    (F : Functionality)
+    (gs : Hybrid)
+    [h : Has F gs] :
+    Realization F gs where
   impl _ r := Prog.op r
   Sim e := pure [Has.event e]
   real r _ := by rw [dist_op]; simp
 
 /-- Inline the realisations of `fs` into `f`.
 Require `f.Pre` and validity of `f.impl` for the inner preconditions. -/
-noncomputable def comp {F : Functionality} {fs gs : Hybrid} (f : Realization F fs) (g : Realizations fs gs) :
+noncomputable def comp
+    {F : Functionality}
+    {fs gs : Hybrid}
+    (f : Realization F fs)
+    (g : Realizations fs gs) :
     Realization F gs where
   impl D r := Prog.handle (g.impl D) (f.impl D r)
   Pre r := f.Pre r ∧ Valid fs.model g.Pre (f.impl .ideal r)

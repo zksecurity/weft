@@ -28,7 +28,10 @@ end Addition
 
 /-- Add two shares without value disclosure. -/
 abbrev Addition (F : Type) [Add F] : Functionality := .ofEval (Addition.sig F) (Addition.eval F)
-@[simp, weft] theorem Addition.model_eq (F : Type) [Add F] : (Addition F).model = (Addition.eval F).lift PMF :=
+@[simp, weft] theorem Addition.model_eq
+    (F : Type)
+    [Add F] :
+    (Addition F).model = (Addition.eval F).lift PMF :=
   Functionality.ofEval_model _ _
 
 namespace Subtraction
@@ -38,8 +41,14 @@ def eval (F : Type) [Sub F] : FunctionModel (sig F) .ideal Id :=
 end Subtraction
 
 /-- Subtract two shares without value disclosure. -/
-abbrev Subtraction (F : Type) [Sub F] : Functionality := .ofEval (Subtraction.sig F) (Subtraction.eval F)
-@[simp, weft] theorem Subtraction.model_eq (F : Type) [Sub F] : (Subtraction F).model = (Subtraction.eval F).lift PMF :=
+abbrev Subtraction
+    (F : Type)
+    [Sub F] :
+    Functionality := .ofEval (Subtraction.sig F) (Subtraction.eval F)
+@[simp, weft] theorem Subtraction.model_eq
+    (F : Type)
+    [Sub F] :
+    (Subtraction F).model = (Subtraction.eval F).lift PMF :=
   Functionality.ofEval_model _ _
 
 namespace Smul
@@ -75,14 +84,25 @@ abbrev Reveal (F : Type) : Functionality := .ofEval (Reveal.sig F) (Reveal.eval 
 
 namespace Cmp
 abbrev sig (F : Type) : Signature := ⟨[.share F, .share F], .share F, Unit⟩
-def eval (F : Type) [LT F] [DecidableRel (α := F) (· < ·)] [Zero F] [One F] : FunctionModel (sig F) .ideal Id :=
+def eval
+    (F : Type)
+    [LT F]
+    [DecidableRel (α := F) (· < ·)]
+    [Zero F]
+    [One F] :
+    FunctionModel (sig F) .ideal Id :=
   ⟨fun (a, b, ()) => pure ((if a < b then 1 else 0 : F), ())⟩
 end Cmp
 
 /-- Return the shared indicator `[a < b]` without disclosure. -/
 abbrev Cmp (F : Type) [LT F] [DecidableRel (α := F) (· < ·)] [Zero F] [One F] : Functionality :=
   .ofEval (Cmp.sig F) (Cmp.eval F)
-@[simp, weft] theorem Cmp.model_eq (F : Type) [LT F] [DecidableRel (α := F) (· < ·)] [Zero F] [One F] :
+@[simp, weft] theorem Cmp.model_eq
+    (F : Type)
+    [LT F]
+    [DecidableRel (α := F) (· < ·)]
+    [Zero F]
+    [One F] :
     (Cmp F).model = (Cmp.eval F).lift PMF := Functionality.ofEval_model _ _
 
 namespace Inversion
@@ -99,15 +119,48 @@ abbrev Inversion (F : Type) [Inv F] : Functionality := .ofEval (Inversion.sig F)
 section Ops
 variable {F : Type} {fs : Hybrid} {D : Domain}
 
-def const [Has (Const F) fs] (c : D.clear F) : Prog fs.ops D (D.share F) := Prog.op (F := Const F) (c, ())
-def add [Add F] [Has (Addition F) fs] (a b : D.share F) : Prog fs.ops D (D.share F) := Prog.op (F := Addition F) (a, b, ())
-def sub [Sub F] [Has (Subtraction F) fs] (a b : D.share F) : Prog fs.ops D (D.share F) := Prog.op (F := Subtraction F) (a, b, ())
-def smul [Mul F] [Has (Smul F) fs] (c : D.clear F) (a : D.share F) : Prog fs.ops D (D.share F) := Prog.op (F := Smul F) (c, a, ())
-def mul [Mul F] [Has (Mult F) fs] (a b : D.share F) : Prog fs.ops D (D.share F) := Prog.op (F := Mult F) (a, b, ())
-def reveal [Has (Reveal F) fs] (x : D.share F) : Prog fs.ops D (D.clear F) := Prog.op (F := Reveal F) (x, ())
-def lt [LT F] [DecidableRel (α := F) (· < ·)] [Zero F] [One F] [Has (Cmp F) fs] (a b : D.share F) :
+def const
+    [Has (Const F) fs]
+    (c : D.clear F) :
+    Prog fs.ops D (D.share F) := Prog.op (F := Const F) (c, ())
+def add
+    [Add F]
+    [Has (Addition F) fs]
+    (a b : D.share F) :
+    Prog fs.ops D (D.share F) := Prog.op (F := Addition F) (a, b, ())
+def sub
+    [Sub F]
+    [Has (Subtraction F) fs]
+    (a b : D.share F) :
+    Prog fs.ops D (D.share F) := Prog.op (F := Subtraction F) (a, b, ())
+def smul
+    [Mul F]
+    [Has (Smul F) fs]
+    (c : D.clear F)
+    (a : D.share F) :
+    Prog fs.ops D (D.share F) := Prog.op (F := Smul F) (c, a, ())
+def mul
+    [Mul F]
+    [Has (Mult F) fs]
+    (a b : D.share F) :
+    Prog fs.ops D (D.share F) := Prog.op (F := Mult F) (a, b, ())
+def reveal
+    [Has (Reveal F) fs]
+    (x : D.share F) :
+    Prog fs.ops D (D.clear F) := Prog.op (F := Reveal F) (x, ())
+def lt
+    [LT F]
+    [DecidableRel (α := F) (· < ·)]
+    [Zero F]
+    [One F]
+    [Has (Cmp F) fs]
+    (a b : D.share F) :
     Prog fs.ops D (D.share F) := Prog.op (F := Cmp F) (a, b, ())
-def nativeInv [Inv F] [Has (Inversion F) fs] (x : D.share F) : Prog fs.ops D (D.share F) := Prog.op (F := Inversion F) (x, ())
+def nativeInv
+    [Inv F]
+    [Has (Inversion F) fs]
+    (x : D.share F) :
+    Prog fs.ops D (D.share F) := Prog.op (F := Inversion F) (x, ())
 
 end Ops
 end Weft

@@ -21,7 +21,13 @@ abbrev sig (F : Type) : Signature where
   cod := .share F
   leak := F
 /-- The joint step: draw `r`, return `x₀ + r·x₁`, disclose `r`. -/
-noncomputable def model (F : Type) [Add F] [Mul F] [Fintype F] [Inhabited F] : FunctionModel (sig F) .ideal PMF :=
+noncomputable def model
+    (F : Type)
+    [Add F]
+    [Mul F]
+    [Fintype F]
+    [Inhabited F] :
+    FunctionModel (sig F) .ideal PMF :=
   ⟨fun r => (uniform F).map fun c => (r.1 + c * r.2.1, c)⟩
 /-- Evaluate with the coin fixed to `default`. -/
 def eval (F : Type) [Add F] [Mul F] [Inhabited F] : FunctionModel (sig F) .ideal Id :=
@@ -39,7 +45,13 @@ section
 variable (F : Type) [Field F] [Fintype F] [Inhabited F]
 
 /-- Compute `x₀ + r·x₁` using a public coin. -/
-def randComb2 {fs : Hybrid} {D : Domain} [Has (Addition F) fs] [Has (Smul F) fs] [Has (PubCoin F) fs] (x₀ x₁ : D.share F) :
+def randComb2
+    {fs : Hybrid}
+    {D : Domain}
+    [Has (Addition F) fs]
+    [Has (Smul F) fs]
+    [Has (PubCoin F) fs]
+    (x₀ x₁ : D.share F) :
     Prog fs.ops D (D.share F) := do
   let r ← coin F
   let t ← smul r x₁

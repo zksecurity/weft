@@ -19,13 +19,17 @@ the composition bound using this budget remains to be proved.
 namespace Weft
 
 /-- Truncated subtraction is subadditive under a sum. -/
-theorem ENNReal.tsum_tsub_le {A : Type} (f g : A → ENNReal) : (∑' a, f a) - (∑' a, g a) ≤ ∑' a, (f a - g a) := by
+theorem ENNReal.tsum_tsub_le
+    {A : Type}
+    (f g : A → ENNReal) :
+    (∑' a, f a) - (∑' a, g a) ≤ ∑' a, (f a - g a) := by
   rw [tsub_le_iff_right, ← ENNReal.tsum_add]
   exact ENNReal.tsum_le_tsum fun a => le_tsub_add
 
 /-- Bound bind distance by initial distance plus expected continuation distance. -/
 theorem PMF.statDist_bind_le {A B : Type} (p q : PMF A) (f g : A → PMF B) :
-    PMF.statDist (p.bind f) (q.bind g) ≤ PMF.statDist p q + ∑' a, q a * PMF.statDist (f a) (g a) := by
+    PMF.statDist (p.bind f) (q.bind g)
+      ≤ PMF.statDist p q + ∑' a, q a * PMF.statDist (f a) (g a) := by
   have point : ∀ a b, p a * f a b - q a * g a b ≤ (p a - q a) * f a b + q a * (f a b - g a b) := by
     intro a b
     rw [tsub_le_iff_right]

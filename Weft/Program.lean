@@ -45,7 +45,12 @@ private def offence (env : Environment) (strict : Bool) (n : Name) : Option Stri
     | none => some "unknown"
 
 /-- Check non-proof references in `e` and recursively inspect package definitions. -/
-private partial def checkExpr (env : Environment) (strict : Bool) (e : Expr) (visited : IO.Ref NameSet) : MetaM Unit := do
+private partial def checkExpr
+    (env : Environment)
+    (strict : Bool)
+    (e : Expr)
+    (visited : IO.Ref NameSet) :
+    MetaM Unit := do
   let consts ← IO.mkRef ({} : NameSet)
   Meta.forEachExpr' e fun sub => do
     if (← Meta.isProof sub) then return false

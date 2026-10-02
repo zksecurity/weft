@@ -71,7 +71,10 @@ def handle (h : (r : Req ι D) → Prog κ D (Resp ι D r.op)) : Prog ι D α �
 @[simp] theorem handle_call (h : (r : Req ι D) → Prog κ D (Resp ι D r.op)) (r : Req ι D)
     (k : Resp ι D r.op → Prog ι D α) :
     handle h (.call r k) = bind (h r) fun y => handle h (k y) := rfl
-@[simp] theorem handle_look (h : (r : Req ι D) → Prog κ D (Resp ι D r.op)) {T : Type} (c : D.clear T)
+@[simp] theorem handle_look
+    (h : (r : Req ι D) → Prog κ D (Resp ι D r.op))
+    {T : Type}
+    (c : D.clear T)
     (k : T → Prog ι D α) :
     handle h (.look c k) = .look c fun v => handle h (k v) := rfl
 

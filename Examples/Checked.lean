@@ -19,12 +19,21 @@ abbrev Keep : Functionality :=
 
 /-- Inspect a share in the ideal domain, where shares are plain values.
 The fixed domain prevents this definition from serving as a generic implementation. -/
-def peekIdeal {fs : Hybrid} [Has (Const F) fs] (x : F) : Prog fs.ops .ideal F :=
+def peekIdeal
+    {fs : Hybrid}
+    [Has (Const F) fs]
+    (x : F) :
+    Prog fs.ops .ideal F :=
   if x = 0 then do let _ ← const (0 : F); pure x else pure x
 
 -- Comparing generic shares requires `DecidableEq (D.share F)`.
 -- Obtaining this instance classically makes the definition noncomputable.
-noncomputable def peek {fs : Hybrid} {D : Domain} [Has (Const F) fs] (x : D.share F) : Prog fs.ops D (D.share F) := by
+noncomputable def peek
+    {fs : Hybrid}
+    {D : Domain}
+    [Has (Const F) fs]
+    (x : D.share F) :
+    Prog fs.ops D (D.share F) := by
   classical
   exact if x = x then pure x else do let _ ← const (0 : D.clear F); pure x
 

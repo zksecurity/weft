@@ -26,7 +26,12 @@ variable {F : Type} [Field F] [Fintype F] [DecidableEq F] {fs : Hybrid} {D : Dom
 
 /-- Open `x·s` for nonzero `s`,
 then scale `s` by the opened value's reciprocal. -/
-def invert [Has (Smul F) fs] [Has (Mult F) fs] [Has (Reveal F) fs] [Has (RandNZ F) fs] (x : D.share F) :
+def invert
+    [Has (Smul F) fs]
+    [Has (Mult F) fs]
+    [Has (Reveal F) fs]
+    [Has (RandNZ F) fs]
+    (x : D.share F) :
     Prog fs.ops D (D.share F) := do
   let s ← randNZ F
   let v ← mul x s
@@ -34,7 +39,12 @@ def invert [Has (Smul F) fs] [Has (Mult F) fs] [Has (Reveal F) fs] [Has (RandNZ 
   smul m⁻¹ s
 
 /-- Divide by inverting the denominator, then multiplying by the numerator. -/
-def divide [Has (Smul F) fs] [Has (Mult F) fs] [Has (Reveal F) fs] [Has (RandNZ F) fs] (a b : D.share F) :
+def divide
+    [Has (Smul F) fs]
+    [Has (Mult F) fs]
+    [Has (Reveal F) fs]
+    [Has (RandNZ F) fs]
+    (a b : D.share F) :
     Prog fs.ops D (D.share F) := do
   let bInv ← invert b
   mul a bInv
@@ -67,17 +77,27 @@ abbrev invMPC' : MPC := [
 -- Closed instances over `𝔽₇`, evaluated by the kernel.
 instance : Fact (Nat.Prime 7) := ⟨by decide⟩
 -- Inversion uses one multiplication and one reveal; division adds a multiplication.
-example : commOn (invMPC (ZMod 7)).timed (invert (F := ZMod 7) (fs := (invMPC (ZMod 7)).hybrid) (D := .timed) ⟪3⟫) = 3 := by
+example :
+    commOn (invMPC (ZMod 7)).timed
+      (invert (F := ZMod 7) (fs := (invMPC (ZMod 7)).hybrid) (D := .timed) ⟪3⟫) = 3 := by
   decide +kernel
-example : commOn (invMPC (ZMod 7)).timed (divide (F := ZMod 7) (fs := (invMPC (ZMod 7)).hybrid) (D := .timed) ⟪3⟫ ⟪4⟫)
-    = 5 := by decide +kernel
+example :
+    commOn (invMPC (ZMod 7)).timed
+      (divide (F := ZMod 7) (fs := (invMPC (ZMod 7)).hybrid) (D := .timed) ⟪3⟫ ⟪4⟫)
+      = 5 := by decide +kernel
 -- Mask generation adds to the multiplication and reveal delays.
-example : delayOn (invMPC (ZMod 7)).timed (invert (F := ZMod 7) (fs := (invMPC (ZMod 7)).hybrid) (D := .timed) ⟪3⟫) = 2 := by
+example :
+    delayOn (invMPC (ZMod 7)).timed
+      (invert (F := ZMod 7) (fs := (invMPC (ZMod 7)).hybrid) (D := .timed) ⟪3⟫) = 2 := by
   decide +kernel
-example : delayOn (invMPC' (ZMod 7)).timed (invert (F := ZMod 7) (fs := (invMPC' (ZMod 7)).hybrid) (D := .timed) ⟪3⟫) = 3 := by
+example :
+    delayOn (invMPC' (ZMod 7)).timed
+      (invert (F := ZMod 7) (fs := (invMPC' (ZMod 7)).hybrid) (D := .timed) ⟪3⟫) = 3 := by
   decide +kernel
-example : delayOn (invMPC (ZMod 7)).timed (divide (F := ZMod 7) (fs := (invMPC (ZMod 7)).hybrid) (D := .timed) ⟪3⟫ ⟪4⟫)
-    = 3 := by decide +kernel
+example :
+    delayOn (invMPC (ZMod 7)).timed
+      (divide (F := ZMod 7) (fs := (invMPC (ZMod 7)).hybrid) (D := .timed) ⟪3⟫ ⟪4⟫)
+      = 3 := by decide +kernel
 
 /-- The view of one inversion, as a function of the opened value. -/
 def invView (m : F) : List (Event (InvHyb F).ops) :=
@@ -157,7 +177,12 @@ program invertTotalReal : Realization (InvertTotal F) (InvHyb F) where
       rfl
 
 /-- Request inversion of a fresh nonzero share. -/
-def invertFresh {fs : Hybrid} {D : Domain} [Has (Invert F) fs] [Has (RandNZ F) fs] : Prog fs.ops D (D.share F) := do
+def invertFresh
+    {fs : Hybrid}
+    {D : Domain}
+    [Has (Invert F) fs]
+    [Has (RandNZ F) fs] :
+    Prog fs.ops D (D.share F) := do
   let r ← randNZ F
   Prog.op (F := Invert F) (r, ())
 

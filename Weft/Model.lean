@@ -47,7 +47,11 @@ theorem ext {M N : FunctionModel σ D m} (h : ∀ a, M.step a = N.step a) : M = 
 @[simp] theorem lift_step [Monad m] (M : FunctionModel σ D Id) (a : σ.Args D) :
     (M.lift m).step a = pure (M.step a).run := rfl
 
-@[simp] theorem det_step [Monad m] (f : σ.Args D → σ.Resp D) (leak : σ.Args D → σ.leak) (a : σ.Args D) :
+@[simp] theorem det_step
+    [Monad m]
+    (f : σ.Args D → σ.Resp D)
+    (leak : σ.Args D → σ.leak)
+    (a : σ.Args D) :
     (det (m := m) f leak).step a = pure (f a, leak a) := rfl
 
 end FunctionModel
@@ -127,8 +131,17 @@ end Trace
 /-- Sample each step and record its event before running the continuation.
 Use projections for the sampled pair;
 pattern matching here causes exponential reduction time under `rfl`. -/
-def run {ι : Interface} {D : Domain} {C α : Type} [AddMonoid C] {m : Type → Type} [Monad m] [Look D m]
-    (M : Model ι D m) (K : CostModel ι C) : Prog ι D α → m (α × Trace ι D C)
+def run
+    {ι : Interface}
+    {D : Domain}
+    {C α : Type}
+    [AddMonoid C]
+    {m : Type → Type}
+    [Monad m]
+    [Look D m]
+    (M : Model ι D m)
+    (K : CostModel ι C) :
+    Prog ι D α → m (α × Trace ι D C)
   | .pure a => pure (a, Trace.zero)
   | .call r k => do
     let p ← M.step r
@@ -144,7 +157,10 @@ variable {ι : Interface} {D : Domain} {C α : Type} [AddMonoid C] [Look D Id] [
 /-- Evaluation (`m := Id`): the output of one run. -/
 def output (M : Model ι D Id) (c : Prog ι D α) : α := (Id.run (run M CostModel.unit c)).1
 /-- Evaluation: the view of one run. -/
-def view (M : Model ι D Id) (c : Prog ι D α) : List (Event ι) := (Id.run (run M CostModel.unit c)).2.view
+def view
+    (M : Model ι D Id)
+    (c : Prog ι D α) :
+    List (Event ι) := (Id.run (run M CostModel.unit c)).2.view
 /-- Evaluation: the cost of one run. -/
 def cost (M : Model ι D Id) (K : CostModel ι C) (c : Prog ι D α) : C := (Id.run (run M K c)).2.cost
 
@@ -159,21 +175,38 @@ end Observables
 `run_lift` identifies a run under a lifted evaluation model with a point mass. -/
 
 section Laws
-variable {ι : Interface} {D : Domain} {C α β : Type} [AddMonoid C] {m : Type → Type} [Monad m] [Look D m] [Look D PMF]
+variable
+    {ι : Interface}
+    {D : Domain}
+    {C α β : Type}
+    [AddMonoid C]
+    {m : Type → Type}
+    [Monad m]
+    [Look D m]
+    [Look D PMF]
 
 omit [Look D PMF] in
 @[simp] theorem run_pure (M : Model ι D m) (K : CostModel ι C) (a : α) :
     run M K (.pure a) = pure (a, Trace.zero) := rfl
 
 omit [Look D PMF] in
-theorem run_call (M : Model ι D m) (K : CostModel ι C) (r : Req ι D) (k : Resp ι D r.op → Prog ι D α) :
+theorem run_call
+    (M : Model ι D m)
+    (K : CostModel ι C)
+    (r : Req ι D)
+    (k : Resp ι D r.op → Prog ι D α) :
     run M K (.call r k) = (do
       let p ← M.step r
       let res ← run M K (k p.1)
       pure (res.1, Trace.seq ⟨K.op r.op, [⟨r.op, p.2⟩]⟩ res.2)) := rfl
 
 omit [Look D PMF] in
-theorem run_look (M : Model ι D m) (K : CostModel ι C) {T : Type} (c : D.clear T) (k : T → Prog ι D α) :
+theorem run_look
+    (M : Model ι D m)
+    (K : CostModel ι C)
+    {T : Type}
+    (c : D.clear T)
+    (k : T → Prog ι D α) :
     run M K (.look c k) = (do let v ← Look.look c; run M K (k v)) := rfl
 
 /-- `>>=`, `pure` and `<$>` on `PMF` are Mathlib's `PMF.bind`, `PMF.pure`, `PMF.map`. -/
@@ -195,8 +228,13 @@ theorem run_bind (M : Model ι D m) (K : CostModel ι C) (c : Prog ι D α) (k :
   | look c k' ih => simp only [Prog.bind_look, run_look, ih, bind_assoc]
 
 /-- An ideal-domain read applies the continuation without an effect. -/
-theorem run_look_ideal (M : Model ι .ideal m) (K : CostModel ι C) {T : Type} (c : Domain.ideal.clear T)
-    (k : T → Prog ι .ideal α) : run M K (.look c k) = run M K (k c) := by
+theorem run_look_ideal
+    (M : Model ι .ideal m)
+    (K : CostModel ι C)
+    {T : Type}
+    (c : Domain.ideal.clear T)
+    (k : T → Prog ι .ideal α) :
+    run M K (.look c k) = run M K (k c) := by
   simp [run_look]
 
 theorem run_lift (M : Model ι .ideal Id) (K : CostModel ι C) (c : Prog ι .ideal α) :
@@ -212,7 +250,11 @@ theorem dist_lift (M : Model ι .ideal Id) (c : Prog ι .ideal α) :
     dist (M.lift PMF) c = pure (output M c, view M c) := by
   simp [dist, run_lift, output, view]
 
-theorem dist_look (M : Model ι .ideal PMF) {T : Type} (c : Domain.ideal.clear T) (k : T → Prog ι .ideal α) :
+theorem dist_look
+    (M : Model ι .ideal PMF)
+    {T : Type}
+    (c : Domain.ideal.clear T)
+    (k : T → Prog ι .ideal α) :
     dist M (.look c k) = dist M (k c) := by
   simp [dist, run_look_ideal]
 
@@ -237,8 +279,14 @@ theorem dist_bind (M : Model ι D PMF) (c : Prog ι D α) (k : α → Prog ι D 
 
 omit [Look D PMF] in
 /-- The result of a run does not depend on the cost model. -/
-theorem run_fst (M : Model ι D m) {C' : Type} [AddMonoid C'] (K : CostModel ι C) (K' : CostModel ι C')
-    (c : Prog ι D α) : Prod.fst <$> run M K c = Prod.fst <$> run M K' c := by
+theorem run_fst
+    (M : Model ι D m)
+    {C' : Type}
+    [AddMonoid C']
+    (K : CostModel ι C)
+    (K' : CostModel ι C')
+    (c : Prog ι D α) :
+    Prod.fst <$> run M K c = Prod.fst <$> run M K' c := by
   induction c with
   | pure a => simp [run]
   | call r k ih => simp [run_call, ih]

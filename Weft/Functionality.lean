@@ -37,24 +37,43 @@ theorem isModel_model (F : Functionality) : F.IsModel F.model :=
   F.isModel_unique.exists.choose_spec
 
 /-- Identify the selected model using uniqueness. -/
-theorem model_eq {F : Functionality} {M : FunctionModel F.sig .ideal PMF} (h : F.IsModel M) : F.model = M :=
+theorem model_eq
+    {F : Functionality}
+    {M : FunctionModel F.sig .ideal PMF}
+    (h : F.IsModel M) :
+    F.model = M :=
   F.isModel_unique.unique F.isModel_model h
 
 /-- Equality to a given model is uniquely satisfied. -/
-theorem unique_eq {σ : Signature} (M : FunctionModel σ .ideal PMF) : ∃! N : FunctionModel σ .ideal PMF, N = M :=
+theorem unique_eq
+    {σ : Signature}
+    (M : FunctionModel σ .ideal PMF) :
+    ∃! N : FunctionModel σ .ideal PMF, N = M :=
   ⟨M, rfl, fun _ h => h⟩
 
 /-- A deterministic functionality, with point-mass probabilistic semantics. -/
 abbrev ofEval (σ : Signature) (E : FunctionModel σ .ideal Id) : Functionality :=
   ⟨σ, E, (· = E.lift PMF), unique_eq _⟩
 
-@[simp] theorem ofEval_sig (σ : Signature) (E : FunctionModel σ .ideal Id) : (ofEval σ E).sig = σ := rfl
-@[simp] theorem ofEval_eval (σ : Signature) (E : FunctionModel σ .ideal Id) : (ofEval σ E).eval = E := rfl
-@[simp] theorem ofEval_model (σ : Signature) (E : FunctionModel σ .ideal Id) : (ofEval σ E).model = E.lift PMF :=
+@[simp] theorem ofEval_sig
+    (σ : Signature)
+    (E : FunctionModel σ .ideal Id) :
+    (ofEval σ E).sig = σ := rfl
+@[simp] theorem ofEval_eval
+    (σ : Signature)
+    (E : FunctionModel σ .ideal Id) :
+    (ofEval σ E).eval = E := rfl
+@[simp] theorem ofEval_model
+    (σ : Signature)
+    (E : FunctionModel σ .ideal Id) :
+    (ofEval σ E).model = E.lift PMF :=
   model_eq rfl
 
 /-- The response marginal. Use `model.step` for the joint law. -/
-noncomputable abbrev response (F : Functionality) (a : F.sig.Args .ideal) : PMF (F.sig.Resp .ideal) :=
+noncomputable abbrev response
+    (F : Functionality)
+    (a : F.sig.Args .ideal) :
+    PMF (F.sig.Resp .ideal) :=
   F.model.response a
 
 /-- The explicitly declared disclosure marginal. -/
@@ -117,11 +136,19 @@ abbrev next (F : Functionality) (fs : Hybrid) (i : Fin fs.length) : Fin (F :: fs
 
 @[simp] theorem model_cons_zero (F : Functionality) (fs : Hybrid) (a : F.sig.Args .ideal) :
     (Hybrid.model (F :: fs)).step ⟨head F fs, a⟩ = F.model.step a := rfl
-@[simp] theorem model_cons_succ (F : Functionality) (fs : Hybrid) (i : Fin fs.length) (a : (fs.get i).sig.Args .ideal) :
+@[simp] theorem model_cons_succ
+    (F : Functionality)
+    (fs : Hybrid)
+    (i : Fin fs.length)
+    (a : (fs.get i).sig.Args .ideal) :
     (Hybrid.model (F :: fs)).step ⟨next F fs i, a⟩ = fs.model.step ⟨i, a⟩ := rfl
 @[simp] theorem eval_cons_zero (F : Functionality) (fs : Hybrid) (a : F.sig.Args .ideal) :
     (Hybrid.eval (F :: fs)).step ⟨head F fs, a⟩ = F.eval.step a := rfl
-@[simp] theorem eval_cons_succ (F : Functionality) (fs : Hybrid) (i : Fin fs.length) (a : (fs.get i).sig.Args .ideal) :
+@[simp] theorem eval_cons_succ
+    (F : Functionality)
+    (fs : Hybrid)
+    (i : Fin fs.length)
+    (a : (fs.get i).sig.Args .ideal) :
     (Hybrid.eval (F :: fs)).step ⟨next F fs i, a⟩ = fs.eval.step ⟨i, a⟩ := rfl
 
 end Hybrid
@@ -132,15 +159,26 @@ class Has (F : Functionality) (fs : Hybrid) where
   eq : fs.get i = F
 
 instance Has.here (F : Functionality) (fs : Hybrid) : Has F (F :: fs) := ⟨Hybrid.head F fs, rfl⟩
-instance Has.there (F G : Functionality) (fs : Hybrid) [h : Has F fs] : Has F (G :: fs) :=
+instance Has.there
+    (F G : Functionality)
+    (fs : Hybrid)
+    [h : Has F fs] :
+    Has F (G :: fs) :=
   ⟨Hybrid.next G fs h.i, h.eq⟩
 
 /-- Shift an event's functionality index after prepending a component. -/
-def Event.shift {fs : Hybrid} (G : Functionality) (e : Event fs.ops) : Event (Hybrid.ops (G :: fs)) :=
+def Event.shift
+    {fs : Hybrid}
+    (G : Functionality)
+    (e : Event fs.ops) :
+    Event (Hybrid.ops (G :: fs)) :=
   ⟨Hybrid.next G fs e.op, e.leak⟩
 
 namespace Has
-variable {F : Functionality} {fs : Hybrid} [h : Has F fs]
+variable
+    {F : Functionality}
+    {fs : Hybrid}
+    [h : Has F fs]
 
 /-- The selected functionality's position in the hybrid. -/
 def op : fs.ops.Op := h.i
@@ -178,7 +216,12 @@ def opAt (fs : Hybrid) (i : Fin fs.length) (a : (fs.get i).sig.Args D) :
     Prog fs.ops D ((fs.get i).sig.Resp D) := .call ⟨i, a⟩ .pure
 
 /-- Call a functionality using membership to transport its operand and response types. -/
-def op {fs : Hybrid} {F : Functionality} [h : Has F fs] (a : F.sig.Args D) : Prog fs.ops D (F.sig.Resp D) :=
+def op
+    {fs : Hybrid}
+    {F : Functionality}
+    [h : Has F fs]
+    (a : F.sig.Args D) :
+    Prog fs.ops D (F.sig.Resp D) :=
   (h.eq.rec (motive := fun G _ => G.sig.Args D → Prog fs.ops D (G.sig.Resp D)) (opAt fs h.i)) a
 
 /-- Call the first functionality. -/
@@ -186,13 +229,21 @@ def opHead (F : Functionality) (fs : Hybrid) (a : F.sig.Args D) :
     Prog (Hybrid.ops (F :: fs)) D (F.sig.Resp D) := .call ⟨Hybrid.head F fs, a⟩ .pure
 
 /-- Shift a program's requests after prepending a functionality. -/
-def lift {fs : Hybrid} (G : Functionality) {α : Type} : Prog fs.ops D α → Prog (Hybrid.ops (G :: fs)) D α :=
+def lift
+    {fs : Hybrid}
+    (G : Functionality)
+    {α : Type} :
+    Prog fs.ops D α → Prog (Hybrid.ops (G :: fs)) D α :=
   handle fun r => .call ⟨Hybrid.next G fs r.op, r.args⟩ .pure
 
 @[simp] theorem op_here {F : Functionality} {fs : Hybrid} (a : F.sig.Args D) :
     op (fs := F :: fs) (h := Has.here F fs) a = opHead F fs a := rfl
 
-@[simp] theorem op_there {F G : Functionality} {fs : Hybrid} [h : Has F fs] (a : F.sig.Args D) :
+@[simp] theorem op_there
+    {F G : Functionality}
+    {fs : Hybrid}
+    [h : Has F fs]
+    (a : F.sig.Args D) :
     op (fs := G :: fs) (h := Has.there F G fs) a = lift G (op (h := h) a) := by
   obtain ⟨i, e⟩ := h
   subst e
@@ -206,7 +257,12 @@ class Incl (fs gs : Hybrid) where
 
 instance Incl.refl (fs : Hybrid) : Incl fs fs := ⟨fun i => ⟨i, rfl⟩⟩
 instance Incl.nil (gs : Hybrid) : Incl [] gs := ⟨fun i => i.elim0⟩
-instance Incl.cons (F : Functionality) (fs gs : Hybrid) [hF : Has F gs] [hs : Incl fs gs] : Incl (F :: fs) gs :=
+instance Incl.cons
+    (F : Functionality)
+    (fs gs : Hybrid)
+    [hF : Has F gs]
+    [hs : Incl fs gs] :
+    Incl (F :: fs) gs :=
   ⟨fun i => match i with
     | ⟨0, _⟩ => hF
     | ⟨n + 1, h⟩ => hs.has ⟨n, Nat.lt_of_succ_lt_succ h⟩⟩
@@ -221,7 +277,10 @@ def weaken {fs gs : Hybrid} [s : Incl fs gs] : Prog fs.ops D α → Prog gs.ops 
 end Prog
 
 section Generic
-variable {fs : Hybrid} {F : Functionality} [h : Has F fs]
+variable
+    {fs : Hybrid}
+    {F : Functionality}
+    [h : Has F fs]
 
 /-- A call evaluates to the selected functionality's response. -/
 theorem output_op (a : F.sig.Args .ideal) : output fs.eval (Prog.op a) = (F.eval.step a).run.1 := by

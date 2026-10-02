@@ -99,7 +99,12 @@ def withTimed {β : Type} (t : Nat) : (s : Shape) → s.interp .ideal → (s.int
   | list a, xs, k => k (xs.map (a.retime t))
 
 /-- `withTimed` agrees with applying the continuation to `retime`. -/
-theorem withTimed_eq {β : Type} (t : Nat) (s : Shape) (x : s.interp .ideal) (k : s.interp .timed → β) :
+theorem withTimed_eq
+    {β : Type}
+    (t : Nat)
+    (s : Shape)
+    (x : s.interp .ideal)
+    (k : s.interp .timed → β) :
     withTimed t s x k = k (retime t s x) := by
   cases s <;> rfl
 
@@ -119,7 +124,10 @@ def Operands.ready : {ss : List Shape} → Operands .timed ss → Nat
   | [], _ => 0
   | s :: _, p => max (s.ready p.1) (ready p.2)
 /-- The operands, with their times forgotten. -/
-def Operands.untime {ss : List Shape} (a : Operands .timed ss) : Operands .ideal ss := a.map Shape.untime
+def Operands.untime
+    {ss : List Shape}
+    (a : Operands .timed ss) :
+    Operands .ideal ss := a.map Shape.untime
 
 /-- Add communication cost.
 Return the state unchanged when the cost is zero;
@@ -145,13 +153,21 @@ plus the operation's latency.
 Match the evaluation result to share it during reduction.
 A `let` would substitute the computation at each use,
 causing repeated evaluation along the run. -/
-def Model.timed {ι : Interface} (E : Model ι .ideal Id) (p : ι.Op → Price) : Model ι .timed Sched where
+def Model.timed
+    {ι : Interface}
+    (E : Model ι .ideal Id)
+    (p : ι.Op → Price) :
+    Model ι .timed Sched where
   step r := fun s =>
     match (E.step ⟨r.op, r.args.untime⟩).run with
     | (y, d) => Shape.withTimed (r.base s + (p r.op).delay) (ι.cod r.op) y fun y' => ((y', d), s.pay (p r.op).comm)
 
 /-- Give a single function a latency and communication price. -/
-def FunctionModel.timed {σ : Signature} (E : FunctionModel σ .ideal Id) (p : Price) : FunctionModel σ .timed Sched where
+def FunctionModel.timed
+    {σ : Signature}
+    (E : FunctionModel σ .ideal Id)
+    (p : Price) :
+    FunctionModel σ .timed Sched where
   step a := fun s =>
     match (E.step a.untime).run with
     | (y, d) => Shape.withTimed (max a.ready s.clock + p.delay) σ.cod y fun y' => ((y', d), s.pay p.comm)
@@ -164,14 +180,24 @@ theorem FunctionModel.timed_step {σ : Signature} (E : FunctionModel σ .ideal I
   simp only [FunctionModel.timed, Shape.withTimed_eq]
 
 /-- Response, disclosure and state update of a priced step. -/
-theorem Model.timed_step {ι : Interface} (E : Model ι .ideal Id) (p : ι.Op → Price) (r : Req ι .timed) (s : Clock) :
+theorem Model.timed_step
+    {ι : Interface}
+    (E : Model ι .ideal Id)
+    (p : ι.Op → Price)
+    (r : Req ι .timed)
+    (s : Clock) :
     (Model.timed E p).step r s =
       ((Shape.retime (r.base s + (p r.op).delay) (ι.cod r.op) (E.step ⟨r.op, r.args.untime⟩).run.1,
         (E.step ⟨r.op, r.args.untime⟩).run.2), s.pay (p r.op).comm) := by
   simp only [Model.timed, Shape.withTimed_eq]
 
 /-- Issuing a priced request leaves the control clock unchanged. -/
-theorem Model.timed_clock {ι : Interface} (E : Model ι .ideal Id) (p : ι.Op → Price) (r : Req ι .timed) (s : Clock) :
+theorem Model.timed_clock
+    {ι : Interface}
+    (E : Model ι .ideal Id)
+    (p : ι.Op → Price)
+    (r : Req ι .timed)
+    (s : Clock) :
     ((Model.timed E p).step r s).2.clock = s.clock := by
   rw [Model.timed_step, Clock.pay_clock]
 

@@ -23,7 +23,10 @@ abbrev sig (F : Type) : Signature where
   cod := .share F
 noncomputable def model (F : Type) [Fintype F] [Nonempty F] : FunctionModel (sig F) .ideal PMF :=
   ⟨fun _ => (uniform F).map fun x => (x, ())⟩
-def eval (F : Type) [Inhabited F] : FunctionModel (sig F) .ideal Id := ⟨fun _ => pure ((default : F), ())⟩
+def eval
+    (F : Type)
+    [Inhabited F] :
+    FunctionModel (sig F) .ideal Id := ⟨fun _ => pure ((default : F), ())⟩
 end Rand
 
 /-- Sample a uniform value and return it as a share. -/
@@ -42,17 +45,36 @@ namespace RandNZ
 abbrev sig (F : Type) : Signature where
   dom := []
   cod := .share F
-noncomputable def model (F : Type) [Zero F] [Nontrivial F] [Fintype F] [DecidableEq F] : FunctionModel (sig F) .ideal PMF :=
+noncomputable def model
+    (F : Type)
+    [Zero F]
+    [Nontrivial F]
+    [Fintype F]
+    [DecidableEq F] :
+    FunctionModel (sig F) .ideal PMF :=
   ⟨fun _ => (uniform {x : F // x ≠ 0}).map fun x => (x.1, ())⟩
 def eval (F : Type) [One F] : FunctionModel (sig F) .ideal Id := ⟨fun _ => pure ((1 : F), ())⟩
 end RandNZ
 
 /-- Sample uniformly from `F \ {0}` and return a share.
 Over a field, this supplies an invertible mask. -/
-abbrev RandNZ (F : Type) [Zero F] [One F] [Nontrivial F] [Fintype F] [DecidableEq F] : Functionality :=
+abbrev RandNZ
+    (F : Type)
+    [Zero F]
+    [One F]
+    [Nontrivial F]
+    [Fintype F]
+    [DecidableEq F] :
+    Functionality :=
   ⟨RandNZ.sig F, RandNZ.eval F, (· = RandNZ.model F), Functionality.unique_eq _⟩
 
-@[simp, weft] theorem RandNZ.model_eq (F : Type) [Zero F] [One F] [Nontrivial F] [Fintype F] [DecidableEq F] :
+@[simp, weft] theorem RandNZ.model_eq
+    (F : Type)
+    [Zero F]
+    [One F]
+    [Nontrivial F]
+    [Fintype F]
+    [DecidableEq F] :
     (RandNZ F).model = RandNZ.model F := Functionality.model_eq rfl
 
 /-! ## Public coins -/
@@ -64,7 +86,10 @@ abbrev sig (F : Type) : Signature where
   leak := F
 noncomputable def model (F : Type) [Fintype F] [Nonempty F] : FunctionModel (sig F) .ideal PMF :=
   ⟨fun _ => (uniform F).map fun x => (x, x)⟩
-def eval (F : Type) [Inhabited F] : FunctionModel (sig F) .ideal Id := ⟨fun _ => pure ((default : F), default)⟩
+def eval
+    (F : Type)
+    [Inhabited F] :
+    FunctionModel (sig F) .ideal Id := ⟨fun _ => pure ((default : F), default)⟩
 end PubCoin
 
 /-- Sample a uniform clear value, recorded in the event. -/
@@ -82,7 +107,12 @@ structure Correlation (R T : Type) where
   build : (Fin k → R) → T
 
 /-- Apply the correlation function to a uniform draw from `Rᵏ`. -/
-noncomputable def Correlation.sample {R T : Type} [Fintype R] [Nonempty R] (c : Correlation R T) : PMF T :=
+noncomputable def Correlation.sample
+    {R T : Type}
+    [Fintype R]
+    [Nonempty R]
+    (c : Correlation R T) :
+    PMF T :=
   (uniform (Fin c.k → R)).map c.build
 
 /-! ### A multiplication (Beaver) triple `(a, b, a·b)` -/
@@ -91,7 +121,12 @@ abbrev sig (F : Type) : Signature where
   dom := []
   cod := .prod (.share F) (.prod (.share F) (.share F))
 def corr (F : Type) [Mul F] : Correlation F (F × F × F) := ⟨2, fun x => (x 0, x 1, x 0 * x 1)⟩
-noncomputable def model (F : Type) [Mul F] [Fintype F] [Nonempty F] : FunctionModel (sig F) .ideal PMF :=
+noncomputable def model
+    (F : Type)
+    [Mul F]
+    [Fintype F]
+    [Nonempty F] :
+    FunctionModel (sig F) .ideal PMF :=
   ⟨fun _ => (corr F).sample.map fun t => (t, ())⟩
 def eval (F : Type) [Mul F] [Inhabited F] : FunctionModel (sig F) .ideal Id :=
   ⟨fun _ => pure (((default : F), (default : F), (default : F) * default), ())⟩
@@ -110,7 +145,12 @@ abbrev sig (F : Type) : Signature where
   dom := []
   cod := .prod (.share F) (.share F)
 def corr (F : Type) [Mul F] : Correlation F (F × F) := ⟨1, fun x => (x 0, x 0 * x 0)⟩
-noncomputable def model (F : Type) [Mul F] [Fintype F] [Nonempty F] : FunctionModel (sig F) .ideal PMF :=
+noncomputable def model
+    (F : Type)
+    [Mul F]
+    [Fintype F]
+    [Nonempty F] :
+    FunctionModel (sig F) .ideal PMF :=
   ⟨fun _ => (corr F).sample.map fun t => (t, ())⟩
 def eval (F : Type) [Mul F] [Inhabited F] : FunctionModel (sig F) .ideal Id :=
   ⟨fun _ => pure (((default : F), (default : F) * default), ())⟩
@@ -134,7 +174,10 @@ abbrev sig (F : Type) : Signature where
 def corr (F : Type) : Correlation F (F × F) := ⟨1, fun x => (x 0, x 0)⟩
 noncomputable def model (F : Type) [Fintype F] [Nonempty F] : FunctionModel (sig F) .ideal PMF :=
   ⟨fun _ => (corr F).sample.map fun t => (t, ())⟩
-def eval (F : Type) [Inhabited F] : FunctionModel (sig F) .ideal Id := ⟨fun _ => pure (((default : F), (default : F)), ())⟩
+def eval
+    (F : Type)
+    [Inhabited F] :
+    FunctionModel (sig F) .ideal Id := ⟨fun _ => pure (((default : F), (default : F)), ())⟩
 end DoubleSharing
 
 /-- Return two shares of the same uniform value. -/
@@ -150,20 +193,51 @@ section Ops
 variable {F : Type} {fs : Hybrid} {D : Domain}
 
 /-- Request a random share of the explicitly supplied type `F`. -/
-def rand (F : Type) [Fintype F] [Inhabited F] [Has (Rand F) fs] : Prog fs.ops D (D.share F) :=
+def rand
+    (F : Type)
+    [Fintype F]
+    [Inhabited F]
+    [Has (Rand F) fs] :
+    Prog fs.ops D (D.share F) :=
   Prog.op (F := Rand F) ()
-def randNZ (F : Type) [Zero F] [One F] [Nontrivial F] [Fintype F] [DecidableEq F] [Has (RandNZ F) fs] :
+def randNZ
+    (F : Type)
+    [Zero F]
+    [One F]
+    [Nontrivial F]
+    [Fintype F]
+    [DecidableEq F]
+    [Has (RandNZ F) fs] :
     Prog fs.ops D (D.share F) :=
   Prog.op (F := RandNZ F) ()
-def coin (F : Type) [Fintype F] [Inhabited F] [Has (PubCoin F) fs] : Prog fs.ops D (D.clear F) :=
+def coin
+    (F : Type)
+    [Fintype F]
+    [Inhabited F]
+    [Has (PubCoin F) fs] :
+    Prog fs.ops D (D.clear F) :=
   Prog.op (F := PubCoin F) ()
-def mulTriple (F : Type) [Mul F] [Fintype F] [Inhabited F] [Has (MulTriple F) fs] :
+def mulTriple
+    (F : Type)
+    [Mul F]
+    [Fintype F]
+    [Inhabited F]
+    [Has (MulTriple F) fs] :
     Prog fs.ops D (D.share F × D.share F × D.share F) :=
   Prog.op (F := MulTriple F) ()
-def squarePair (F : Type) [Mul F] [Fintype F] [Inhabited F] [Has (SquarePair F) fs] :
+def squarePair
+    (F : Type)
+    [Mul F]
+    [Fintype F]
+    [Inhabited F]
+    [Has (SquarePair F) fs] :
     Prog fs.ops D (D.share F × D.share F) :=
   Prog.op (F := SquarePair F) ()
-def doubleSharing (F : Type) [Fintype F] [Inhabited F] [Has (DoubleSharing F) fs] :
+def doubleSharing
+    (F : Type)
+    [Fintype F]
+    [Inhabited F]
+    [Has (DoubleSharing F) fs] :
     Prog fs.ops D (D.share F × D.share F) :=
   Prog.op (F := DoubleSharing F) ()
 

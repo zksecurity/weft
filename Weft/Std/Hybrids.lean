@@ -11,7 +11,12 @@ replace multiplication with its Beaver realisation (`Examples.Beaver`).
 namespace Weft
 
 /-- Linear operations, multiplication and reveal. -/
-abbrev Std (F : Type) [Add F] [Mul F] [Sub F] : Hybrid := [Const F, Addition F, Subtraction F, Smul F, Mult F, Reveal F]
+abbrev Std
+    (F : Type)
+    [Add F]
+    [Mul F]
+    [Sub F] :
+    Hybrid := [Const F, Addition F, Subtraction F, Smul F, Mult F, Reveal F]
 
 namespace Std
 variable (F : Type) [Add F] [Mul F] [Sub F]
@@ -38,7 +43,10 @@ abbrev mpc (pReveal : Price := ⟨1, 1⟩) (pTriple : Price := ⟨0, 0⟩) : MPC
     (Subtraction F).priced ⟨0, 0⟩, (Smul F).priced ⟨0, 0⟩,
     (Reveal F).priced pReveal, (MulTriple F).priced pTriple]
 /-- Timed model of `Pre` at the supplied prices. -/
-def timed (pReveal : Price := ⟨1, 1⟩) (pTriple : Price := ⟨0, 0⟩) : Model (Pre F).ops .timed Sched :=
+def timed
+    (pReveal : Price := ⟨1, 1⟩)
+    (pTriple : Price := ⟨0, 0⟩) :
+    Model (Pre F).ops .timed Sched :=
   (mpc F pReveal pTriple).timed
 end Pre
 

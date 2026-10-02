@@ -44,7 +44,11 @@ def eval (F G : Type) [Encodable F] [NatCast G] : FunctionModel (sig F G) .ideal
 end SwitchF
 
 /-- Share conversion from `F` to `G`. -/
-abbrev Switch (F G : Type) [Encodable F] [NatCast G] : Functionality := .ofEval (SwitchF.sig F G) (SwitchF.eval F G)
+abbrev Switch
+    (F G : Type)
+    [Encodable F]
+    [NatCast G] :
+    Functionality := .ofEval (SwitchF.sig F G) (SwitchF.eval F G)
 
 namespace EdaBitF
 abbrev sig (F : Type) (m : Nat) : Signature where
@@ -87,12 +91,29 @@ abbrev DaBit (F : Type) [NatCast F] (coin : Nat := 0) : Functionality :=
 
 section Ops
 variable {fs : Hybrid} {D : Domain}
-def switch {F : Type} (G : Type) [Encodable F] [NatCast G] [Has (Switch F G) fs] (a : D.share F) : Prog fs.ops D (D.share G) :=
+def switch
+    {F : Type}
+    (G : Type)
+    [Encodable F]
+    [NatCast G]
+    [Has (Switch F G) fs]
+    (a : D.share F) :
+    Prog fs.ops D (D.share G) :=
   Prog.op (F := Switch F G) (a, ())
-def edabit (F : Type) [NatCast F] (m : Nat) (coin : Nat := 0) [Has (EdaBit F m coin) fs] :
+def edabit
+    (F : Type)
+    [NatCast F]
+    (m : Nat)
+    (coin : Nat := 0)
+    [Has (EdaBit F m coin) fs] :
     Prog fs.ops D (D.share F × (Fin m → D.share GF2)) :=
   Prog.op (F := EdaBit F m coin) ()
-def dabit (F : Type) [NatCast F] (coin : Nat := 0) [Has (DaBit F coin) fs] : Prog fs.ops D (D.share F × D.share GF2) :=
+def dabit
+    (F : Type)
+    [NatCast F]
+    (coin : Nat := 0)
+    [Has (DaBit F coin) fs] :
+    Prog fs.ops D (D.share F × D.share GF2) :=
   Prog.op (F := DaBit F coin) ()
 end Ops
 
@@ -102,10 +123,20 @@ section TwoFields
 variable {fs : Hybrid} {D : Domain}
 
 /-- Multiply in `F`, compare the converted result in `G`, and convert the bit back. -/
-def mulThenCompare (F G : Type) [CommRing F] [Encodable F] [CommRing G] [Encodable G]
-    [LT G] [DecidableRel (α := G) (· < ·)]
-    [Has (Mult F) fs] [Has (Switch F G) fs] [Has (Cmp G) fs] [Has (Switch G F) fs]
-    (a b c : D.share F) : Prog fs.ops D (D.share F) := do
+def mulThenCompare
+    (F G : Type)
+    [CommRing F]
+    [Encodable F]
+    [CommRing G]
+    [Encodable G]
+    [LT G]
+    [DecidableRel (α := G) (· < ·)]
+    [Has (Mult F) fs]
+    [Has (Switch F G) fs]
+    [Has (Cmp G) fs]
+    [Has (Switch G F) fs]
+    (a b c : D.share F) :
+    Prog fs.ops D (D.share F) := do
   let ab ← mul a b                              -- Product in `F`.
   let ab' ← switch G ab                         -- Convert the product to `G`.
   let c' ← switch G c
@@ -135,13 +166,19 @@ abbrev twoField : MPC := [
 
 -- The conversion of `c` overlaps the product and its conversion.
 -- The longest dependency chain costs `1 + 3 + 2 + 2 = 8` rounds.
-example : commOn twoField.timed (mulThenCompare (ZMod 7) (ZMod 16) (fs := twoField.hybrid) (D := .timed) ⟪2⟫ ⟪3⟫ ⟪5⟫)
-    = 28 := by decide +kernel
-example : delayOn twoField.timed (mulThenCompare (ZMod 7) (ZMod 16) (fs := twoField.hybrid) (D := .timed) ⟪2⟫ ⟪3⟫ ⟪5⟫)
-    = 8 := by decide +kernel
+example :
+    commOn twoField.timed
+      (mulThenCompare (ZMod 7) (ZMod 16) (fs := twoField.hybrid) (D := .timed) ⟪2⟫ ⟪3⟫ ⟪5⟫)
+      = 28 := by decide +kernel
+example :
+    delayOn twoField.timed
+      (mulThenCompare (ZMod 7) (ZMod 16) (fs := twoField.hybrid) (D := .timed) ⟪2⟫ ⟪3⟫ ⟪5⟫)
+      = 8 := by decide +kernel
 -- The product is 6 in `𝔽₇`; its representative is greater than 5 in `ℤ/16`.
-example : (output twoField.eval (mulThenCompare (ZMod 7) (ZMod 16) (fs := twoField.hybrid) (D := .ideal) 2 3 5) : ZMod 7)
-    = 0 := by decide
+example :
+    (output twoField.eval
+      (mulThenCompare (ZMod 7) (ZMod 16) (fs := twoField.hybrid) (D := .ideal) 2 3 5) : ZMod 7)
+      = 0 := by decide
 
 /-! ## Arithmetic-to-binary conversion with an edaBit -/
 
@@ -150,8 +187,16 @@ variable {fs : Hybrid} {D : Domain}
 
 /-- Ripple-carry addition of public bits to shared bits.
 Each carry uses one AND; XOR and multiplication by a public bit use linear operations. -/
-def addPublic [Has (Const GF2) fs] [Has (Addition GF2) fs] [Has (Smul GF2) fs] [Has (Mult GF2) fs] :
-    (m : Nat) → D.clear (Fin m → GF2) → (Fin m → D.share GF2) → D.share GF2 → Prog fs.ops D (Fin m → D.share GF2)
+def addPublic
+    [Has (Const GF2) fs]
+    [Has (Addition GF2) fs]
+    [Has (Smul GF2) fs]
+    [Has (Mult GF2) fs] :
+    (m : Nat) →
+    D.clear (Fin m → GF2) →
+    (Fin m → D.share GF2) →
+    D.share GF2 →
+    Prog fs.ops D (Fin m → D.share GF2)
   | 0, _, _, _ => pure fun i => i.elim0
   | m + 1, c, r, carry => do
     let t ← add (r 0) carry                   -- r₀ ⊕ carry
@@ -166,10 +211,21 @@ def addPublic [Has (Const GF2) fs] [Has (Addition GF2) fs] [Has (Smul GF2) fs] [
 /-- Open `x − r` and add its encoded low bits to the shared bits of `r`.
 This example omits correction for wraparound in `F`;
 the concrete check below uses a subtraction that does not wrap. -/
-def a2b (F : Type) [CommRing F] [Encodable F] (m : Nat) (coin : Nat := 0)
-    [Has (EdaBit F m coin) fs] [Has (Subtraction F) fs] [Has (Reveal F) fs] [Has (Const GF2) fs]
-    [Has (Addition GF2) fs] [Has (Smul GF2) fs] [Has (Mult GF2) fs]
-    (x : D.share F) : Prog fs.ops D (Fin m → D.share GF2) := do
+def a2b
+    (F : Type)
+    [CommRing F]
+    [Encodable F]
+    (m : Nat)
+    (coin : Nat := 0)
+    [Has (EdaBit F m coin) fs]
+    [Has (Subtraction F) fs]
+    [Has (Reveal F) fs]
+    [Has (Const GF2) fs]
+    [Has (Addition GF2) fs]
+    [Has (Smul GF2) fs]
+    [Has (Mult GF2) fs]
+    (x : D.share F) :
+    Prog fs.ops D (Fin m → D.share GF2) := do
   let (r, rbits) ← edabit F m coin
   let d ← sub x r
   let c ← reveal d                             -- Disclose `x − r`.
@@ -200,18 +256,23 @@ def openedMixed : List (Event mixed.hybrid.ops) → List (ZMod 17) :=
     | _ => none
 
 -- Evaluate the opening with mask `r = 3`.
-example (x : ZMod 17) :
-    openedMixed (view mixed.eval (a2b (ZMod 17) 4 3 (fs := mixed.hybrid) (D := .ideal) x)) = [x - 3] := rfl
+example
+    (x : ZMod 17) :
+    openedMixed (view mixed.eval (a2b (ZMod 17) 4 3 (fs := mixed.hybrid) (D := .ideal) x))
+      = [x - 3] := rfl
 -- One reveal and four ANDs contribute communication.
 -- The last output bit depends on three carry steps;
 -- the fourth AND feeds only the unused carry-out.
 example : commOn mixed.timed (a2b (ZMod 17) 4 3 (fs := mixed.hybrid) (D := .timed) ⟪5⟫) = 5 := by
   decide +kernel
-example : ((Sched.output mixed.timed (a2b (ZMod 17) 4 3 (fs := mixed.hybrid) (D := .timed) ⟪5⟫)) 3).time = 3 := by
+example :
+    ((Sched.output mixed.timed (a2b (ZMod 17) 4 3 (fs := mixed.hybrid) (D := .timed) ⟪5⟫)) 3).time
+      = 3 := by
   decide +kernel
 -- With `x = 5` and `r = 3`, subtraction does not wrap in `𝔽₁₇`.
 -- The result is the four-bit representation `0101`.
-example : (output mixed.eval (a2b (ZMod 17) 4 3 (fs := mixed.hybrid) (D := .ideal) 5) : Fin 4 → ZMod 2)
+example :
+    (output mixed.eval (a2b (ZMod 17) 4 3 (fs := mixed.hybrid) (D := .ideal) 5) : Fin 4 → ZMod 2)
     = ![1, 0, 1, 0] := by decide +kernel
 
 /-! ## Boolean-to-arithmetic conversion with daBits
@@ -224,9 +285,15 @@ Independent conversions can share a reveal round.
 Summing their outputs gives a Hamming weight modulo the characteristic of `F`. -/
 
 /-- Sum converted shares, avoiding an extra addition for a singleton list. -/
-private def sumAll {F : Type} [Add F] [OfNat F 0] {fs : Hybrid} {D : Domain}
+private def sumAll
+    {F : Type}
+    [Add F]
+    [OfNat F 0]
+    {fs : Hybrid}
+    {D : Domain}
     [Has (Const F) fs]
-    [Has (Addition F) fs] : List (D.share F) → Prog fs.ops D (D.share F)
+    [Has (Addition F) fs] :
+    List (D.share F) → Prog fs.ops D (D.share F)
   | [] => const 0
   | [x] => pure x
   | x :: xs => do
@@ -237,10 +304,17 @@ section DaBits
 variable {fs : Hybrid} {D : Domain} (F : Type) [CommRing F]
 
 /-- Boolean → arithmetic with one daBit. -/
-def b2a (coin : Nat := 0)
-    [Has (DaBit F coin) fs] [Has (Addition GF2) fs] [Has (Reveal GF2) fs] [Has (Const F) fs]
-    [Has (Addition F) fs] [Has (Subtraction F) fs] [Has (Smul F) fs]
-    (x : D.share GF2) : Prog fs.ops D (D.share F) := do
+def b2a
+    (coin : Nat := 0)
+    [Has (DaBit F coin) fs]
+    [Has (Addition GF2) fs]
+    [Has (Reveal GF2) fs]
+    [Has (Const F) fs]
+    [Has (Addition F) fs]
+    [Has (Subtraction F) fs]
+    [Has (Smul F) fs]
+    (x : D.share GF2) :
+    Prog fs.ops D (D.share F) := do
   let (bF, b₂) ← dabit F coin
   let m ← add x b₂                    -- Mask in `𝔽₂`.
   let c ← reveal m                    -- The opening is uniform.
@@ -251,10 +325,17 @@ def b2a (coin : Nat := 0)
 
 /-- Convert each bit and sum in `F`.
 The conversions are independent; the count is represented in `F`. -/
-def hammingWeight (coin : Nat := 0)
-    [Has (DaBit F coin) fs] [Has (Addition GF2) fs] [Has (Reveal GF2) fs] [Has (Const F) fs]
-    [Has (Addition F) fs] [Has (Subtraction F) fs] [Has (Smul F) fs]
-    (xs : List (D.share GF2)) : Prog fs.ops D (D.share F) := do
+def hammingWeight
+    (coin : Nat := 0)
+    [Has (DaBit F coin) fs]
+    [Has (Addition GF2) fs]
+    [Has (Reveal GF2) fs]
+    [Has (Const F) fs]
+    [Has (Addition F) fs]
+    [Has (Subtraction F) fs]
+    [Has (Smul F) fs]
+    (xs : List (D.share GF2)) :
+    Prog fs.ops D (D.share F) := do
   let ys ← xs.mapM (b2a F coin)
   sumAll ys
 end DaBits
@@ -276,17 +357,27 @@ abbrev withDaBits : MPC := [
   (DaBit (ZMod 17) 1).priced ⟨0, 0⟩]
 
 -- Evaluate both Boolean inputs with daBit `b = 1`.
-example : (output withDaBits.eval (b2a (ZMod 17) 1 (fs := withDaBits.hybrid) (D := .ideal) 1) : ZMod 17) = 1 := by
+example :
+    (output withDaBits.eval (b2a (ZMod 17) 1 (fs := withDaBits.hybrid) (D := .ideal) 1) : ZMod 17)
+      = 1 := by
   decide +kernel
-example : (output withDaBits.eval (b2a (ZMod 17) 1 (fs := withDaBits.hybrid) (D := .ideal) 0) : ZMod 17) = 0 := by
+example :
+    (output withDaBits.eval (b2a (ZMod 17) 1 (fs := withDaBits.hybrid) (D := .ideal) 0) : ZMod 17)
+      = 0 := by
   decide +kernel
 -- Four independent conversions give weight 3 with four openings in one round.
-example : (output withDaBits.eval (hammingWeight (ZMod 17) 1 (fs := withDaBits.hybrid) (D := .ideal) [1, 0, 1, 1]) : ZMod 17)
-    = 3 := by decide +kernel
-example : commOn withDaBits.timed
-    (hammingWeight (ZMod 17) 1 (fs := withDaBits.hybrid) (D := .timed) [⟪1⟫, ⟪0⟫, ⟪1⟫, ⟪1⟫]) = 4 := by decide +kernel
-example : (Sched.output withDaBits.timed
-    (hammingWeight (ZMod 17) 1 (fs := withDaBits.hybrid) (D := .timed) [⟪1⟫, ⟪0⟫, ⟪1⟫, ⟪1⟫])).time = 1 := by
+example :
+    (output withDaBits.eval
+      (hammingWeight (ZMod 17) 1 (fs := withDaBits.hybrid) (D := .ideal) [1, 0, 1, 1]) : ZMod 17)
+      = 3 := by decide +kernel
+example :
+    commOn withDaBits.timed
+      (hammingWeight (ZMod 17) 1 (fs := withDaBits.hybrid) (D := .timed) [⟪1⟫, ⟪0⟫, ⟪1⟫, ⟪1⟫])
+      = 4 := by decide +kernel
+example :
+    (Sched.output withDaBits.timed
+      (hammingWeight (ZMod 17) 1 (fs := withDaBits.hybrid) (D := .timed) [⟪1⟫, ⟪0⟫, ⟪1⟫, ⟪1⟫])).time
+      = 1 := by
   decide +kernel
 
 /-! ### Boolean-to-arithmetic privacy -/

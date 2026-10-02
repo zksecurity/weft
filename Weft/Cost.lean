@@ -17,7 +17,11 @@ namespace Weft
 /-! ## Derived timed models -/
 
 /-- Run `f`'s implementation under `T` to obtain a timed model of `F`. -/
-def Realization.timed {F : Functionality} {fs : Hybrid} (f : Realization F fs) (T : Model fs.ops .timed Sched) :
+def Realization.timed
+    {F : Functionality}
+    {fs : Hybrid}
+    (f : Realization F fs)
+    (T : Model fs.ops .timed Sched) :
     FunctionModel F.sig .timed Sched where
   step r := do
     let p ← run T CostModel.unit (f.impl .timed r)
@@ -35,13 +39,25 @@ def Realizations.timed {fs gs : Hybrid} (g : Realizations fs gs) (T : Model gs.o
     pure (p.1, (fs.eval.step ⟨r.op, r.args.untime⟩).run.2)
 
 /-- Project the output while preserving the monad's effects. -/
-def runOut {ι : Interface} {D : Domain} {α : Type} {m : Type → Type} [Monad m] [Look D m] (M : Model ι D m)
-    (c : Prog ι D α) : m α :=
+def runOut
+    {ι : Interface}
+    {D : Domain}
+    {α : Type}
+    {m : Type → Type}
+    [Monad m]
+    [Look D m]
+    (M : Model ι D m)
+    (c : Prog ι D α) :
+    m α :=
   Prod.fst <$> run M CostModel.unit c
 
 /-- Running under derived timed models agrees with inlining the implementations. -/
-theorem Realizations.runOut_timed {fs gs : Hybrid} (g : Realizations fs gs) (T : Model gs.ops .timed Sched)
-    {α : Type} (c : Prog fs.ops .timed α) :
+theorem Realizations.runOut_timed
+    {fs gs : Hybrid}
+    (g : Realizations fs gs)
+    (T : Model gs.ops .timed Sched)
+    {α : Type}
+    (c : Prog fs.ops .timed α) :
     runOut (g.timed T) c = runOut T (Prog.handle (g.impl .timed) c) := by
   induction c with
   | pure a => simp [runOut, Prog.handle]
@@ -56,8 +72,13 @@ theorem Realizations.runOut_timed {fs gs : Hybrid} (g : Realizations fs gs) (T :
     simpa only [map_eq_pure_bind, Function.comp_def] using this
 
 /-- Run one component's implementation and record the abstract request's event. -/
-theorem Realizations.run_opAt {fs gs : Hybrid} (g : Realizations fs gs) (T : Model gs.ops .timed Sched)
-    (i : Fin fs.length) (a : (fs.get i).sig.Args .timed) (s : Clock) :
+theorem Realizations.run_opAt
+    {fs gs : Hybrid}
+    (g : Realizations fs gs)
+    (T : Model gs.ops .timed Sched)
+    (i : Fin fs.length)
+    (a : (fs.get i).sig.Args .timed)
+    (s : Clock) :
     StateT.run (run (g.timed T) CostModel.unit (Prog.opAt fs i a)) s =
       (((StateT.run (run T CostModel.unit ((g.get i).impl .timed a)) s).1.1,
         ⟨(), [⟨i, ((fs.get i).eval.step a.untime).run.2⟩]⟩),
@@ -66,49 +87,95 @@ theorem Realizations.run_opAt {fs gs : Hybrid} (g : Realizations fs gs) (T : Mod
     Trace.seq, Trace.zero]
   rfl
 
-@[simp] theorem Realizations.get_cons_zero {F : Functionality} {fs gs : Hybrid} (r : Realization F gs)
-    (rs : Realizations fs gs) : Realizations.get (.cons r rs) ⟨0, Nat.zero_lt_succ _⟩ = r := rfl
-@[simp] theorem Realizations.get_cons_succ {F : Functionality} {fs gs : Hybrid} (r : Realization F gs)
-    (rs : Realizations fs gs) (n : Nat) (h : n + 1 < (F :: fs).length) :
+@[simp] theorem Realizations.get_cons_zero
+    {F : Functionality}
+    {fs gs : Hybrid}
+    (r : Realization F gs)
+    (rs : Realizations fs gs) :
+    Realizations.get (.cons r rs) ⟨0, Nat.zero_lt_succ _⟩ = r := rfl
+@[simp] theorem Realizations.get_cons_succ
+    {F : Functionality}
+    {fs gs : Hybrid}
+    (r : Realization F gs)
+    (rs : Realizations fs gs)
+    (n : Nat)
+    (h : n + 1 < (F :: fs).length) :
     Realizations.get (.cons r rs) ⟨n + 1, h⟩ = rs.get ⟨n, Nat.lt_of_succ_lt_succ h⟩ := rfl
 
-theorem Realizations.sched_timed {fs gs : Hybrid} (g : Realizations fs gs) (T : Model gs.ops .timed Sched)
-    {α : Type} (c : Prog fs.ops .timed α) :
+theorem Realizations.sched_timed
+    {fs gs : Hybrid}
+    (g : Realizations fs gs)
+    (T : Model gs.ops .timed Sched)
+    {α : Type}
+    (c : Prog fs.ops .timed α) :
     Sched.run (g.timed T) c = Sched.run T (Prog.handle (g.impl .timed) c) := by
   have h := congrArg (fun x : Sched α => StateT.run x {}) (g.runOut_timed T c)
   simp only [runOut, StateT.run_map] at h
   exact h
 
-theorem Realizations.delayOn_timed {fs gs : Hybrid} (g : Realizations fs gs) (T : Model gs.ops .timed Sched)
-    {X : Type} (c : Prog fs.ops .timed (Timed X)) :
+theorem Realizations.delayOn_timed
+    {fs gs : Hybrid}
+    (g : Realizations fs gs)
+    (T : Model gs.ops .timed Sched)
+    {X : Type}
+    (c : Prog fs.ops .timed (Timed X)) :
     delayOn (g.timed T) c = delayOn T (Prog.handle (g.impl .timed) c) := by
   simp [delayOn, g.sched_timed T c]
 
-theorem Realizations.readyOn_timed {fs gs : Hybrid} (g : Realizations fs gs) (T : Model gs.ops .timed Sched)
-    (s : Shape) (c : Prog fs.ops .timed (s.interp .timed)) :
+theorem Realizations.readyOn_timed
+    {fs gs : Hybrid}
+    (g : Realizations fs gs)
+    (T : Model gs.ops .timed Sched)
+    (s : Shape)
+    (c : Prog fs.ops .timed (s.interp .timed)) :
     readyOn (g.timed T) s c = readyOn T s (Prog.handle (g.impl .timed) c) := by
   simp [readyOn, g.sched_timed T c]
 
-theorem Realizations.commOn_timed {fs gs : Hybrid} (g : Realizations fs gs) (T : Model gs.ops .timed Sched)
-    {α : Type} (c : Prog fs.ops .timed α) :
+theorem Realizations.commOn_timed
+    {fs gs : Hybrid}
+    (g : Realizations fs gs)
+    (T : Model gs.ops .timed Sched)
+    {α : Type}
+    (c : Prog fs.ops .timed α) :
     commOn (g.timed T) c = commOn T (Prog.handle (g.impl .timed) c) := by
   simp [commOn, g.sched_timed T c]
 
 /-! ## Cost distributions -/
 
 /-- Cost distribution, including variation caused by public control flow. -/
-noncomputable def costDist {ι : Interface} {D : Domain} {C α : Type} [AddMonoid C] [Look D PMF] (M : Model ι D PMF)
-    (K : CostModel ι C) (c : Prog ι D α) : PMF C :=
+noncomputable def costDist
+    {ι : Interface}
+    {D : Domain}
+    {C α : Type}
+    [AddMonoid C]
+    [Look D PMF]
+    (M : Model ι D PMF)
+    (K : CostModel ι C)
+    (c : Prog ι D α) :
+    PMF C :=
   (fun r => r.2.cost) <$> run M K c
 
-theorem costDist_look {ι : Interface} {C α T : Type} [AddMonoid C] (M : Model ι .ideal PMF) (K : CostModel ι C)
-    (c : Domain.ideal.clear T) (k : T → Prog ι .ideal α) : costDist M K (.look c k) = costDist M K (k c) := by
+theorem costDist_look
+    {ι : Interface}
+    {C α T : Type}
+    [AddMonoid C]
+    (M : Model ι .ideal PMF)
+    (K : CostModel ι C)
+    (c : Domain.ideal.clear T)
+    (k : T → Prog ι .ideal α) :
+    costDist M K (.look c k) = costDist M K (k c) := by
   simp [costDist, run_look_ideal]
 
 /-- Every implementation run costs `p` for its operation,
 independently of operands and random coins. -/
-def Priced {ι κ : Interface} {C : Type} [AddMonoid C] (M : Model ι .ideal PMF)
-    (impl : (r : Req κ .ideal) → Prog ι .ideal (Resp κ .ideal r.op)) (K : CostModel ι C) (p : CostModel κ C) :
+def Priced
+    {ι κ : Interface}
+    {C : Type}
+    [AddMonoid C]
+    (M : Model ι .ideal PMF)
+    (impl : (r : Req κ .ideal) → Prog ι .ideal (Resp κ .ideal r.op))
+    (K : CostModel ι C)
+    (p : CostModel κ C) :
     Prop :=
   ∀ r, costDist M K (impl r) = pure (p.op r.op)
 

@@ -46,7 +46,10 @@ abbrev Domain.erased : Domain := Domain.ideal.erase
 namespace Domain
 variable {D : Domain} {T A B : Type}
 
-@[simp] theorem ideal_map (f : A → B) (x : Domain.ideal.clear A) : (f <$> x : Domain.ideal.clear B) = f x := rfl
+@[simp] theorem ideal_map
+    (f : A → B)
+    (x : Domain.ideal.clear A) :
+    (f <$> x : Domain.ideal.clear B) = f x := rfl
 @[simp] theorem ideal_pure (a : A) : (pure a : Domain.ideal.clear A) = a := rfl
 @[simp] theorem ideal_seq (f : Domain.ideal.clear (A → B)) (x : Unit → Domain.ideal.clear A) :
     (Seq.seq f x : Domain.ideal.clear B) = f (x ()) := rfl

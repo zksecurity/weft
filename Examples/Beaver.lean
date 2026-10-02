@@ -27,7 +27,8 @@ def mulBeaver
     [Has (Smul F) fs]
     [Has (Reveal F) fs]
     [Has (MulTriple F) fs]
-    (x y : D.share F) : Prog fs.ops D (D.share F) := do
+    (x y : D.share F) :
+    Prog fs.ops D (D.share F) := do
   let (a, b, c) ← mulTriple F
   let u ← sub x a
   let e ← reveal u              -- e = x − a
@@ -86,8 +87,10 @@ def beaverView (q : F × F) : List (Event (Pre F).ops) :=
 -- then applies `beaverView` to obtain the view.
 
 -- Two openings at one communication unit each.
-example : commOn (preMPC (Fin 7)).timed
-    (mulBeaver (F := Fin 7) (fs := (preMPC (Fin 7)).hybrid) (D := .timed) ⟪3⟫ ⟪4⟫) = 2 := by decide +kernel
+example :
+    commOn (preMPC (Fin 7)).timed
+      (mulBeaver (F := Fin 7) (fs := (preMPC (Fin 7)).hybrid) (D := .timed) ⟪3⟫ ⟪4⟫)
+      = 2 := by decide +kernel
 end Evaluation
 
 section Closed
@@ -95,13 +98,19 @@ section Closed
 It avoids the elaborator's reduction overhead when evaluating these programs. -/
 
 -- Online generation adds the triple's three communication units.
-example : commOn (preOnline (Fin 7)).timed
-    (mulBeaver (F := Fin 7) (fs := (preOnline (Fin 7)).hybrid) (D := .timed) ⟪3⟫ ⟪4⟫) = 5 := by decide +kernel
+example :
+    commOn (preOnline (Fin 7)).timed
+      (mulBeaver (F := Fin 7) (fs := (preOnline (Fin 7)).hybrid) (D := .timed) ⟪3⟫ ⟪4⟫)
+      = 5 := by decide +kernel
 -- Independent openings take one round after the triple is available.
-example : delayOn (preMPC (Fin 7)).timed
-    (mulBeaver (F := Fin 7) (fs := (preMPC (Fin 7)).hybrid) (D := .timed) ⟪3⟫ ⟪4⟫) = 1 := by decide +kernel
-example : delayOn (preOnline (Fin 7)).timed
-    (mulBeaver (F := Fin 7) (fs := (preOnline (Fin 7)).hybrid) (D := .timed) ⟪3⟫ ⟪4⟫) = 3 := by decide +kernel
+example :
+    delayOn (preMPC (Fin 7)).timed
+      (mulBeaver (F := Fin 7) (fs := (preMPC (Fin 7)).hybrid) (D := .timed) ⟪3⟫ ⟪4⟫)
+      = 1 := by decide +kernel
+example :
+    delayOn (preOnline (Fin 7)).timed
+      (mulBeaver (F := Fin 7) (fs := (preOnline (Fin 7)).hybrid) (D := .timed) ⟪3⟫ ⟪4⟫)
+      = 3 := by decide +kernel
 end Closed
 
 /-! ## Correctness and privacy -/

@@ -20,7 +20,13 @@ theorem PMF.monad_map_eq_map {α β : Type} (f : α → β) (p : PMF α) : f <$>
 /-- Bijections preserve the uniform distribution.
 For a fixed secret, a bijection of a fresh uniform mask remains uniform;
 hence its distribution is independent of the secret. -/
-theorem uniform_map_equiv {α β : Type} [Fintype α] [Nonempty α] [Fintype β] [Nonempty β] (e : α ≃ β) :
+theorem uniform_map_equiv
+    {α β : Type}
+    [Fintype α]
+    [Nonempty α]
+    [Fintype β]
+    [Nonempty β]
+    (e : α ≃ β) :
     (uniform α).map e = uniform β := by
   ext b
   rw [PMF.map_apply, PMF.uniformOfFintype_apply, tsum_eq_single (e.symm b)]
@@ -79,7 +85,11 @@ end Joint
 /-! ### Congruence on the support -/
 
 /-- Two continuations that agree on the support of `p` give the same bind. -/
-theorem PMF.bind_congr_support {α β : Type} {p : PMF α} {f g : α → PMF β} (h : ∀ a ∈ p.support, f a = g a) :
+theorem PMF.bind_congr_support
+    {α β : Type}
+    {p : PMF α}
+    {f g : α → PMF β}
+    (h : ∀ a ∈ p.support, f a = g a) :
     p.bind f = p.bind g := by
   ext b
   simp only [PMF.bind_apply]
@@ -89,7 +99,11 @@ theorem PMF.bind_congr_support {α β : Type} {p : PMF α} {f g : α → PMF β}
   · simp [(PMF.apply_eq_zero_iff p a).2 ha]
 
 /-- Two functions that agree on the support of `p` give the same image. -/
-theorem PMF.map_congr_support {α β : Type} {p : PMF α} {f g : α → β} (h : ∀ a ∈ p.support, f a = g a) :
+theorem PMF.map_congr_support
+    {α β : Type}
+    {p : PMF α}
+    {f g : α → β}
+    (h : ∀ a ∈ p.support, f a = g a) :
     p.map f = p.map g := by
   ext b
   simp only [PMF.map_apply]
